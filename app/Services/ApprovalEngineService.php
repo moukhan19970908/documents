@@ -12,6 +12,7 @@ use App\Models\DocumentApprovalStage;
 use App\Models\User;
 use App\Models\Workflow;
 use App\Models\WorkflowStage;
+use App\Models\WorkflowStageApprover;
 use App\Jobs\SyncWithBitrix24;
 use Illuminate\Support\Facades\DB;
 
@@ -22,8 +23,37 @@ class ApprovalEngineService
         private AuditService $auditService,
     ) {}
 
-    public function startApproval(Document $doc, Workflow $workflow): DocumentApproval
+    public function startAdHocApproval(Document $doc, array $approverIds): DocumentApproval
     {
+        return DB::transaction(function () use ($doc, $approverIds) {
+            $workflow = Workflow::create([
+                'name'       => 'Согласование: ' . $doc->title,
+                'created_by' => auth()->id(),
+                'is_system'  => false,
+                'is_active'  => false,
+            ]);
+
+            $stage = WorkflowStage::create([
+                'workflow_id' => $workflow->id,
+                'name'        => 'Согласование',
+                'stage_type'  => 'parallel',
+                'sort_order'  => 1,
+            ]);
+
+            foreach ($approverIds as $userId) {
+                WorkflowStageApprover::create([
+                    'workflow_stage_id' => $stage->id,
+                    'approver_type'     => 'user',
+                    'approver_id'       => $userId,
+                    'is_required'       => true,
+                ]);
+            }
+
+            return $this->startApproval($doc, $workflow);
+        });
+    }
+
+    public function startApproval(Document $doc, Workflow $workflow): DocumentApproval    {
         return DB::transaction(function () use ($doc, $workflow) {
             $approval = DocumentApproval::create([
                 'document_id' => $doc->id,

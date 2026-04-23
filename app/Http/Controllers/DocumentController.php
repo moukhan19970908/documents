@@ -120,7 +120,13 @@ class DocumentController extends Controller
             'notes.author',
         ]);
 
-        return view('documents.show', compact('document'));
+        $approvers = User::where('is_active', true)
+            ->where('id', '!=', $document->initiator_id)
+            ->with('department')
+            ->orderBy('name')
+            ->get(['id', 'name', 'role', 'department_id']);
+
+        return view('documents.show', compact('document', 'approvers'));
     }
 
     public function edit(Document $document)

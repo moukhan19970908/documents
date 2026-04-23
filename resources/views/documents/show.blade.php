@@ -310,14 +310,107 @@
         <div class="space-y-5">
             @if($document->status === 'draft')
                 @can('update', $document)
-                    <div class="bg-white rounded-xl border border-gray-200 p-5">
+                    <div x-data="approvalModal" class="bg-white rounded-xl border border-gray-200 p-5">
                         <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">Запустить согласование</p>
-                        <form action="{{ route('documents.start-approval', $document) }}" method="POST">
-                            @csrf
-                            <button type="submit" class="w-full bg-[#5B4FE8] text-white py-3 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors">
-                                Запустить согласование
-                            </button>
-                        </form>
+                        <button @click="open = true" type="button"
+                                class="w-full bg-[#5B4FE8] text-white py-3 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors">
+                            Запустить согласование
+                        </button>
+
+                        {{-- Modal backdrop --}}
+                        <div x-show="open"
+                             x-transition:enter="transition-opacity duration-200"
+                             x-transition:enter-start="opacity-0"
+                             x-transition:enter-end="opacity-100"
+                             x-transition:leave="transition-opacity duration-150"
+                             x-transition:leave-start="opacity-100"
+                             x-transition:leave-end="opacity-0"
+                             class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+                             style="display:none"
+                             @click.self="open = false">
+
+                            {{-- Modal panel --}}
+                            <div x-show="open"
+                                 x-transition:enter="transition transform duration-200 ease-out"
+                                 x-transition:enter-start="opacity-0 scale-95"
+                                 x-transition:enter-end="opacity-100 scale-100"
+                                 x-transition:leave="transition transform duration-150 ease-in"
+                                 x-transition:leave-start="opacity-100 scale-100"
+                                 x-transition:leave-end="opacity-0 scale-95"
+                                 class="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[85vh]"
+                                 style="display:none">
+
+                                {{-- Modal header --}}
+                                <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                                    <div>
+                                        <h2 class="text-base font-semibold text-gray-900">Выбор согласующих</h2>
+                                        <p class="text-xs text-gray-500 mt-0.5">Выберите сотрудников для согласования документа</p>
+                                    </div>
+                                    <button @click="open = false" class="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                                    </button>
+                                </div>
+
+                                {{-- Search --}}
+                                <div class="px-6 pt-4">
+                                    <div class="relative">
+                                        <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                                        <input x-model="search"
+                                               type="text"
+                                               placeholder="Поиск по имени или отделу..."
+                                               class="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8] focus:bg-white">
+                                    </div>
+                                </div>
+
+                                {{-- Selected count --}}
+                                <div class="px-6 pt-3 pb-1">
+                                    <p class="text-xs text-gray-500">
+                                        Выбрано: <span class="font-semibold text-[#5B4FE8]" x-text="selected.length"></span>
+                                    </p>
+                                </div>
+
+                                {{-- User list --}}
+                                <form action="{{ route('documents.start-approval', $document) }}" method="POST"
+                                      id="approvalForm" class="flex flex-col flex-1 min-h-0">
+                                    @csrf
+                                    <div class="overflow-y-auto flex-1 px-6 py-2 space-y-1.5">
+                                        @foreach($approvers as $approver)
+                                            <label x-show="matchesSearch('{{ addslashes($approver->name) }}', '{{ addslashes($approver->department?->name ?? '') }}')"
+                                                   class="flex items-center gap-3 p-2.5 rounded-xl cursor-pointer hover:bg-gray-50 transition-colors border border-transparent"
+                                                   :class="selected.includes('{{ $approver->id }}') ? 'border-[#5B4FE8] bg-indigo-50' : ''">
+                                                <input type="checkbox"
+                                                       name="approvers[]"
+                                                       value="{{ $approver->id }}"
+                                                       x-model="selected"
+                                                       class="w-4 h-4 rounded text-[#5B4FE8] border-gray-300 focus:ring-[#5B4FE8]">
+                                                <div class="w-8 h-8 rounded-full bg-[#5B4FE8] text-white flex items-center justify-center text-xs font-semibold shrink-0">
+                                                    {{ strtoupper(mb_substr($approver->name, 0, 1)) }}
+                                                </div>
+                                                <div class="flex-1 min-w-0">
+                                                    <p class="text-sm font-medium text-gray-900 truncate">{{ $approver->name }}</p>
+                                                    <p class="text-xs text-gray-500 truncate">{{ $approver->department?->name ?? '—' }}</p>
+                                                </div>
+                                            </label>
+                                        @endforeach
+                                    </div>
+
+                                    {{-- Modal footer --}}
+                                    <div class="px-6 py-4 border-t border-gray-100 flex items-center gap-3">
+                                        <button type="button" @click="open = false"
+                                                class="flex-1 border border-gray-200 text-gray-700 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
+                                            Отмена
+                                        </button>
+                                        <button type="submit"
+                                                :disabled="selected.length === 0"
+                                                class="flex-1 bg-[#5B4FE8] text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                                            Запустить
+                                            <span x-show="selected.length > 0" x-text="'(' + selected.length + ')'" class="ml-1"></span>
+                                        </button>
+                                    </div>
+                                </form>
+
+                            </div>
+                        </div>
                     </div>
                 @endcan
             @endif
@@ -398,6 +491,17 @@
 
 <script>
 document.addEventListener('alpine:init', () => {
+    Alpine.data('approvalModal', () => ({
+        open: false,
+        search: '',
+        selected: [],
+        matchesSearch(name, department) {
+            if (!this.search) return true;
+            const q = this.search.toLowerCase();
+            return name.toLowerCase().includes(q) || department.toLowerCase().includes(q);
+        }
+    }));
+
     Alpine.data('docFilePreview', () => ({
         open: false,
         mimeType: '{{ addslashes($document->currentFile?->mime_type ?? '') }}',

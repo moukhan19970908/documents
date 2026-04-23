@@ -16,6 +16,23 @@ class ApprovalController extends Controller
     {
         $this->authorize('update', $document);
 
+        if ($document->activeApproval) {
+            return back()->with('error', 'Согласование уже запущено.');
+        }
+
+        // Ad-hoc: user selected approvers manually
+        if ($request->has('approvers')) {
+            $request->validate([
+                'approvers'   => ['required', 'array', 'min:1'],
+                'approvers.*' => ['required', 'integer', 'exists:users,id'],
+            ]);
+
+            $this->engine->startAdHocApproval($document, $request->approvers);
+
+            return back()->with('success', 'Согласование запущено.');
+        }
+
+        // Workflow-based approval
         $workflowId = $request->input('workflow_id');
         $workflow = $workflowId
             ? Workflow::findOrFail($workflowId)
@@ -23,10 +40,6 @@ class ApprovalController extends Controller
 
         if (!$workflow) {
             return back()->with('error', 'Не найден подходящий маршрут согласования.');
-        }
-
-        if ($document->activeApproval) {
-            return back()->with('error', 'Согласование уже запущено.');
         }
 
         $this->engine->startApproval($document, $workflow);
