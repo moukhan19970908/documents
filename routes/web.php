@@ -37,6 +37,7 @@ Route::middleware(['auth', 'audit'])->group(function () {
     // Files
     Route::post('documents/{document}/files', [DocumentFileController::class, 'store'])->name('documents.files.store');
     Route::get('documents/{document}/files/{file}/download', [DocumentFileController::class, 'download'])->name('documents.files.download');
+    Route::get('documents/{document}/files/{file}/preview', [DocumentFileController::class, 'preview'])->name('documents.files.preview');
 
     // Archive
     Route::get('/archive', [ArchiveController::class, 'index'])->name('archive.index');

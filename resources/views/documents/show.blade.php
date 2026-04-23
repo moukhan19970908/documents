@@ -140,65 +140,168 @@
             @endif
 
             {{-- Document file --}}
-            <div class="bg-white rounded-xl border border-gray-200 p-5">
-                <div class="flex items-center justify-between mb-4">
-                    <p class="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                        Основной документ
-                    </p>
+            <div x-data="docFilePreview">
+                <div class="bg-white rounded-xl border border-gray-200 p-5">
+                    <div class="flex items-center justify-between mb-4">
+                        <p class="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                            Основной документ
+                        </p>
+                        @if($document->currentFile)
+                            <a href="{{ route('documents.files.download', [$document, $document->currentFile]) }}"
+                               class="flex items-center gap-1.5 text-xs text-[#5B4FE8] font-medium hover:underline">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                                Скачать оригинал
+                            </a>
+                        @endif
+                    </div>
+
                     @if($document->currentFile)
-                        <a href="{{ route('documents.files.download', [$document, $document->currentFile]) }}"
-                           class="flex items-center gap-1.5 text-xs text-[#5B4FE8] font-medium hover:underline">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                            Скачать оригинал
-                        </a>
+                        <button @click="openPreview()"
+                                class="w-full bg-gray-50 rounded-xl p-8 flex flex-col items-center justify-center gap-3 border border-gray-200 hover:border-[#5B4FE8] hover:bg-indigo-50 transition-colors cursor-pointer group">
+                            <div class="w-16 h-16 bg-red-50 rounded-xl flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-red-500 group-hover:text-[#5B4FE8] transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                            </div>
+                            <div class="text-center">
+                                <p class="text-sm font-medium text-gray-900">{{ $document->currentFile->file_name }}</p>
+                                <p class="text-xs text-gray-500 mt-0.5">{{ $document->currentFile->formatted_size }} • v{{ $document->currentFile->version }}</p>
+                                <p class="text-xs text-[#5B4FE8] mt-1.5 flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                                    Нажмите для просмотра
+                                </p>
+                            </div>
+                        </button>
+                    @else
+                        <div class="text-center py-6 text-sm text-gray-500">Файл не загружен</div>
+                    @endif
+
+                    {{-- Upload new version --}}
+                    @can('update', $document)
+                        <form action="{{ route('documents.files.store', $document) }}" method="POST" enctype="multipart/form-data" class="mt-4">
+                            @csrf
+                            <div class="flex items-center gap-3">
+                                <input type="file" name="file" class="flex-1 text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-gray-100 file:text-gray-700 file:text-sm file:font-medium hover:file:bg-gray-200">
+                                <button type="submit" class="px-4 py-2 text-sm bg-[#5B4FE8] text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors whitespace-nowrap">
+                                    Загрузить версию
+                                </button>
+                            </div>
+                        </form>
+                    @endcan
+
+                    {{-- Version history --}}
+                    @if($document->files->count() > 1)
+                        <div class="mt-4">
+                            <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-2">История версий</p>
+                            <div class="space-y-2">
+                                @foreach($document->files->sortByDesc('version') as $file)
+                                    <div class="flex items-center gap-3 text-sm">
+                                        <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-mono">v{{ $file->version }}</span>
+                                        <span class="flex-1 text-gray-700">{{ $file->file_name }}</span>
+                                        <span class="text-xs text-gray-400">{{ $file->created_at->format('d.m.Y') }}</span>
+                                        @if($file->is_current)
+                                            <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">Текущая</span>
+                                        @endif
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
                     @endif
                 </div>
 
+                {{-- ===== Preview Side Panel ===== --}}
                 @if($document->currentFile)
-                    <div class="bg-gray-50 rounded-xl p-8 flex flex-col items-center justify-center gap-3 border border-gray-200">
-                        <div class="w-16 h-16 bg-red-50 rounded-xl flex items-center justify-center">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                        </div>
-                        <div class="text-center">
-                            <p class="text-sm font-medium text-gray-900">{{ $document->currentFile->file_name }}</p>
-                            <p class="text-xs text-gray-500 mt-0.5">{{ $document->currentFile->formatted_size }} • v{{ $document->currentFile->version }}</p>
-                        </div>
-                    </div>
-                @else
-                    <div class="text-center py-6 text-sm text-gray-500">Файл не загружен</div>
-                @endif
+                <div x-show="open"
+                     x-transition:enter="transition-opacity duration-200"
+                     x-transition:enter-start="opacity-0"
+                     x-transition:enter-end="opacity-100"
+                     x-transition:leave="transition-opacity duration-200"
+                     x-transition:leave-start="opacity-100"
+                     x-transition:leave-end="opacity-0"
+                     class="fixed inset-0 z-50 flex justify-end"
+                     style="display:none">
 
-                {{-- Upload new version --}}
-                @can('update', $document)
-                    <form action="{{ route('documents.files.store', $document) }}" method="POST" enctype="multipart/form-data" class="mt-4">
-                        @csrf
-                        <div class="flex items-center gap-3">
-                            <input type="file" name="file" class="flex-1 text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-gray-100 file:text-gray-700 file:text-sm file:font-medium hover:file:bg-gray-200">
-                            <button type="submit" class="px-4 py-2 text-sm bg-[#5B4FE8] text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors whitespace-nowrap">
-                                Загрузить версию
-                            </button>
-                        </div>
-                    </form>
-                @endcan
+                    {{-- Backdrop --}}
+                    <div @click="open = false" class="absolute inset-0 bg-black/40"></div>
 
-                {{-- Version history --}}
-                @if($document->files->count() > 1)
-                    <div class="mt-4">
-                        <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-2">История версий</p>
-                        <div class="space-y-2">
-                            @foreach($document->files->sortByDesc('version') as $file)
-                                <div class="flex items-center gap-3 text-sm">
-                                    <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-mono">v{{ $file->version }}</span>
-                                    <span class="flex-1 text-gray-700">{{ $file->file_name }}</span>
-                                    <span class="text-xs text-gray-400">{{ $file->created_at->format('d.m.Y') }}</span>
-                                    @if($file->is_current)
-                                        <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">Текущая</span>
-                                    @endif
+                    {{-- Panel --}}
+                    <div x-show="open"
+                         x-transition:enter="transition transform duration-300 ease-out"
+                         x-transition:enter-start="translate-x-full"
+                         x-transition:enter-end="translate-x-0"
+                         x-transition:leave="transition transform duration-200 ease-in"
+                         x-transition:leave-start="translate-x-0"
+                         x-transition:leave-end="translate-x-full"
+                         class="relative w-full max-w-3xl h-full bg-white flex flex-col shadow-2xl"
+                         style="display:none">
+
+                        {{-- Panel header --}}
+                        <div class="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 shrink-0">
+                            <div class="flex items-center gap-2 min-w-0">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-gray-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                                <p class="text-sm font-semibold text-gray-900 truncate" x-text="fileName"></p>
+                            </div>
+                            <div class="flex items-center gap-3 shrink-0 ml-4">
+                                <a :href="downloadUrl" class="flex items-center gap-1.5 text-xs text-[#5B4FE8] font-medium hover:underline">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                                    Скачать
+                                </a>
+                                <button @click="open = false" class="p-1.5 rounded-lg hover:bg-gray-100 transition-colors text-gray-500">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        {{-- Panel content --}}
+                        <div class="flex-1 overflow-auto relative">
+
+                            {{-- Loading spinner --}}
+                            <div x-show="loading" class="absolute inset-0 flex items-center justify-center bg-white">
+                                <div class="flex flex-col items-center gap-3 text-gray-400">
+                                    <svg class="animate-spin w-8 h-8 text-[#5B4FE8]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                    </svg>
+                                    <p class="text-sm">Загрузка документа...</p>
                                 </div>
-                            @endforeach
+                            </div>
+
+                            {{-- Error --}}
+                            <div x-show="error && !loading" class="absolute inset-0 flex flex-col items-center justify-center gap-4 text-gray-500">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-12 h-12 text-red-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                <p class="text-sm text-red-500" x-text="error"></p>
+                                <a :href="downloadUrl" class="text-sm bg-[#5B4FE8] text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors">Скачать файл</a>
+                            </div>
+
+                            {{-- PDF viewer --}}
+                            <template x-if="isPdf() && !loading">
+                                <iframe :src="previewUrl" class="w-full border-0" style="height: calc(100vh - 65px)"></iframe>
+                            </template>
+
+                            {{-- DOCX viewer --}}
+                            <div x-show="isDocx() && !loading && !error"
+                                 id="docx-render-container"
+                                 class="docx-render-wrapper bg-gray-100 min-h-full p-6 flex flex-col items-center gap-4"
+                                 style="display:none"></div>
+
+                            {{-- Image viewer --}}
+                            <template x-if="isImage() && !loading">
+                                <div class="flex items-center justify-center p-8 min-h-full">
+                                    <img :src="previewUrl" class="max-w-full object-contain rounded-lg shadow-sm" alt="">
+                                </div>
+                            </template>
+
+                            {{-- Unsupported format --}}
+                            <template x-if="!isPdf() && !isDocx() && !isImage() && !loading && !error">
+                                <div class="absolute inset-0 flex flex-col items-center justify-center gap-4 text-gray-500">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-16 h-16 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                                    <p class="text-sm">Предпросмотр недоступен для этого типа файла</p>
+                                    <a :href="downloadUrl" class="text-sm bg-[#5B4FE8] text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors">Скачать файл</a>
+                                </div>
+                            </template>
+
                         </div>
                     </div>
+                </div>
                 @endif
             </div>
         </div>
@@ -292,3 +395,81 @@
         </div>
     </div>
 </x-app-layout>
+
+<script>
+document.addEventListener('alpine:init', () => {
+    Alpine.data('docFilePreview', () => ({
+        open: false,
+        mimeType: '{{ addslashes($document->currentFile?->mime_type ?? '') }}',
+        previewUrl: '{{ $document->currentFile ? route('documents.files.preview', [$document, $document->currentFile]) : '' }}',
+        downloadUrl: '{{ $document->currentFile ? route('documents.files.download', [$document, $document->currentFile]) : '' }}',
+        fileName: '{{ addslashes($document->currentFile?->file_name ?? '') }}',
+        docxRendered: false,
+        loading: false,
+        error: '',
+        isPdf()   { return this.mimeType === 'application/pdf'; },
+        isDocx()  { return this.mimeType.includes('wordprocessingml') || this.mimeType.includes('msword'); },
+        isImage() { return this.mimeType.startsWith('image/'); },
+        async openPreview() {
+            this.open = true;
+            if (!this.isDocx() || this.docxRendered || this.loading) return;
+            this.loading = true;
+            this.error = '';
+            try {
+                const loadScript = (src) => new Promise((resolve, reject) => {
+                    if (document.querySelector('script[src="' + src + '"]')) { resolve(); return; }
+                    const s = document.createElement('script');
+                    s.src = src;
+                    s.onload = resolve;
+                    s.onerror = () => reject(new Error('Не удалось загрузить: ' + src));
+                    document.head.appendChild(s);
+                });
+                if (typeof JSZip === 'undefined') {
+                    await loadScript('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
+                }
+                if (typeof docx === 'undefined') {
+                    await loadScript('https://cdn.jsdelivr.net/npm/docx-preview@0.3.4/dist/docx-preview.min.js');
+                }
+                const res = await fetch(this.previewUrl, { credentials: 'same-origin' });
+                if (!res.ok) throw new Error('Ошибка сервера: ' + res.status);
+                const buf = await res.arrayBuffer();
+                const container = document.getElementById('docx-render-container');
+                container.innerHTML = '';
+                await docx.renderAsync(buf, container, null, {
+                    className: 'docx-render',
+                    inWrapper: false,
+                    ignoreWidth: true,
+                    ignoreHeight: true,
+                    ignoreFonts: false,
+                    breakPages: true,
+                    useBase64URL: true,
+                    renderHeaders: true,
+                    renderFooters: true,
+                    renderFootnotes: true,
+                });
+                this.docxRendered = true;
+            } catch (e) {
+                this.error = e.message || 'Не удалось загрузить документ для предпросмотра.';
+                console.error('[preview]', e);
+            }
+            this.loading = false;
+        }
+    }));
+});
+</script>
+
+<style>
+.docx-render-wrapper .docx-render section {
+    background: #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    border-radius: 4px;
+    margin-bottom: 24px;
+    width: 100% !important;
+    max-width: 820px;
+    box-sizing: border-box;
+}
+.docx-render-wrapper .docx-render {
+    width: 100%;
+    max-width: 820px;
+}
+</style>
