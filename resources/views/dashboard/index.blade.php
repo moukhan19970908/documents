@@ -1,5 +1,5 @@
 <x-app-layout>
-    <x-slot name="title">Дашборд — ArchManuscript</x-slot>
+    <x-slot name="title">Дашборд — Vamin.ru</x-slot>
 
     {{-- Greeting --}}
     <div class="flex flex-col md:flex-row md:items-start gap-6">

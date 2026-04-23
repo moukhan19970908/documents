@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Вход — ArchManuscript</title>
+    <title>Вход — Vamin.ru</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="min-h-screen bg-[#F9FAFB] flex flex-col items-center justify-center px-4">
@@ -11,7 +11,7 @@
     <div class="w-full max-w-sm">
         {{-- Logo --}}
         <div class="text-center mb-8">
-            <h1 class="text-xl font-bold text-gray-900">ArchManuscript</h1>
+            <h1 class="text-xl font-bold text-gray-900">Vamin.ru</h1>
             <p class="text-sm text-gray-500 mt-1">Редакционная система управления документами.</p>
         </div>
 
@@ -42,7 +42,7 @@
                         type="text"
                         name="login"
                         value="{{ old('login') }}"
-                        placeholder="workspace@archmanuscript.com"
+                        placeholder="workspace@vamin.ru"
                         autocomplete="username"
                         class="w-full px-4 py-3 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8] focus:bg-white transition-colors"
                         required
