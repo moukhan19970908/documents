@@ -114,9 +114,9 @@ class DocumentController extends Controller
             'type.fields',
             'initiator.department',
             'files',
-            'approvals.workflow.stages.approvers',
+            'approvals.workflow.stages.approvers.user',
             'approvals.stages.decisions.user',
-            'approvals.stages.workflowStage',
+            'approvals.stages.workflowStage.approvers.user',
             'notes.author',
         ]);
 

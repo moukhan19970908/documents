@@ -81,57 +81,111 @@
             @if($document->activeApproval || $document->approvals->isNotEmpty())
                 @php
                     $approval = $document->approvals->first();
-                    $stages = $approval?->stages ?? collect();
+                    $stages   = $approval?->stages ?? collect();
+
+                    // Build flat list of nodes: initiator + each approver per stage
+                    $nodes = [];
+
+                    // Node 0: Initiator
+                    $nodes[] = [
+                        'type'    => 'initiator',
+                        'label'   => 'Инициатор',
+                        'name'    => $document->initiator->name,
+                        'date'    => $document->created_at->format('d M'),
+                        'status'  => 'done',
+                    ];
+
+                    foreach ($stages as $stage) {
+                        $approvers = $stage->workflowStage?->approvers ?? collect();
+                        foreach ($approvers as $approver) {
+                            $decision = $stage->decisions
+                                ->where('user_id', $approver->approver_id)
+                                ->sortByDesc('decided_at')
+                                ->first();
+
+                            if ($decision) {
+                                $nodeStatus = $decision->action === 'approve' ? 'approved'
+                                    : ($decision->action === 'reject' ? 'rejected' : 'delegated');
+                            } elseif ($stage->status === 'in_progress') {
+                                $nodeStatus = 'waiting';
+                            } elseif ($stage->status === 'approved') {
+                                $nodeStatus = 'approved';
+                            } else {
+                                $nodeStatus = 'pending';
+                            }
+
+                            $nodes[] = [
+                                'type'     => 'approver',
+                                'label'    => $stage->workflowStage?->name ?? 'Согласование',
+                                'name'     => $approver->user?->name ?? '—',
+                                'date'     => $decision?->decided_at?->format('d M'),
+                                'status'   => $nodeStatus,
+                                'isMe'     => $approver->approver_id === auth()->id(),
+                            ];
+                        }
+                    }
                 @endphp
+
                 <div class="bg-white rounded-xl border border-gray-200 p-5">
                     <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-5 flex items-center gap-2">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
                         Воркфлоу одобрения
                     </p>
-                    <div class="flex items-start gap-2 overflow-x-auto pb-2">
-                        @foreach($stages as $index => $stage)
+
+                    <div class="flex items-start gap-0 overflow-x-auto pb-2">
+                        @foreach($nodes as $i => $node)
                             @php
-                                $isApproved  = $stage->status === 'approved';
-                                $isCurrent   = $stage->status === 'in_progress';
-                                $isPending   = $stage->status === 'pending';
-                                $isRejected  = $stage->status === 'rejected';
-                                $approverDecision = $stage->decisions->last();
+                                $circleCls = match($node['status']) {
+                                    'done'      => 'bg-green-100 text-green-700',
+                                    'approved'  => 'bg-green-100 text-green-700',
+                                    'rejected'  => 'bg-red-100 text-red-700',
+                                    'waiting'   => 'bg-[#5B4FE8] text-white',
+                                    'delegated' => 'bg-yellow-100 text-yellow-700',
+                                    default     => 'bg-gray-100 text-gray-400',
+                                };
                             @endphp
+
                             <div class="flex items-center flex-shrink-0">
-                                <div class="flex flex-col items-center w-28">
+                                {{-- Node --}}
+                                <div class="flex flex-col items-center" style="width: 96px">
                                     {{-- Circle --}}
-                                    <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium
-                                        @if($isApproved) bg-green-100 text-green-700
-                                        @elseif($isCurrent) bg-[#5B4FE8] text-white
-                                        @elseif($isRejected) bg-red-100 text-red-700
-                                        @else bg-gray-100 text-gray-500
-                                        @endif">
-                                        @if($isApproved)
+                                    <div class="w-10 h-10 rounded-full flex items-center justify-center {{ $circleCls }}">
+                                        @if(in_array($node['status'], ['done', 'approved']))
                                             <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-                                        @elseif($isCurrent)
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-                                        @elseif($isPending)
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-                                        @else
+                                        @elseif($node['status'] === 'rejected')
                                             <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                                        @elseif($node['status'] === 'waiting')
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                                        @elseif($node['status'] === 'delegated')
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+                                        @else
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
                                         @endif
                                     </div>
+
                                     {{-- Label --}}
-                                    <div class="mt-2 text-center">
-                                        <p class="text-xs font-medium text-gray-800">{{ $stage->workflowStage?->name }}</p>
-                                        @if($approverDecision)
-                                            <p class="text-[10px] text-gray-500 mt-0.5">{{ $approverDecision->user->name }}</p>
-                                            <p class="text-[10px] text-gray-400">{{ $approverDecision->decided_at?->format('d M') }}</p>
-                                        @elseif($isCurrent)
-                                            <p class="text-[10px] text-[#5B4FE8] mt-0.5">В ожидании • Вы</p>
+                                    <div class="mt-2 text-center px-1">
+                                        @if($i === 0)
+                                            <p class="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">{{ $node['label'] }}</p>
                                         @else
-                                            <p class="text-[10px] text-gray-400 mt-0.5">Заблокировано</p>
+                                            <p class="text-[10px] text-gray-400">{{ $node['label'] }}</p>
+                                        @endif
+                                        <p class="text-xs font-medium text-gray-900 mt-0.5 leading-tight">{{ $node['name'] }}</p>
+                                        @if($node['date'])
+                                            <p class="text-[10px] text-gray-400 mt-0.5">{{ $node['date'] }}</p>
+                                        @elseif($node['status'] === 'waiting')
+                                            <p class="text-[10px] mt-0.5 {{ ($node['isMe'] ?? false) ? 'text-[#5B4FE8] font-medium' : 'text-gray-400' }}">
+                                                {{ ($node['isMe'] ?? false) ? 'Ожидает вас' : 'В ожидании' }}
+                                            </p>
+                                        @else
+                                            <p class="text-[10px] text-gray-300 mt-0.5">Заблокировано</p>
                                         @endif
                                     </div>
                                 </div>
+
                                 {{-- Arrow connector --}}
                                 @if(!$loop->last)
-                                    <div class="w-8 h-px bg-gray-200 mx-1 mt-[-20px]"></div>
+                                    <div class="flex-shrink-0 w-6 h-px bg-gray-200 mt-[-32px]"></div>
                                 @endif
                             </div>
                         @endforeach
