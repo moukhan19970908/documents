@@ -1,5 +1,5 @@
 <x-app-layout>
-    <x-slot name="title">Уведомления — ArchManuscript</x-slot>
+    <x-slot name="title">Уведомления — Vamin</x-slot>
 
     <div class="max-w-2xl">
         <div class="mb-6 flex items-center justify-between">

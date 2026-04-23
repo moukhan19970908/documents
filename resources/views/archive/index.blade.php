@@ -1,5 +1,5 @@
 <x-app-layout>
-    <x-slot name="title">Архив и Репозиторий — ArchManuscript</x-slot>
+    <x-slot name="title">Архив и Репозиторий — Vamin</x-slot>
 
     <div class="mb-6">
         <h1 class="text-2xl font-bold text-gray-900">Архив и Репозиторий</h1>

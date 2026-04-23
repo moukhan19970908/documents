@@ -1,5 +1,5 @@
 <x-app-layout>
-    <x-slot name="title">Типы документов — ArchManuscript</x-slot>
+    <x-slot name="title">Типы документов — Vamin</x-slot>
 
     <div class="mb-6 flex items-center justify-between">
         <h1 class="text-2xl font-bold text-gray-900">Типы документов</h1>

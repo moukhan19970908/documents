@@ -1,5 +1,5 @@
 <x-app-layout>
-    <x-slot name="title">Документы — ArchManuscript</x-slot>
+    <x-slot name="title">Документы — Vamin</x-slot>
 
     <div class="flex items-center justify-between mb-6">
         <div>

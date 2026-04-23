@@ -1,5 +1,5 @@
 <x-app-layout>
-    <x-slot name="title">{{ isset($user) ? 'Редактировать пользователя' : 'Новый пользователь' }} — ArchManuscript</x-slot>
+    <x-slot name="title">{{ isset($user) ? 'Редактировать пользователя' : 'Новый пользователь' }} — Vamin</x-slot>
 
     <div class="max-w-xl">
         <h1 class="text-2xl font-bold text-gray-900 mb-6">{{ isset($user) ? 'Редактировать пользователя' : 'Новый пользователь' }}</h1>

@@ -1,5 +1,5 @@
 <x-app-layout>
-    <x-slot name="title">Новый документ — ArchManuscript</x-slot>
+    <x-slot name="title">Новый документ — Vamin</x-slot>
 
     <div class="max-w-2xl">
         <div class="mb-6">

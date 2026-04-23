@@ -1,5 +1,5 @@
 <x-app-layout>
-    <x-slot name="title">{{ $document->title }} — ArchManuscript</x-slot>
+    <x-slot name="title">{{ $document->title }} — Vamin</x-slot>
 
     {{-- Header --}}
     <div class="mb-6">

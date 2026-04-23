@@ -1,5 +1,5 @@
 <x-app-layout>
-    <x-slot name="title">Новый маршрут — ArchManuscript</x-slot>
+    <x-slot name="title">Новый маршрут — Vamin</x-slot>
 
     <div class="max-w-lg">
         <div class="mb-6 flex items-center gap-4">

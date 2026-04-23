@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{{ $title ?? 'ArchManuscript' }}</title>
+    <title>{{ $title ?? 'Vamin' }}</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="bg-[#F9FAFB] font-sans min-h-screen flex">
@@ -34,12 +34,11 @@
             {{-- Workspace header --}}
             <div class="p-4 border-b border-gray-100">
                 <div class="flex items-center gap-3">
-                    <div class="w-9 h-9 rounded-lg bg-[#5B4FE8] text-white flex items-center justify-center font-bold text-sm">
-                        {{ strtoupper(substr(auth()->user()->name ?? 'S', 0, 1)) }}
+                    <div class="w-16 h-16 rounded-lg bg-[#5B4FE8] text-white flex items-center justify-center font-bold text-sm">
+                        <img src="{{asset('logo.png')}}">
                     </div>
                     <div class="leading-tight">
-                        <div class="text-xs font-semibold text-gray-800 uppercase tracking-wide">{{ auth()->user()->department?->name ?? 'Рабочая область' }}</div>
-                        <div class="text-[10px] text-gray-500 uppercase tracking-wide">Корпоративный процесс</div>
+                        <div class="text-xs font-semibold text-gray-800 uppercase tracking-wide">Документооборот</div>
                     </div>
                 </div>
             </div>
@@ -101,7 +100,7 @@
                 </button>
 
                 {{-- Logo --}}
-                <a href="{{ route('dashboard') }}" class="text-base font-bold text-gray-900 mr-2 hidden md:block">ArchManuscript</a>
+                <a href="{{ route('dashboard') }}" class="text-base font-bold text-gray-900 mr-2 hidden md:block">Vamin</a>
 
                 {{-- Search --}}
                 <div class="flex-1 max-w-md">

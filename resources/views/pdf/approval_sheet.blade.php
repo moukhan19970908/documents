@@ -35,7 +35,7 @@
 
     <div class="header">
         <h1>ЛИСТ СОГЛАСОВАНИЯ</h1>
-        <p>ArchManuscript — Система электронного документооборота</p>
+        <p>Vamin — Система электронного документооборота</p>
     </div>
 
     <div class="meta">
@@ -138,7 +138,7 @@
     </div>
 
     <div class="footer">
-        Документ сформирован: {{ now()->format('d.m.Y H:i:s') }} | ArchManuscript &copy; {{ now()->year }}
+        Документ сформирован: {{ now()->format('d.m.Y H:i:s') }} | Vamin &copy; {{ now()->year }}
     </div>
 
 </body>

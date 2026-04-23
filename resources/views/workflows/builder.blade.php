@@ -1,5 +1,5 @@
 <x-app-layout>
-    <x-slot name="title">Конструктор маршрута — ArchManuscript</x-slot>
+    <x-slot name="title">Конструктор маршрута — Vamin</x-slot>
 
     <div class="mb-6 flex items-center gap-4">
         <a href="{{ route('workflows.index') }}" class="text-gray-400 hover:text-gray-600">

@@ -1,5 +1,5 @@
 <x-app-layout>
-    <x-slot name="title">{{ isset($documentType) ? 'Редактировать тип' : 'Новый тип документа' }} — ArchManuscript</x-slot>
+    <x-slot name="title">{{ isset($documentType) ? 'Редактировать тип' : 'Новый тип документа' }} — Vamin</x-slot>
 
     <div class="max-w-2xl">
         <h1 class="text-2xl font-bold text-gray-900 mb-6">{{ isset($documentType) ? 'Редактировать тип' : 'Новый тип документа' }}</h1>

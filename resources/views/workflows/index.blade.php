@@ -1,5 +1,5 @@
 <x-app-layout>
-    <x-slot name="title">Маршруты согласования — ArchManuscript</x-slot>
+    <x-slot name="title">Маршруты согласования — Vamin</x-slot>
 
     <div class="mb-6 flex items-center justify-between">
         <div>
