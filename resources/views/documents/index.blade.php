@@ -62,6 +62,7 @@
                         <th class="text-left px-5 py-3 font-semibold">Документ</th>
                         <th class="text-left px-5 py-3 font-semibold">Тип</th>
                         <th class="text-left px-5 py-3 font-semibold">Инициатор</th>
+                        <th class="text-left px-5 py-3 font-semibold">Ответственный</th>
                         <th class="text-left px-5 py-3 font-semibold">Статус</th>
                         <th class="text-left px-5 py-3 font-semibold">Обновлён</th>
                         <th class="text-left px-5 py-3 font-semibold">Действия</th>
@@ -73,9 +74,10 @@
                             $statusBadge = [
                                 'draft'            => 'bg-gray-100 text-gray-600',
                                 'in_review'        => 'bg-blue-100 text-blue-700',
-                                'requires_changes' => 'bg-red-100 text-red-700',
+                                'requires_changes' => 'bg-orange-100 text-orange-700',
                                 'approved'         => 'bg-green-100 text-green-700',
-                                'signed'           => 'bg-indigo-100 text-indigo-700',
+                                'signed'           => 'bg-green-100 text-green-700',
+                                'rejected'         => 'bg-red-100 text-red-700',
                                 'archived'         => 'bg-gray-100 text-gray-500',
                             ][$doc->status] ?? 'bg-gray-100 text-gray-600';
                         @endphp
@@ -94,9 +96,78 @@
                                 </div>
                             </td>
                             <td class="px-5 py-3.5">
+                                @php
+                                    $activeStage = $doc->activeApproval?->stages->first();
+                                    $approvers   = $activeStage?->workflowStage?->approvers ?? collect();
+                                @endphp
+                                @if($approvers->isNotEmpty())
+                                    <div class="flex items-center gap-1.5">
+                                        @foreach($approvers->take(2) as $ap)
+                                            @if($ap->user)
+                                                <div class="flex items-center gap-1.5">
+                                                    <img src="{{ $ap->user->avatar_url }}" class="w-6 h-6 rounded-full flex-shrink-0" alt="">
+                                                    <span class="text-gray-700 text-sm">{{ Str::limit($ap->user->name, 20) }}</span>
+                                                </div>
+                                            @endif
+                                        @endforeach
+                                        @if($approvers->count() > 2)
+                                            <span class="text-xs text-gray-400">+{{ $approvers->count() - 2 }}</span>
+                                        @endif
+                                    </div>
+                                @else
+                                    <span class="text-gray-400 text-xs">—</span>
+                                @endif
+                            </td>
+                            <td class="px-5 py-3.5">
                                 <span class="inline-flex px-2 py-1 text-xs font-semibold rounded {{ $statusBadge }}">
                                     {{ $doc->status_label }}
                                 </span>
+                                @php
+                                    $stages = $doc->activeApproval?->stages ?? collect();
+                                    if ($doc->status === 'draft') {
+                                        $segments = collect([['color' => '#D1D5DB', 'label' => 'Черновик']]);
+                                    } else {
+                                        $segments = collect([['color' => '#22C55E', 'label' => 'Инициатор: ' . $doc->initiator->name]]);
+                                        foreach ($stages as $stage) {
+                                            $approvers = $stage->workflowStage?->approvers ?? collect();
+                                            $decidedUserIds = $stage->decisions->pluck('user_id')->toArray();
+                                            if ($approvers->isEmpty()) {
+                                                $color = match($stage->status) {
+                                                    'approved'    => '#22C55E',
+                                                    'rejected'    => '#EF4444',
+                                                    'in_progress' => '#D1D5DB',
+                                                    default       => '#D1D5DB',
+                                                };
+                                                $segments->push(['color' => $color, 'label' => $stage->workflowStage?->name ?? 'Стадия']);
+                                            } else {
+                                                foreach ($approvers as $ap) {
+                                                    if ($stage->status === 'approved') {
+                                                        $color = '#22C55E';
+                                                        $label = 'Подписал: ' . ($ap->user?->name ?? '—');
+                                                    } elseif ($stage->status === 'rejected') {
+                                                        $color = '#EF4444';
+                                                        $label = 'Отклонил: ' . ($ap->user?->name ?? '—');
+                                                    } elseif ($stage->status === 'in_progress') {
+                                                        $signed = in_array($ap->approver_id, $decidedUserIds);
+                                                        $color  = $signed ? '#3B82F6' : '#D1D5DB';
+                                                        $label  = ($signed ? 'Подписал: ' : 'На подписании у: ') . ($ap->user?->name ?? '—');
+                                                    } else {
+                                                        $color = '#D1D5DB';
+                                                        $label = 'Ожидает: ' . ($ap->user?->name ?? '—');
+                                                    }
+                                                    $segments->push(['color' => $color, 'label' => $label]);
+                                                }
+                                            }
+                                        }
+                                    }
+                                @endphp
+                                @if($segments->count() > 0)
+                                    <div class="flex gap-0.5 mt-1.5" style="width:120px">
+                                        @foreach($segments as $seg)
+                                            <div title="{{ $seg['label'] }}" style="flex:1; height:4px; background:{{ $seg['color'] }}; border-radius:2px; cursor:default"></div>
+                                        @endforeach
+                                    </div>
+                                @endif
                             </td>
                             <td class="px-5 py-3.5 text-gray-500 text-xs">{{ $doc->updated_at->format('d.m.Y') }}</td>
                             <td class="px-5 py-3.5">
@@ -105,7 +176,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="px-5 py-12 text-center text-gray-500">Документы не найдены</td>
+                            <td colspan="7" class="px-5 py-12 text-center text-gray-500">Документы не найдены</td>
                         </tr>
                     @endforelse
                 </tbody>

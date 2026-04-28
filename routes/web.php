@@ -10,6 +10,7 @@ use App\Http\Controllers\DocumentFileController;
 use App\Http\Controllers\ArchiveController;
 use App\Http\Controllers\WorkflowController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\EmployeesController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\DepartmentController;
 use App\Http\Controllers\Admin\DocumentTypeController;
@@ -31,6 +32,7 @@ Route::middleware(['auth', 'audit'])->group(function () {
     Route::post('documents/{document}/start-approval', [ApprovalController::class, 'start'])->name('documents.start-approval');
     Route::post('documents/{document}/approve', [ApprovalController::class, 'approve'])->name('documents.approve');
     Route::post('documents/{document}/reject', [ApprovalController::class, 'reject'])->name('documents.reject');
+    Route::post('documents/{document}/request-changes', [ApprovalController::class, 'requestChanges'])->name('documents.request-changes');
     Route::post('documents/{document}/delegate', [ApprovalController::class, 'delegate'])->name('documents.delegate');
     Route::get('documents/{document}/approval-sheet', [ApprovalController::class, 'approvalSheet'])->name('documents.approval-sheet');
 
@@ -53,6 +55,9 @@ Route::middleware(['auth', 'audit'])->group(function () {
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
     Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.read-all');
+
+    // Employees org chart
+    Route::get('/employees', [EmployeesController::class, 'index'])->name('employees.index');
 
     // Admin
     Route::middleware('role:admin')->prefix('admin')->name('admin.')->group(function () {

@@ -1,0 +1,632 @@
+<x-app-layout>
+    <x-slot name="title">{{ $document->title }} — Vamin</x-slot>
+
+    {{-- Header --}}
+    <div class="mb-6">
+        <div class="flex items-center gap-3 mb-3">
+            @php
+                $statusColors = [
+                    'draft'            => 'bg-gray-100 text-gray-700',
+                    'in_review'        => 'bg-blue-100 text-blue-700',
+                    'requires_changes' => 'bg-red-100 text-red-700',
+                    'approved'         => 'bg-green-100 text-green-700',
+                    'signed'           => 'bg-indigo-100 text-indigo-700',
+                    'archived'         => 'bg-gray-100 text-gray-700',
+                ];
+            @endphp
+            <span class="inline-flex px-3 py-1 text-xs font-semibold rounded {{ $statusColors[$document->status] ?? 'bg-gray-100 text-gray-700' }}">
+                {{ strtoupper($document->status_label) }}
+            </span>
+            <span class="text-xs text-gray-500">Обновлено {{ $document->updated_at->diffForHumans() }}</span>
+        </div>
+        <h1 class="text-2xl font-bold text-gray-900">{{ $document->title }}</h1>
+        @if($document->data['description'] ?? null)
+            <p class="text-gray-500 mt-1">{{ $document->data['description'] }}</p>
+        @endif
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-2 space-y-5">
+
+            {{-- Info cards --}}
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {{-- Counterparty details --}}
+                <div class="bg-white rounded-xl border border-gray-200 p-5">
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">Детали контрагента</p>
+                    @if($document->data)
+                        @foreach($document->type?->fields ?? [] as $field)
+                            @if(isset($document->data[$field->field_key]))
+                                <div class="mb-3">
+                                    <p class="text-xs text-gray-500">{{ $field->label }}</p>
+                                    <p class="text-sm font-semibold text-gray-900 mt-0.5">{{ $document->data[$field->field_key] }}</p>
+                                </div>
+                            @endif
+                        @endforeach
+                        @if(empty($document->type?->fields?->count()))
+                            <p class="text-sm text-gray-500">Нет данных</p>
+                        @endif
+                    @else
+                        <p class="text-sm text-gray-500">Нет данных</p>
+                    @endif
+                </div>
+
+                {{-- Finance & dates --}}
+                <div class="bg-white rounded-xl border border-gray-200 p-5">
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">Финансы и сроки</p>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <p class="text-xs text-gray-500">Инициатор</p>
+                            <p class="text-sm font-semibold text-gray-900 mt-0.5">{{ $document->initiator->name }}</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-500">Дата создания</p>
+                            <p class="text-sm font-semibold text-gray-900 mt-0.5">{{ $document->created_at->format('d M, Y') }}</p>
+                        </div>
+                        @if($document->activeApproval)
+                            @php $activeStage = $document->activeApproval->activeStage(); @endphp
+                            @if($activeStage?->deadline_at)
+                                <div>
+                                    <p class="text-xs text-gray-500">Крайний срок</p>
+                                    <p class="text-sm font-semibold {{ $activeStage->is_overdue ? 'text-red-600' : 'text-gray-900' }} mt-0.5">
+                                        {{ $activeStage->deadline_at->format('d M, Y') }}
+                                    </p>
+                                </div>
+                            @endif
+                        @endif
+                    </div>
+                </div>
+            </div>
+
+            {{-- Approval workflow stepper --}}
+            @if($document->activeApproval || $document->approvals->isNotEmpty())
+                @php
+                    $approval = $document->approvals->first();
+                    $stages   = $approval?->stages ?? collect();
+
+                    // Build flat list of nodes: initiator + each approver per stage
+                    $nodes = [];
+
+                    // Node 0: Initiator
+                    $nodes[] = [
+                        'type'    => 'initiator',
+                        'label'   => 'Инициатор',
+                        'name'    => $document->initiator->name,
+                        'date'    => $document->created_at->format('d M'),
+                        'status'  => 'done',
+                    ];
+
+                    foreach ($stages as $stage) {
+                        $approvers = $stage->workflowStage?->approvers ?? collect();
+                        foreach ($approvers as $approver) {
+                            $decision = $stage->decisions
+                                ->where('user_id', $approver->approver_id)
+                                ->sortByDesc('decided_at')
+                                ->first();
+
+                            if ($decision) {
+                                $nodeStatus = $decision->action === 'approve' ? 'approved'
+                                    : ($decision->action === 'reject' ? 'rejected' : 'delegated');
+                            } elseif ($stage->status === 'in_progress') {
+                                $nodeStatus = 'waiting';
+                            } elseif ($stage->status === 'approved') {
+                                $nodeStatus = 'approved';
+                            } else {
+                                $nodeStatus = 'pending';
+                            }
+
+                            $nodes[] = [
+                                'type'     => 'approver',
+                                'label'    => $stage->workflowStage?->name ?? 'Согласование',
+                                'name'     => $approver->user?->name ?? '—',
+                                'date'     => $decision?->decided_at?->format('d M'),
+                                'status'   => $nodeStatus,
+                                'isMe'     => $approver->approver_id === auth()->id(),
+                            ];
+                        }
+                    }
+                @endphp
+
+                <div class="bg-white rounded-xl border border-gray-200 p-5">
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-5 flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                        Воркфлоу одобрения
+                    </p>
+
+                    <div class="flex items-start gap-0 overflow-x-auto pb-2">
+                        @foreach($nodes as $i => $node)
+                            @php
+                                $circleCls = match($node['status']) {
+                                    'done'      => 'bg-green-100 text-green-700',
+                                    'approved'  => 'bg-green-100 text-green-700',
+                                    'rejected'  => 'bg-red-100 text-red-700',
+                                    'waiting'   => 'bg-[#5B4FE8] text-white',
+                                    'delegated' => 'bg-yellow-100 text-yellow-700',
+                                    default     => 'bg-gray-100 text-gray-400',
+                                };
+                            @endphp
+
+                            <div class="flex items-center flex-shrink-0">
+                                {{-- Node --}}
+                                <div class="flex flex-col items-center" style="width: 96px">
+                                    {{-- Circle --}}
+                                    <div class="w-10 h-10 rounded-full flex items-center justify-center {{ $circleCls }}">
+                                        @if(in_array($node['status'], ['done', 'approved']))
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                                        @elseif($node['status'] === 'rejected')
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                                        @elseif($node['status'] === 'waiting')
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                                        @elseif($node['status'] === 'delegated')
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+                                        @else
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                        @endif
+                                    </div>
+
+                                    {{-- Label --}}
+                                    <div class="mt-2 text-center px-1">
+                                        @if($i === 0)
+                                            <p class="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">{{ $node['label'] }}</p>
+                                        @else
+                                            <p class="text-[10px] text-gray-400">{{ $node['label'] }}</p>
+                                        @endif
+                                        <p class="text-xs font-medium text-gray-900 mt-0.5 leading-tight">{{ $node['name'] }}</p>
+                                        @if($node['date'])
+                                            <p class="text-[10px] text-gray-400 mt-0.5">{{ $node['date'] }}</p>
+                                        @elseif($node['status'] === 'waiting')
+                                            <p class="text-[10px] mt-0.5 {{ ($node['isMe'] ?? false) ? 'text-[#5B4FE8] font-medium' : 'text-gray-400' }}">
+                                                {{ ($node['isMe'] ?? false) ? 'Ожидает вас' : 'В ожидании' }}
+                                            </p>
+                                        @else
+                                            <p class="text-[10px] text-gray-300 mt-0.5">Заблокировано</p>
+                                        @endif
+                                    </div>
+                                </div>
+
+                                {{-- Arrow connector --}}
+                                @if(!$loop->last)
+                                    <div class="flex-shrink-0 w-6 h-px bg-gray-200 mt-[-32px]"></div>
+                                @endif
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
+
+            {{-- Document file --}}
+            <div x-data="docFilePreview">
+                <div class="bg-white rounded-xl border border-gray-200 p-5">
+                    <div class="flex items-center justify-between mb-4">
+                        <p class="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                            Основной документ
+                        </p>
+                        @if($document->currentFile)
+                            <a href="{{ route('documents.files.download', [$document, $document->currentFile]) }}"
+                               class="flex items-center gap-1.5 text-xs text-[#5B4FE8] font-medium hover:underline">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                                Скачать оригинал
+                            </a>
+                        @endif
+                    </div>
+
+                    @if($document->currentFile)
+                        <button @click="openPreview()"
+                                class="w-full bg-gray-50 rounded-xl p-8 flex flex-col items-center justify-center gap-3 border border-gray-200 hover:border-[#5B4FE8] hover:bg-indigo-50 transition-colors cursor-pointer group">
+                            <div class="w-16 h-16 bg-red-50 rounded-xl flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-red-500 group-hover:text-[#5B4FE8] transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                            </div>
+                            <div class="text-center">
+                                <p class="text-sm font-medium text-gray-900">{{ $document->currentFile->file_name }}</p>
+                                <p class="text-xs text-gray-500 mt-0.5">{{ $document->currentFile->formatted_size }} • v{{ $document->currentFile->version }}</p>
+                                <p class="text-xs text-[#5B4FE8] mt-1.5 flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                                    Нажмите для просмотра
+                                </p>
+                            </div>
+                        </button>
+                    @else
+                        <div class="text-center py-6 text-sm text-gray-500">Файл не загружен</div>
+                    @endif
+
+                    {{-- Upload new version --}}
+                    @can('update', $document)
+                        <form action="{{ route('documents.files.store', $document) }}" method="POST" enctype="multipart/form-data" class="mt-4">
+                            @csrf
+                            <div class="flex items-center gap-3">
+                                <input type="file" name="file" class="flex-1 text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-gray-100 file:text-gray-700 file:text-sm file:font-medium hover:file:bg-gray-200">
+                                <button type="submit" class="px-4 py-2 text-sm bg-[#5B4FE8] text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors whitespace-nowrap">
+                                    Загрузить версию
+                                </button>
+                            </div>
+                        </form>
+                    @endcan
+
+                    {{-- Version history --}}
+                    @if($document->files->count() > 1)
+                        <div class="mt-4">
+                            <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-2">История версий</p>
+                            <div class="space-y-2">
+                                @foreach($document->files->sortByDesc('version') as $file)
+                                    <div class="flex items-center gap-3 text-sm">
+                                        <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-mono">v{{ $file->version }}</span>
+                                        <span class="flex-1 text-gray-700">{{ $file->file_name }}</span>
+                                        <span class="text-xs text-gray-400">{{ $file->created_at->format('d.m.Y') }}</span>
+                                        @if($file->is_current)
+                                            <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">Текущая</span>
+                                        @endif
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endif
+                </div>
+
+                {{-- ===== Preview Side Panel ===== --}}
+                @if($document->currentFile)
+                <div x-show="open"
+                     x-transition:enter="transition-opacity duration-200"
+                     x-transition:enter-start="opacity-0"
+                     x-transition:enter-end="opacity-100"
+                     x-transition:leave="transition-opacity duration-200"
+                     x-transition:leave-start="opacity-100"
+                     x-transition:leave-end="opacity-0"
+                     class="fixed inset-0 z-50 flex justify-end"
+                     style="display:none">
+
+                    {{-- Backdrop --}}
+                    <div @click="open = false" class="absolute inset-0 bg-black/40"></div>
+
+                    {{-- Panel --}}
+                    <div x-show="open"
+                         x-transition:enter="transition transform duration-300 ease-out"
+                         x-transition:enter-start="translate-x-full"
+                         x-transition:enter-end="translate-x-0"
+                         x-transition:leave="transition transform duration-200 ease-in"
+                         x-transition:leave-start="translate-x-0"
+                         x-transition:leave-end="translate-x-full"
+                         class="relative w-full max-w-3xl h-full bg-white flex flex-col shadow-2xl"
+                         style="display:none">
+
+                        {{-- Panel header --}}
+                        <div class="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 shrink-0">
+                            <div class="flex items-center gap-2 min-w-0">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-gray-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                                <p class="text-sm font-semibold text-gray-900 truncate" x-text="fileName"></p>
+                            </div>
+                            <div class="flex items-center gap-3 shrink-0 ml-4">
+                                <a :href="downloadUrl" class="flex items-center gap-1.5 text-xs text-[#5B4FE8] font-medium hover:underline">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                                    Скачать
+                                </a>
+                                <button @click="open = false" class="p-1.5 rounded-lg hover:bg-gray-100 transition-colors text-gray-500">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        {{-- Panel content --}}
+                        <div class="flex-1 overflow-auto relative">
+
+                            {{-- Loading spinner --}}
+                            <div x-show="loading" class="absolute inset-0 flex items-center justify-center bg-white">
+                                <div class="flex flex-col items-center gap-3 text-gray-400">
+                                    <svg class="animate-spin w-8 h-8 text-[#5B4FE8]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                    </svg>
+                                    <p class="text-sm">Загрузка документа...</p>
+                                </div>
+                            </div>
+
+                            {{-- Error --}}
+                            <div x-show="error && !loading" class="absolute inset-0 flex flex-col items-center justify-center gap-4 text-gray-500">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-12 h-12 text-red-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                <p class="text-sm text-red-500" x-text="error"></p>
+                                <a :href="downloadUrl" class="text-sm bg-[#5B4FE8] text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors">Скачать файл</a>
+                            </div>
+
+                            {{-- PDF viewer --}}
+                            <template x-if="isPdf() && !loading">
+                                <iframe :src="previewUrl" class="w-full border-0" style="height: calc(100vh - 65px)"></iframe>
+                            </template>
+
+                            {{-- DOCX viewer --}}
+                            <div x-show="isDocx() && !loading && !error"
+                                 id="docx-render-container"
+                                 class="docx-render-wrapper bg-gray-100 min-h-full p-6 flex flex-col items-center gap-4"
+                                 style="display:none"></div>
+
+                            {{-- Image viewer --}}
+                            <template x-if="isImage() && !loading">
+                                <div class="flex items-center justify-center p-8 min-h-full">
+                                    <img :src="previewUrl" class="max-w-full object-contain rounded-lg shadow-sm" alt="">
+                                </div>
+                            </template>
+
+                            {{-- Unsupported format --}}
+                            <template x-if="!isPdf() && !isDocx() && !isImage() && !loading && !error">
+                                <div class="absolute inset-0 flex flex-col items-center justify-center gap-4 text-gray-500">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-16 h-16 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                                    <p class="text-sm">Предпросмотр недоступен для этого типа файла</p>
+                                    <a :href="downloadUrl" class="text-sm bg-[#5B4FE8] text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors">Скачать файл</a>
+                                </div>
+                            </template>
+
+                        </div>
+                    </div>
+                </div>
+                @endif
+            </div>
+        </div>
+
+        {{-- Right column: actions --}}
+        <div class="space-y-5">
+            @if($document->status === 'draft')
+                @can('update', $document)
+                    <div x-data="approvalModal" class="bg-white rounded-xl border border-gray-200 p-5">
+                        <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">Запустить согласование</p>
+                        <button @click="open = true" type="button"
+                                class="w-full bg-[#5B4FE8] text-white py-3 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors">
+                            Запустить согласование
+                        </button>
+
+                        {{-- Modal backdrop --}}
+                        <div x-show="open"
+                             x-transition:enter="transition-opacity duration-200"
+                             x-transition:enter-start="opacity-0"
+                             x-transition:enter-end="opacity-100"
+                             x-transition:leave="transition-opacity duration-150"
+                             x-transition:leave-start="opacity-100"
+                             x-transition:leave-end="opacity-0"
+                             class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+                             style="display:none"
+                             @click.self="open = false">
+
+                            {{-- Modal panel --}}
+                            <div x-show="open"
+                                 x-transition:enter="transition transform duration-200 ease-out"
+                                 x-transition:enter-start="opacity-0 scale-95"
+                                 x-transition:enter-end="opacity-100 scale-100"
+                                 x-transition:leave="transition transform duration-150 ease-in"
+                                 x-transition:leave-start="opacity-100 scale-100"
+                                 x-transition:leave-end="opacity-0 scale-95"
+                                 class="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col" style="max-height:85vh; display:none">
+
+                                {{-- Modal header --}}
+                                <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                                    <div>
+                                        <h2 class="text-base font-semibold text-gray-900">Выбор согласующих</h2>
+                                        <p class="text-xs text-gray-500 mt-0.5">Выберите сотрудников для согласования документа</p>
+                                    </div>
+                                    <button @click="open = false" class="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                                    </button>
+                                </div>
+
+                                {{-- Search --}}
+                                <div class="px-6 pt-4">
+                                    <div class="relative">
+                                        <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                                        <input x-model="search"
+                                               type="text"
+                                               placeholder="Поиск по имени или отделу..."
+                                               class="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8] focus:bg-white">
+                                    </div>
+                                </div>
+
+                                {{-- Selected count --}}
+                                <div class="px-6 pt-3 pb-1">
+                                    <p class="text-xs text-gray-500">
+                                        Выбрано: <span class="font-semibold text-[#5B4FE8]" x-text="selected.length"></span>
+                                    </p>
+                                </div>
+
+                                {{-- User list --}}
+                                <form action="{{ route('documents.start-approval', $document) }}" method="POST"
+                                      id="approvalForm" class="flex flex-col min-h-0 overflow-hidden flex-1">
+                                    @csrf
+                                    <div class="overflow-y-auto px-6 py-2 space-y-1.5" style="max-height:340px">
+                                        @foreach($approvers as $approver)
+                                            <label x-show="matchesSearch('{{ addslashes($approver->name) }}', '{{ addslashes($approver->department?->name ?? '') }}')"
+                                                   class="flex items-center gap-3 p-2.5 rounded-xl cursor-pointer hover:bg-gray-50 transition-colors border border-transparent"
+                                                   :class="selected.includes('{{ $approver->id }}') ? 'border-[#5B4FE8] bg-indigo-50' : ''">
+                                                <input type="checkbox"
+                                                       name="approvers[]"
+                                                       value="{{ $approver->id }}"
+                                                       x-model="selected"
+                                                       class="w-4 h-4 rounded text-[#5B4FE8] border-gray-300 focus:ring-[#5B4FE8]">
+                                                <div class="w-8 h-8 rounded-full bg-[#5B4FE8] text-white flex items-center justify-center text-xs font-semibold shrink-0">
+                                                    {{ strtoupper(mb_substr($approver->name, 0, 1)) }}
+                                                </div>
+                                                <div class="flex-1 min-w-0">
+                                                    <p class="text-sm font-medium text-gray-900 truncate">{{ $approver->name }}</p>
+                                                    <p class="text-xs text-gray-500 truncate">{{ $approver->department?->name ?? '—' }}</p>
+                                                </div>
+                                            </label>
+                                        @endforeach
+                                    </div>
+
+                                    {{-- Modal footer --}}
+                                    <div class="px-6 py-4 border-t border-gray-100 flex items-center gap-3">
+                                        <button type="button" @click="open = false"
+                                                class="flex-1 border border-gray-200 text-gray-700 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
+                                            Отмена
+                                        </button>
+                                        <button type="submit"
+                                                :disabled="selected.length === 0"
+                                                class="flex-1 bg-[#5B4FE8] text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                                            Запустить
+                                            <span x-show="selected.length > 0" x-text="'(' + selected.length + ')'" class="ml-1"></span>
+                                        </button>
+                                    </div>
+                                </form>
+
+                            </div>
+                        </div>
+                    </div>
+                @endcan
+            @endif
+
+            @can('approve', $document)
+                <div class="bg-white rounded-xl border border-gray-200 p-5" x-data="{ comment: '' }">
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">Требуется действие</p>
+
+                    <div class="mb-3">
+                        <label class="text-xs text-gray-600 font-medium block mb-1">Заметки к ревью (опционально)</label>
+                        <textarea
+                            x-model="comment"
+                            rows="4"
+                            placeholder="Добавьте конкретный отзыв или условия для одобрения..."
+                            class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8] resize-none"
+                        ></textarea>
+                    </div>
+
+                    <form action="{{ route('documents.approve', $document) }}" method="POST" class="mb-3">
+                        @csrf
+                        <input type="hidden" name="comment" :value="comment">
+                        <button type="submit" class="w-full bg-[#5B4FE8] text-white py-3 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors min-h-[48px]">
+                            Одобрить документ
+                        </button>
+                    </form>
+
+                    <form action="{{ route('documents.reject', $document) }}" method="POST" class="mb-3">
+                        @csrf
+                        <input type="hidden" name="comment" :value="comment">
+                        <button type="submit" class="w-full border border-red-300 text-red-600 py-3 rounded-lg text-sm font-semibold hover:bg-red-50 transition-colors min-h-[48px]">
+                            Отклонить и вернуть
+                        </button>
+                    </form>
+
+                    <div x-data="{ delegateOpen: false }">
+                        <button @click="delegateOpen = !delegateOpen" class="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mx-auto">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+                            Делегировать
+                        </button>
+                        <form x-show="delegateOpen" action="{{ route('documents.delegate', $document) }}" method="POST" class="mt-3 space-y-2" style="display:none">
+                            @csrf
+                            <select name="delegated_to" required class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                                <option value="">— Выберите пользователя —</option>
+                                @foreach(\App\Models\User::where('id', '!=', auth()->id())->where('is_active', true)->get() as $u)
+                                    <option value="{{ $u->id }}">{{ $u->name }}</option>
+                                @endforeach
+                            </select>
+                            <button type="submit" class="w-full border border-gray-200 text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
+                                Подтвердить делегирование
+                            </button>
+                        </form>
+                    </div>
+
+                    <p class="text-xs text-gray-500 mt-4">
+                        Одобрение этого документа юридически обязывает организацию соблюдать условия, указанные в
+                        @if($document->currentFile) <span class="font-medium">{{ $document->currentFile->file_name }}</span> @endif.
+                    </p>
+                </div>
+            @endcan
+
+            {{-- PDF Download --}}
+            @if(in_array($document->status, ['approved', 'signed', 'archived']))
+                <a href="{{ route('documents.approval-sheet', $document) }}"
+                   class="flex items-center gap-3 bg-white rounded-xl border border-gray-200 p-4 hover:bg-gray-50 transition-colors">
+                    <div class="w-9 h-9 bg-red-50 rounded-lg flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-sm font-medium text-gray-900">Лист согласования</p>
+                        <p class="text-xs text-gray-500">Скачать PDF</p>
+                    </div>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                </a>
+            @endif
+        </div>
+    </div>
+</x-app-layout>
+
+<script>
+document.addEventListener('alpine:init', () => {
+    Alpine.data('approvalModal', () => ({
+        open: false,
+        search: '',
+        selected: [],
+        matchesSearch(name, department) {
+            if (!this.search) return true;
+            const q = this.search.toLowerCase();
+            return name.toLowerCase().includes(q) || department.toLowerCase().includes(q);
+        }
+    }));
+
+    Alpine.data('docFilePreview', () => ({
+        open: false,
+        mimeType: '{{ addslashes($document->currentFile?->mime_type ?? '') }}',
+        previewUrl: '{{ $document->currentFile ? route('documents.files.preview', [$document, $document->currentFile]) : '' }}',
+        downloadUrl: '{{ $document->currentFile ? route('documents.files.download', [$document, $document->currentFile]) : '' }}',
+        fileName: '{{ addslashes($document->currentFile?->file_name ?? '') }}',
+        docxRendered: false,
+        loading: false,
+        error: '',
+        isPdf()   { return this.mimeType === 'application/pdf'; },
+        isDocx()  { return this.mimeType.includes('wordprocessingml') || this.mimeType.includes('msword'); },
+        isImage() { return this.mimeType.startsWith('image/'); },
+        async openPreview() {
+            this.open = true;
+            if (!this.isDocx() || this.docxRendered || this.loading) return;
+            this.loading = true;
+            this.error = '';
+            try {
+                const loadScript = (src) => new Promise((resolve, reject) => {
+                    if (document.querySelector('script[src="' + src + '"]')) { resolve(); return; }
+                    const s = document.createElement('script');
+                    s.src = src;
+                    s.onload = resolve;
+                    s.onerror = () => reject(new Error('Не удалось загрузить: ' + src));
+                    document.head.appendChild(s);
+                });
+                if (typeof JSZip === 'undefined') {
+                    await loadScript('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
+                }
+                if (typeof docx === 'undefined') {
+                    await loadScript('https://cdn.jsdelivr.net/npm/docx-preview@0.3.4/dist/docx-preview.min.js');
+                }
+                const res = await fetch(this.previewUrl, { credentials: 'same-origin' });
+                if (!res.ok) throw new Error('Ошибка сервера: ' + res.status);
+                const buf = await res.arrayBuffer();
+                const container = document.getElementById('docx-render-container');
+                container.innerHTML = '';
+                await docx.renderAsync(buf, container, null, {
+                    className: 'docx-render',
+                    inWrapper: false,
+                    ignoreWidth: true,
+                    ignoreHeight: true,
+                    ignoreFonts: false,
+                    breakPages: true,
+                    useBase64URL: true,
+                    renderHeaders: true,
+                    renderFooters: true,
+                    renderFootnotes: true,
+                });
+                this.docxRendered = true;
+            } catch (e) {
+                this.error = e.message || 'Не удалось загрузить документ для предпросмотра.';
+                console.error('[preview]', e);
+            }
+            this.loading = false;
+        }
+    }));
+});
+</script>
+
+<style>
+.docx-render-wrapper .docx-render section {
+    background: #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    border-radius: 4px;
+    margin-bottom: 24px;
+    width: 100% !important;
+    max-width: 820px;
+    box-sizing: border-box;
+}
+.docx-render-wrapper .docx-render {
+    width: 100%;
+    max-width: 820px;
+}
+</style>

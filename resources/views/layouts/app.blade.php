@@ -48,7 +48,7 @@
                 <a href="{{ route('documents.create') }}"
                    class="flex items-center justify-center gap-2 w-full bg-[#5B4FE8] text-white rounded-lg py-2.5 text-sm font-medium hover:bg-indigo-700 transition-colors">
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-                    Новый запрос
+                    Новый сценарий
                 </a>
             </div>
 
@@ -61,6 +61,7 @@
                         ['route' => 'documents.index', 'label' => 'Документы', 'icon' => 'document'],
                         ['route' => 'workflows.index', 'label' => 'Процессы', 'icon' => 'workflow'],
                         ['route' => 'archive.index', 'label' => 'Архив', 'icon' => 'archive'],
+                        ['route' => 'employees.index', 'label' => 'Сотрудники', 'icon' => 'employees'],
                     ];
                 @endphp
 

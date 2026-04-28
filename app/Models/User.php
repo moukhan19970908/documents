@@ -15,7 +15,7 @@ class User extends Authenticatable
     use HasFactory, Notifiable;
 
     protected $fillable = [
-        'name', 'email', 'password', 'role', 'department_id',
+        'name', 'email', 'password', 'role', 'position', 'department_id',
         'bitrix24_id', 'bitrix24_token', 'avatar', 'is_active',
         'notification_email', 'telegram_chat_id',
     ];

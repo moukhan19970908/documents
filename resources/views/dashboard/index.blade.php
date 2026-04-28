@@ -9,7 +9,7 @@
                     $hour = now()->hour;
                     $greeting = $hour < 12 ? 'Доброе утро' : ($hour < 18 ? 'Добрый день' : 'Добрый вечер');
                 @endphp
-                {{ $greeting }}, {{ auth()->user()->department?->name ?? 'команда' }}.
+                {{ $greeting }}, {{ auth()->user()->name }}.
             </h1>
             <p class="text-sm text-gray-500 mt-1">Статус ваших рабочих процессов.</p>
 
@@ -17,7 +17,7 @@
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
                 {{-- Pending --}}
                 <div class="bg-white rounded-xl border border-gray-200 p-5">
-                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest">Ожидают одобрения</p>
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest">Ожидают согласования</p>
                     <div class="flex items-end gap-2 mt-3">
                         <span class="text-4xl font-bold text-gray-900">{{ $stats['pending_count'] }}</span>
                         <span class="text-xs text-green-600 font-medium mb-1 flex items-center gap-0.5">
@@ -44,7 +44,7 @@
                     <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest">В процессе</p>
                     <div class="flex items-center gap-4 mt-3">
                         <div>
-                            <p class="text-xs text-gray-500">Активные фазы</p>
+                            <p class="text-xs text-gray-500">Активность документов сегодня</p>
                             <p class="text-base font-bold text-gray-800">{{ $stats['active_phases'] }}</p>
                         </div>
                         {{-- Simple donut --}}

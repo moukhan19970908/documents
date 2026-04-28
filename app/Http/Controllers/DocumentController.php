@@ -23,7 +23,12 @@ class DocumentController extends Controller
 
     public function index(Request $request)
     {
-        $query = Document::with(['type', 'initiator'])
+        $query = Document::with(['type', 'initiator', 'activeApproval' => function ($q) {
+                $q->with(['stages' => function ($sq) {
+                    $sq->orderBy('id')
+                       ->with(['workflowStage.approvers.user', 'decisions']);
+                }]);
+            }])
             ->orderByDesc('updated_at');
 
         if ($search = $request->get('search')) {

@@ -110,7 +110,7 @@ class ApprovalEngineService
             match($action) {
                 'approve'         => $this->handleApprove($stage, $approval, $document),
                 'reject'          => $this->handleReject($stage, $approval, $document, $user, $comment),
-                'request_changes' => $this->handleReject($stage, $approval, $document, $user, $comment),
+                'request_changes' => $this->handleRequestChanges($stage, $approval, $document, $user, $comment),
                 'delegate'        => $this->handleDelegate($stage, $document, $delegatedTo),
             };
 
@@ -153,12 +153,33 @@ class ApprovalEngineService
     ): void {
         $stage->update(['status' => 'rejected', 'completed_at' => now()]);
         $approval->update(['status' => 'rejected', 'completed_at' => now()]);
-        $document->update(['status' => 'requires_changes']);
+        $document->update(['status' => 'rejected']);
 
         $this->notificationService->notify($document->initiator, 'document_rejected', [
             'title'      => $document->title,
             'comment'    => $comment,
             'document_id' => $document->id,
+        ]);
+
+        event(new DocumentRejected($document, $user, $comment));
+    }
+
+    private function handleRequestChanges(
+        DocumentApprovalStage $stage,
+        DocumentApproval $approval,
+        Document $document,
+        User $user,
+        ?string $comment
+    ): void {
+        $stage->update(['status' => 'requires_changes', 'completed_at' => now()]);
+        $approval->update(['status' => 'requires_changes']);
+        $document->update(['status' => 'requires_changes']);
+
+        $this->notificationService->notify($document->initiator, 'document_requires_changes', [
+            'title'       => $document->title,
+            'comment'     => $comment,
+            'document_id' => $document->id,
+            'reviewer'    => $user->name,
         ]);
 
         event(new DocumentRejected($document, $user, $comment));

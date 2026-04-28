@@ -9,4 +9,5 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::job(new \App\Jobs\CheckDeadlines)->everyThirtyMinutes();
+Schedule::command('bitrix24:sync')->dailyAt('02:00');
 

@@ -75,6 +75,20 @@ class ApprovalController extends Controller
         return back()->with('success', 'Документ отклонён.');
     }
 
+    public function requestChanges(ApproveDocumentRequest $request, Document $document)
+    {
+        $this->authorize('approve', $document);
+
+        $stage = $document->activeApproval?->activeStage();
+        if (!$stage) {
+            return back()->with('error', 'Нет активного этапа согласования.');
+        }
+
+        $this->engine->processDecision($stage, auth()->user(), 'request_changes', $request->comment);
+
+        return back()->with('success', 'Документ отправлен на доработку.');
+    }
+
     public function delegate(Request $request, Document $document)
     {
         $this->authorize('approve', $document);
