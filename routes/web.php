@@ -32,6 +32,7 @@ Route::middleware(['auth', 'audit'])->group(function () {
     Route::post('documents/{document}/start-approval', [ApprovalController::class, 'start'])->name('documents.start-approval');
     Route::post('documents/{document}/approve', [ApprovalController::class, 'approve'])->name('documents.approve');
     Route::post('documents/{document}/reject', [ApprovalController::class, 'reject'])->name('documents.reject');
+    Route::post('documents/{document}/resubmit', [ApprovalController::class, 'resubmit'])->name('documents.resubmit');
     Route::post('documents/{document}/request-changes', [ApprovalController::class, 'requestChanges'])->name('documents.request-changes');
     Route::post('documents/{document}/delegate', [ApprovalController::class, 'delegate'])->name('documents.delegate');
     Route::get('documents/{document}/approval-sheet', [ApprovalController::class, 'approvalSheet'])->name('documents.approval-sheet');

@@ -37,6 +37,10 @@ class DocumentApproval extends Model
 
     public function activeStage()
     {
+        // Use loaded collection if available to avoid extra query
+        if ($this->relationLoaded('stages')) {
+            return $this->stages->firstWhere('status', 'in_progress');
+        }
         return $this->stages()->where('status', 'in_progress')->first();
     }
 }

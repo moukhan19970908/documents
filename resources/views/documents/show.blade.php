@@ -13,7 +13,7 @@
         ];
         $statusBadge = $statusColors[$document->status] ?? 'bg-gray-100 text-gray-600';
 
-        $approval     = $document->approvals->first();
+        $approval     = $document->activeApproval;
         $activeStage  = $approval?->activeStage();
         $deadline     = $activeStage?->deadline_at;
         $isOverdue    = $activeStage?->is_overdue ?? false;
@@ -203,8 +203,24 @@
                 {{-- Right: Ваш шаг / Actions --}}
                 <div class="w-72 shrink-0 space-y-4">
 
-                    {{-- Start approval modal (draft only) --}}
-                    @if($document->status === 'draft')
+                    {{-- Start approval modal (draft) / Resubmit (requires_changes) --}}
+                    @if($document->status === 'requires_changes')
+                        @can('update', $document)
+                            <div class="bg-white rounded-xl border border-orange-200 p-4">
+                                <div class="mb-3 flex items-start gap-2 p-3 bg-orange-50 rounded-lg">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-orange-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+                                    <p class="text-xs text-orange-700">Документ отправлен на доработку. Загрузите исправленную версию и нажмите кнопку ниже.</p>
+                                </div>
+                                <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Повторное согласование</p>
+                                <form action="{{ route('documents.resubmit', $document) }}" method="POST">
+                                    @csrf
+                                    <button type="submit" class="w-full text-white py-2.5 rounded-lg text-sm font-semibold transition-colors" style="background:#5B4FE8">
+                                        Отправить на повторное согласование
+                                    </button>
+                                </form>
+                            </div>
+                        @endcan
+                    @elseif($document->status === 'draft')
                         @can('update', $document)
                             <div x-data="approvalModal" class="bg-white rounded-xl border border-gray-200 p-4">
                                 <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Запустить согласование</p>
@@ -497,9 +513,15 @@
         {{-- ── TAB: ИСТОРИЯ ── --}}
         <div x-show="tab === 'history'">
             @php
+                $approvalKeywords = ['начал процесс', 'согласовал', 'отказал', 'отправил на доработку', 'делегировал'];
                 $auditLogs = \App\Models\AuditLog::with('user')
                     ->where('model_type', 'App\Models\Document')
                     ->where('model_id', $document->id)
+                    ->where(function ($q) use ($approvalKeywords) {
+                        foreach ($approvalKeywords as $keyword) {
+                            $q->orWhere('action', 'LIKE', '%' . $keyword . '%');
+                        }
+                    })
                     ->latest()->get();
             @endphp
             <div class="bg-white rounded-xl border border-gray-200 p-6">

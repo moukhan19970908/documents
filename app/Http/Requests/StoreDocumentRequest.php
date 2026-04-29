@@ -15,9 +15,20 @@ class StoreDocumentRequest extends FormRequest
     {
         return [
             'title'            => ['required', 'string', 'max:255'],
-            'document_type_id' => ['required', 'exists:document_types,id'],
+            'document_type_id' => ['nullable', 'exists:document_types,id'],
             'data'             => ['nullable', 'array'],
+            'deadline_at'      => ['nullable', 'date'],
             'file'             => ['nullable', 'file', 'max:51200'], // 50MB
+            'approvers'        => ['nullable', 'array'],
+            'approvers.*'      => ['integer', 'exists:users,id'],
         ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        // "adhoc" is a UI-only value, not a real type ID
+        if ($this->document_type_id === 'adhoc') {
+            $this->merge(['document_type_id' => null]);
+        }
     }
 }

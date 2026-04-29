@@ -35,6 +35,11 @@ class DocumentVersionService
             'version'   => $version,
         ]);
 
+        // When a new file is uploaded after revision request — reset to draft so initiator can re-submit
+        if ($document->status === 'requires_changes') {
+            $document->update(['status' => 'draft']);
+        }
+
         return $documentFile;
     }
 

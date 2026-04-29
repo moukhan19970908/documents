@@ -97,7 +97,8 @@
                             </td>
                             <td class="px-5 py-3.5">
                                 @php
-                                    $activeStage = $doc->activeApproval?->stages->first();
+                                    $approval    = $doc->activeApproval ?? $doc->latestApproval;
+                                    $activeStage = $approval?->stages->first();
                                     $approvers   = $activeStage?->workflowStage?->approvers ?? collect();
                                 @endphp
                                 @if($approvers->isNotEmpty())
@@ -126,6 +127,8 @@
                                     $stages = $doc->activeApproval?->stages ?? collect();
                                     if ($doc->status === 'draft') {
                                         $segments = collect([['color' => '#D1D5DB', 'label' => 'Черновик']]);
+                                    } elseif ($doc->status === 'rejected') {
+                                        $segments = collect([['color' => '#EF4444', 'label' => 'Отклонено']]);
                                     } else {
                                         $segments = collect([['color' => '#22C55E', 'label' => 'Инициатор: ' . $doc->initiator->name]]);
                                         foreach ($stages as $stage) {

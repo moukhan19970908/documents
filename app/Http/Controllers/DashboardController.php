@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
-use App\Models\DocumentApproval;
 use App\Models\DocumentApprovalDecision;
 use App\Models\DocumentApprovalStage;
 
@@ -16,7 +15,14 @@ class DashboardController extends Controller
         $pendingApprovals = DocumentApprovalStage::query()
             ->where('status', 'in_progress')
             ->whereHas('workflowStage.approvers', fn($q) => $q->where('approver_id', $user->id))
-            ->with(['documentApproval.document', 'workflowStage'])
+            ->with([
+                'documentApproval.document.type',
+                'documentApproval.document.initiator',
+                'documentApproval.document.activeApproval.stages.workflowStage.approvers.user',
+                'documentApproval.document.activeApproval.stages.decisions',
+                'documentApproval.document.latestApproval.stages.workflowStage.approvers.user',
+                'workflowStage',
+            ])
             ->orderBy('deadline_at')
             ->get()
             ->map(fn($stage) => [
@@ -31,10 +37,19 @@ class DashboardController extends Controller
             'pending_count'  => $pendingApprovals->count(),
             'processed_week' => DocumentApprovalDecision::where('user_id', $user->id)
                 ->where('decided_at', '>=', now()->subWeek())->count(),
-            'active_phases'  => DocumentApproval::where('status', 'in_progress')->count(),
+            'overdue_count'  => DocumentApprovalStage::where('status', 'in_progress')
+                ->whereHas('workflowStage.approvers', fn($q) => $q->where('approver_id', $user->id))
+                ->where('deadline_at', '<', now())
+                ->count(),
         ];
 
+        $approvalKeywords = ['начал процесс', 'согласовал', 'отказал', 'отправил на доработку', 'делегировал'];
         $activity = AuditLog::with('user')
+            ->where(function ($q) use ($approvalKeywords) {
+                foreach ($approvalKeywords as $keyword) {
+                    $q->orWhere('action', 'LIKE', '%' . $keyword . '%');
+                }
+            })
             ->latest()
             ->limit(10)
             ->get();

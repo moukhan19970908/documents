@@ -6,7 +6,16 @@
             <h1 class="text-2xl font-bold text-gray-900">Новый документ</h1>
         </div>
 
-        <form action="{{ route('documents.store') }}" method="POST" enctype="multipart/form-data" class="space-y-5">
+        <form action="{{ route('documents.store') }}" method="POST" enctype="multipart/form-data" class="space-y-5"
+              x-data="{
+                  typeId: '{{ old('document_type_id', '') }}',
+                  approvers: {{ json_encode(old('approvers', [])) }},
+                  toggleApprover(id) {
+                      const idx = this.approvers.indexOf(id);
+                      if (idx === -1) this.approvers.push(id);
+                      else this.approvers.splice(idx, 1);
+                  }
+              }">
             @csrf
 
             <div class="bg-white rounded-xl border border-gray-200 p-6 space-y-5">
@@ -19,18 +28,19 @@
                     @error('title')<p class="text-xs text-red-500 mt-1">{{ $message }}</p>@enderror
                 </div>
 
-                <div x-data="{ typeId: '{{ old('document_type_id') }}' }">
-                    <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Тип документа *</label>
-                    <select name="document_type_id" x-model="typeId" required
+                <div>
+                    <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Тип документа</label>
+                    <select name="document_type_id" x-model="typeId"
                             class="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
                         <option value="">— Выберите тип —</option>
                         @foreach($documentTypes as $type)
                             <option value="{{ $type->id }}">{{ $type->name }}</option>
                         @endforeach
+                        <option value="adhoc">✦ Свой сценарий</option>
                     </select>
                     @error('document_type_id')<p class="text-xs text-red-500 mt-1">{{ $message }}</p>@enderror
 
-                    {{-- Dynamic fields --}}
+                    {{-- Dynamic fields for each type --}}
                     @foreach($documentTypes as $type)
                         <template x-if="typeId == '{{ $type->id }}'">
                             <div class="mt-5 space-y-4 border-t border-gray-100 pt-5">
@@ -68,6 +78,35 @@
                             </div>
                         </template>
                     @endforeach
+
+                    {{-- Свой сценарий: approver picker --}}
+                    {{--<template x-if="typeId === 'adhoc'">
+                        <div class="mt-5 border-t border-gray-100 pt-5 space-y-2">
+                            <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Выберите согласующих</p>
+                            <p class="text-xs text-gray-400 mb-3">Согласование будет запущено последовательно в порядке выбора.</p>
+                            @foreach($users as $user)
+                                <label class="flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer hover:bg-gray-50"
+                                       :style="approvers.includes({{ $user->id }}) ? 'border-color:#5B4FE8;background:#f5f3ff' : 'border-color:#e5e7eb'">
+                                    <input type="checkbox" name="approvers[]" value="{{ $user->id }}"
+                                           @change="toggleApprover({{ $user->id }})"
+                                           :checked="approvers.includes({{ $user->id }})"
+                                           class="rounded text-[#5B4FE8]">
+                                    <img src="{{ $user->avatar_url }}" class="w-7 h-7 rounded-full flex-shrink-0" alt="">
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-sm font-medium text-gray-800">{{ $user->name }}</p>
+                                        <p class="text-xs text-gray-400">{{ $user->department?->name ?? $user->role }}</p>
+                                    </div>
+                                </label>
+                            @endforeach
+                        </div>
+                    </template>--}}
+                </div>
+
+                <div>
+                    <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Крайний срок</label>
+                    <input type="date" name="deadline_at" value="{{ old('deadline_at') }}"
+                           class="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                    <p class="text-xs text-gray-400 mt-1">Необязательно</p>
                 </div>
 
                 <div>

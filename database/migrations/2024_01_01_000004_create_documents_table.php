@@ -57,7 +57,7 @@ return new class extends Migration
             $table->id();
             $table->unsignedBigInteger('document_approval_id');
             $table->unsignedBigInteger('workflow_stage_id');
-            $table->enum('status', ['pending', 'in_progress', 'approved', 'rejected', 'delegated'])
+            $table->enum('status', ['pending', 'in_progress', 'approved', 'rejected', 'delegated','requires_changes'])
                   ->default('pending');
             $table->boolean('is_overdue')->default(false);
             $table->timestamp('started_at')->nullable();

@@ -14,11 +14,12 @@ class Document extends Model
 
     protected $fillable = [
         'title', 'document_type_id', 'initiator_id',
-        'current_stage_id', 'status', 'data', 'bitrix24_task_id',
+        'current_stage_id', 'status', 'data', 'bitrix24_task_id', 'deadline_at',
     ];
 
     protected $casts = [
-        'data' => 'array',
+        'data'        => 'array',
+        'deadline_at' => 'datetime',
     ];
 
     public function type(): BelongsTo
@@ -54,6 +55,11 @@ class Document extends Model
     public function activeApproval(): HasOne
     {
         return $this->hasOne(DocumentApproval::class)->where('status', 'in_progress')->latestOfMany();
+    }
+
+    public function latestApproval(): HasOne
+    {
+        return $this->hasOne(DocumentApproval::class)->latestOfMany();
     }
 
     public function notes(): HasMany
