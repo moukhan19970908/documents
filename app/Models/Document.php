@@ -67,6 +67,11 @@ class Document extends Model
         return $this->hasMany(DocumentNote::class)->latest();
     }
 
+    public function relatedFiles(): HasMany
+    {
+        return $this->hasMany(DocumentRelatedFile::class)->latest();
+    }
+
     public function getStatusLabelAttribute(): string
     {
         return match($this->status) {

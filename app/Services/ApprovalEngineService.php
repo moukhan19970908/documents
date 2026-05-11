@@ -14,6 +14,7 @@ use App\Models\Workflow;
 use App\Models\WorkflowStage;
 use App\Models\WorkflowStageApprover;
 use App\Jobs\SyncWithBitrix24;
+use App\Services\ChatService;
 use Illuminate\Support\Facades\DB;
 
 class ApprovalEngineService
@@ -21,6 +22,7 @@ class ApprovalEngineService
     public function __construct(
         private NotificationService $notificationService,
         private AuditService $auditService,
+        private ChatService $chatService,
     ) {}
 
     public function startAdHocApproval(Document $doc, array $approverIds): DocumentApproval
@@ -82,6 +84,8 @@ class ApprovalEngineService
             SyncWithBitrix24::dispatch($doc)->onQueue('bitrix24');
 
             $this->auditService->log('approval_started', $doc, null, ['workflow_id' => $workflow->id]);
+
+            $this->chatService->createForProcess($approval);
 
             return $approval;
         });

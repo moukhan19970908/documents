@@ -505,15 +505,80 @@
 
         {{-- ── TAB: ЧАТ ── --}}
         <div x-show="tab === 'chat'">
-            <div class="bg-white rounded-xl border border-gray-200 p-10 text-center text-gray-400 text-sm">
-                Чат находится в разработке
+            @if($chat)
+            <div x-data="chatWidget({
+                         chatId: {{ $chat->id }},
+                         currentUserId: {{ auth()->id() }},
+                         initialMessages: {{ Js::from($chat->messages->map(fn($m) => ['id' => $m->id, 'body' => $m->body, 'created_at' => $m->created_at->toISOString(), 'user' => ['id' => $m->user->id, 'name' => $m->user->name]])) }},
+                         messagesUrl: '{{ route('chats.messages', $chat) }}',
+                         sendUrl: '{{ route('chats.messages.store', $chat) }}'
+                     })"
+                 @destroy.window="destroy()"
+                 class="flex flex-col bg-white rounded-xl border border-gray-200 overflow-hidden"
+                 style="height: 600px">
+
+                {{-- Header --}}
+                <div class="px-5 py-3.5 border-b border-gray-100 shrink-0">
+                    <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest">Чат участников</p>
+                </div>
+
+                {{-- Messages --}}
+                <div class="flex-1 overflow-y-auto px-5 py-4 flex flex-col-reverse gap-3"
+                     x-ref="msgContainer">
+
+                    <template x-for="msg in messages" :key="msg.id">
+                        <div class="flex gap-3" :class="msg.user.id === currentUserId ? 'flex-row-reverse' : ''">
+                            <div class="w-7 h-7 rounded-full bg-[#5B4FE8] text-white flex items-center justify-center text-xs font-semibold shrink-0 mt-0.5"
+                                 x-text="msg.user.name.charAt(0).toUpperCase()"></div>
+                            <div class="max-w-sm" :class="msg.user.id === currentUserId ? 'items-end' : 'items-start'" style="display:flex;flex-direction:column">
+                                <div class="flex items-center gap-2 mb-1"
+                                     :class="msg.user.id === currentUserId ? 'flex-row-reverse' : ''">
+                                    <span class="text-xs font-medium text-gray-700" x-text="msg.user.name"></span>
+                                    <span class="text-xs text-gray-400"
+                                          x-text="new Date(msg.created_at).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })"></span>
+                                </div>
+                                <div class="px-3 py-2 rounded-xl text-sm leading-relaxed break-words"
+                                     :class="msg.user.id === currentUserId
+                                        ? 'bg-[#5B4FE8] text-white rounded-tr-none'
+                                        : 'bg-gray-100 text-gray-800 rounded-tl-none'"
+                                     x-text="msg.body"></div>
+                            </div>
+                        </div>
+                    </template>
+
+                    {{-- Load more --}}
+                    <div class="text-center">
+                        <button x-show="nextCursor" @click="loadMore()" :disabled="loading"
+                                class="text-xs text-[#5B4FE8] hover:underline disabled:opacity-40">
+                            Загрузить предыдущие
+                        </button>
+                    </div>
+                </div>
+
+                {{-- Input --}}
+                <div class="shrink-0 border-t border-gray-100 px-4 py-3 flex gap-3 items-end bg-gray-50">
+                    <textarea x-model="body"
+                              @keydown="handleKey($event)"
+                              placeholder="Написать сообщение… (Enter — отправить, Shift+Enter — новая строка)"
+                              rows="2"
+                              class="flex-1 text-sm border border-gray-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-[#5B4FE8] bg-white"></textarea>
+                    <button @click="sendMessage()" :disabled="!body.trim() || sending"
+                            class="px-4 py-2 text-sm bg-[#5B4FE8] text-white rounded-xl font-medium hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed shrink-0">
+                        Отправить
+                    </button>
+                </div>
             </div>
+            @else
+                <div class="bg-white rounded-xl border border-gray-200 p-10 text-center text-gray-400 text-sm">
+                    Чат появится после запуска согласования
+                </div>
+            @endif
         </div>
 
         {{-- ── TAB: ИСТОРИЯ ── --}}
         <div x-show="tab === 'history'">
             @php
-                $approvalKeywords = ['начал процесс', 'согласовал', 'отказал', 'отправил на доработку', 'делегировал'];
+                $approvalKeywords = ['начал процесс', 'согласовал', 'отказал', 'отправил на доработку', 'делегировал', 'загрузил связанный файл'];
                 $auditLogs = \App\Models\AuditLog::with('user')
                     ->where('model_type', 'App\Models\Document')
                     ->where('model_id', $document->id)
@@ -551,8 +616,147 @@
 
         {{-- ── TAB: СВЯЗАННЫЕ ДОКУМЕНТЫ ── --}}
         <div x-show="tab === 'related'">
-            <div class="bg-white rounded-xl border border-gray-200 p-10 text-center text-gray-400 text-sm">
-                Связанные документы в разработке
+            <div class="max-w-3xl space-y-5">
+
+                {{-- Upload form --}}
+                <div class="bg-white rounded-xl border border-gray-200 p-5">
+                    <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Загрузить связанный документ</p>
+                    <form action="{{ route('documents.related-files.store', $document) }}" method="POST" enctype="multipart/form-data" class="space-y-3">
+                        @csrf
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Файл</label>
+                            <input type="file" name="file" required
+                                   class="w-full text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-gray-100 file:text-gray-700 file:text-xs hover:file:bg-gray-200">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1">Комментарий <span class="text-gray-400">(необязательно)</span></label>
+                            <input type="text" name="description" placeholder="Краткое описание файла…"
+                                   class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                        </div>
+                        <button type="submit"
+                                class="px-4 py-2 text-sm bg-[#5B4FE8] text-white rounded-lg font-medium hover:bg-indigo-700">
+                            Загрузить
+                        </button>
+                    </form>
+                </div>
+
+                {{-- File list --}}
+                <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <div class="px-5 py-3.5 border-b border-gray-100">
+                        <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest">Загруженные файлы</p>
+                    </div>
+                    @forelse($document->relatedFiles as $rf)
+                        <div x-data="{ previewOpen: false }" class="flex items-center gap-4 px-5 py-3.5 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
+                            <div class="shrink-0 w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-[#5B4FE8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                </svg>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-medium text-gray-900 truncate">{{ $rf->file_name }}</p>
+                                <p class="text-xs text-gray-400">
+                                    {{ $rf->uploader->name }}
+                                    &nbsp;·&nbsp; {{ $rf->formatted_size }}
+                                    &nbsp;·&nbsp; {{ $rf->created_at->format('d.m.Y H:i') }}
+                                    @if($rf->description)
+                                        &nbsp;·&nbsp; <span class="italic">{{ $rf->description }}</span>
+                                    @endif
+                                </p>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0">
+                                @php
+                                    $rfMime = $rf->mime_type;
+                                    $rfCanPreview = $rfMime === 'application/pdf'
+                                        || str_starts_with($rfMime, 'image/')
+                                        || str_contains($rfMime, 'wordprocessingml')
+                                        || str_contains($rfMime, 'msword');
+                                @endphp
+                                @if($rfCanPreview)
+                                    <button @click="previewOpen = true"
+                                            class="text-xs text-gray-500 hover:text-gray-800 hover:underline font-medium">
+                                        Просмотр
+                                    </button>
+                                @endif
+                                <a href="{{ route('documents.related-files.download', [$document, $rf]) }}"
+                                   class="text-xs text-[#5B4FE8] hover:underline font-medium">Скачать</a>
+                                @if(auth()->id() === $rf->uploaded_by || auth()->user()->role === 'admin')
+                                    <form action="{{ route('documents.related-files.destroy', [$document, $rf]) }}" method="POST"
+                                          onsubmit="return confirm('Удалить файл?')">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="text-xs text-red-400 hover:text-red-600 hover:underline">Удалить</button>
+                                    </form>
+                                @endif
+                            </div>
+
+                            {{-- Preview modal --}}
+                            <div x-show="previewOpen"
+                                 x-transition:enter="transition-opacity duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+                                 x-transition:leave="transition-opacity duration-150" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
+                                 class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
+                                 style="display:none" @click.self="previewOpen = false">
+                                <div x-show="previewOpen"
+                                     x-transition:enter="transition transform duration-200 ease-out" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
+                                     x-transition:leave="transition transform duration-150 ease-in" x-transition:leave-start="opacity-100 scale-100" x-transition:leave-end="opacity-0 scale-95"
+                                     class="bg-white rounded-2xl shadow-2xl flex flex-col w-full max-w-4xl" style="max-height:90vh; display:none">
+                                    <div class="flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
+                                        <p class="text-sm font-medium text-gray-800 truncate">{{ $rf->file_name }}</p>
+                                        <button @click="previewOpen = false" class="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 shrink-0 ml-4">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                                        </button>
+                                    </div>
+                                    <div class="flex-1 overflow-auto">
+                                        @if($rfMime === 'application/pdf')
+                                            <iframe src="{{ route('documents.related-files.preview', [$document, $rf]) }}"
+                                                    class="w-full border-0" style="height:78vh"></iframe>
+                                        @elseif(str_starts_with($rfMime, 'image/'))
+                                            <div class="flex items-center justify-center p-6 bg-gray-50" style="min-height:60vh">
+                                                <img src="{{ route('documents.related-files.preview', [$document, $rf]) }}"
+                                                     class="max-w-full max-h-full object-contain rounded-lg" alt="">
+                                            </div>
+                                        @else
+                                            <div class="p-4 bg-gray-50" style="min-height:60vh">
+                                                <div id="rf-docx-{{ $rf->id }}" class="w-full flex flex-col items-center gap-4"></div>
+                                            </div>
+                                            <script>
+                                            document.addEventListener('alpine:init', () => {
+                                                document.addEventListener('DOMContentLoaded', async () => {});
+                                            });
+                                            (function() {
+                                                const containerId = 'rf-docx-{{ $rf->id }}';
+                                                const previewUrl  = '{{ route('documents.related-files.preview', [$document, $rf]) }}';
+                                                async function loadDocx() {
+                                                    const loadScript = (src) => new Promise((resolve, reject) => {
+                                                        if (document.querySelector('script[src="'+src+'"]')) { resolve(); return; }
+                                                        const s = document.createElement('script'); s.src = src;
+                                                        s.onload = resolve; s.onerror = reject;
+                                                        document.head.appendChild(s);
+                                                    });
+                                                    try {
+                                                        if (typeof JSZip === 'undefined') await loadScript('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
+                                                        if (typeof docx === 'undefined')  await loadScript('https://cdn.jsdelivr.net/npm/docx-preview@0.3.4/dist/docx-preview.min.js');
+                                                        const res = await fetch(previewUrl, { credentials: 'same-origin' });
+                                                        if (!res.ok) throw new Error('HTTP ' + res.status);
+                                                        const buf = await res.arrayBuffer();
+                                                        const container = document.getElementById(containerId);
+                                                        if (container) await docx.renderAsync(buf, container, null, { className:'docx-render', inWrapper:false, ignoreWidth:true, ignoreHeight:true, breakPages:true, useBase64URL:true });
+                                                    } catch(e) { console.error(e); }
+                                                }
+                                                document.addEventListener('DOMContentLoaded', loadDocx);
+                                            })();
+                                            </script>
+                                        @endif
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    @empty
+                        <div class="px-5 py-10 text-center text-sm text-gray-400">
+                            Нет загруженных файлов
+                        </div>
+                    @endforelse
+                </div>
+
             </div>
         </div>
 
@@ -571,6 +775,80 @@ document.addEventListener('alpine:init', () => {
             const q = this.search.toLowerCase();
             return name.toLowerCase().includes(q) || department.toLowerCase().includes(q);
         }
+    }));
+
+    Alpine.data('chatWidget', ({ chatId, currentUserId, initialMessages, messagesUrl, sendUrl }) => ({
+        messages: initialMessages ?? [],
+        currentUserId: currentUserId,
+        body: '',
+        nextCursor: null,
+        loading: false,
+        sending: false,
+        channel: null,
+
+        init() {
+            this.subscribeToChannel();
+        },
+
+        async loadMore() {
+            if (!this.nextCursor || this.loading) return;
+            this.loading = true;
+            const res = await fetch(messagesUrl + '?cursor=' + this.nextCursor, { headers: { 'Accept': 'application/json' } });
+            const json = await res.json();
+            this.messages = [...this.messages, ...json.data];
+            this.nextCursor = json.next_cursor;
+            this.loading = false;
+        },
+
+        subscribeToChannel() {
+            if (!window.Echo) {
+                console.warn('Laravel Echo не инициализирован. Реалтайм недоступен.');
+                return;
+            }
+            this.channel = window.Echo
+                .private(`chat.${chatId}`)
+                .listen('MessageSent', (e) => {
+                    if (!this.messages.some(m => m.id === e.id)) {
+                        this.messages = [e, ...this.messages];
+                    }
+                });
+        },
+
+        async sendMessage() {
+            if (!this.body.trim() || this.sending) return;
+            this.sending = true;
+            const text = this.body;
+            this.body = '';
+            const res = await fetch(sendUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                    'X-Socket-ID': window.Echo?.socketId() ?? '',
+                },
+                body: JSON.stringify({ body: text }),
+            });
+            if (res.ok) {
+                const msg = await res.json();
+                this.messages = [msg, ...this.messages];
+            } else {
+                this.body = text;
+            }
+            this.sending = false;
+        },
+
+        handleKey(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                this.sendMessage();
+            }
+        },
+
+        destroy() {
+            this.channel?.stopListening('MessageSent');
+            window.Echo?.leave(`chat.${chatId}`);
+        },
     }));
 });
 </script>

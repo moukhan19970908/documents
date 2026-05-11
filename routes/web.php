@@ -7,6 +7,8 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\ApprovalController;
 use App\Http\Controllers\DocumentFileController;
+use App\Http\Controllers\DocumentRelatedFileController;
+use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ArchiveController;
 use App\Http\Controllers\WorkflowController;
 use App\Http\Controllers\NotificationController;
@@ -41,6 +43,16 @@ Route::middleware(['auth', 'audit'])->group(function () {
     Route::post('documents/{document}/files', [DocumentFileController::class, 'store'])->name('documents.files.store');
     Route::get('documents/{document}/files/{file}/download', [DocumentFileController::class, 'download'])->name('documents.files.download');
     Route::get('documents/{document}/files/{file}/preview', [DocumentFileController::class, 'preview'])->name('documents.files.preview');
+
+    // Related Files
+    Route::post('documents/{document}/related-files', [DocumentRelatedFileController::class, 'store'])->name('documents.related-files.store');
+    Route::get('documents/{document}/related-files/{file}/download', [DocumentRelatedFileController::class, 'download'])->name('documents.related-files.download');
+    Route::get('documents/{document}/related-files/{file}/preview', [DocumentRelatedFileController::class, 'preview'])->name('documents.related-files.preview');
+    Route::delete('documents/{document}/related-files/{file}', [DocumentRelatedFileController::class, 'destroy'])->name('documents.related-files.destroy');
+
+    // Chat
+    Route::get('chats/{chat}/messages', [ChatController::class, 'messages'])->name('chats.messages');
+    Route::post('chats/{chat}/messages', [ChatController::class, 'store'])->name('chats.messages.store');
 
     // Archive
     Route::get('/archive', [ArchiveController::class, 'index'])->name('archive.index');

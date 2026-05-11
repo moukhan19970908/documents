@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreDocumentRequest;
+use App\Models\Chat;
 use App\Models\Document;
 use App\Models\DocumentType;
 use App\Models\User;
@@ -144,6 +145,7 @@ class DocumentController extends Controller
             'approvals.stages.decisions.user',
             'approvals.stages.workflowStage.approvers.user',
             'notes.author',
+            'relatedFiles.uploader',
         ]);
 
         $user = auth()->user();
@@ -168,7 +170,13 @@ class DocumentController extends Controller
 
         $approvers = $approversQuery->get(['id', 'name', 'role', 'department_id']);
 
-        return view('documents.show', compact('document', 'approvers'));
+        $chat = Chat::whereHas('approval', fn($q) => $q->where('document_id', $document->id))
+            ->whereHas('participants', fn($q) => $q->where('user_id', auth()->id()))
+            ->with(['messages' => fn($q) => $q->with('user:id,name')->limit(30)])
+            ->latest()
+            ->first();
+
+        return view('documents.show', compact('document', 'approvers', 'chat'));
     }
 
     public function edit(Document $document)
