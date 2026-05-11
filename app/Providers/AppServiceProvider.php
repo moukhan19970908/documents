@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Gate;
 use App\Models\Chat;
@@ -23,5 +24,6 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Document::class, DocumentPolicy::class);
         Gate::policy(Workflow::class, WorkflowPolicy::class);
         Gate::policy(Chat::class, ChatPolicy::class);
+        URL::forceScheme('https');
     }
 }
