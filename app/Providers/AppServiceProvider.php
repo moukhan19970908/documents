@@ -24,6 +24,6 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Document::class, DocumentPolicy::class);
         Gate::policy(Workflow::class, WorkflowPolicy::class);
         Gate::policy(Chat::class, ChatPolicy::class);
-        URL::forceScheme('https');
+        // URL::forceScheme('https');
     }
 }

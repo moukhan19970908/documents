@@ -14,13 +14,16 @@ class StoreDocumentRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'title'            => ['required', 'string', 'max:255'],
-            'document_type_id' => ['nullable', 'exists:document_types,id'],
-            'data'             => ['nullable', 'array'],
-            'deadline_at'      => ['nullable', 'date'],
-            'file'             => ['nullable', 'file', 'max:51200'], // 50MB
-            'approvers'        => ['nullable', 'array'],
-            'approvers.*'      => ['integer', 'exists:users,id'],
+            'title'                  => ['required', 'string', 'max:255'],
+            'workflow_id'            => ['nullable', 'exists:workflows,id'],
+            'document_type_id'       => ['nullable', 'exists:document_types,id'],
+            'custom_fields'          => ['nullable', 'array'],
+            'custom_fields.*'        => ['nullable', 'string', 'max:2048'],
+            'data'                   => ['nullable', 'array'],
+            'deadline_at'            => ['nullable', 'date'],
+            'file'                   => ['nullable', 'file', 'max:51200'], // 50MB
+            'approvers'              => ['nullable', 'array'],
+            'approvers.*'            => ['integer', 'exists:users,id'],
         ];
     }
 

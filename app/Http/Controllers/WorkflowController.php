@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Workflow;
 use App\Models\WorkflowStage;
 use App\Models\WorkflowStageApprover;
+use App\Models\Department;
 use App\Models\DocumentType;
 use App\Models\User;
 use App\Services\AuditService;
@@ -22,12 +23,31 @@ class WorkflowController extends Controller
         return view('workflows.index', compact('workflows'));
     }
 
+    public function apiIndex()
+    {
+        $workflows = Workflow::where('is_active', true)
+            ->with(['stages.approvers.user'])
+            ->orderBy('name')
+            ->get()
+            ->map(fn($w) => [
+                'id'     => $w->id,
+                'name'   => $w->name,
+                'fields' => $w->process_fields ?? [],
+                'approvers' => $w->stages->flatMap(fn($s) => $s->approvers)->map(fn($a) => [
+                    'id'   => $a->user?->id,
+                    'name' => $a->user?->name,
+                ])->filter(fn($a) => $a['id'])->unique('id')->values(),
+            ]);
+
+        return response()->json($workflows);
+    }
+
     public function create()
     {
         $this->authorize('create', Workflow::class);
-        $documentTypes = DocumentType::all();
-        $users = User::where('is_active', true)->get();
-        return view('workflows.create', compact('documentTypes', 'users'));
+        $users = User::where('is_active', true)->orderBy('name')->get();
+        $departments = Department::orderBy('name')->get();
+        return view('workflows.create', compact('users', 'departments'));
     }
 
     public function store(Request $request)
@@ -35,20 +55,51 @@ class WorkflowController extends Controller
         $this->authorize('create', Workflow::class);
 
         $validated = $request->validate([
-            'name'             => ['required', 'string', 'max:255'],
-            'document_type_id' => ['nullable', 'exists:document_types,id'],
-            'stages'           => ['nullable', 'array'],
+            'name'                     => ['required', 'string', 'max:255'],
+            'description'              => ['nullable', 'string'],
+            'approval_type'            => ['required', 'in:sequential,parallel,parallel_sequential'],
+            'approver_ids'             => ['nullable', 'array'],
+            'approver_ids.*'           => ['exists:users,id'],
+            'allowed_department_ids'   => ['nullable', 'array'],
+            'allowed_department_ids.*' => ['exists:departments,id'],
+            'process_fields'           => ['nullable', 'array'],
+            'process_fields.*.name'    => ['required_with:process_fields', 'string', 'max:255'],
+            'process_fields.*.type'    => ['required_with:process_fields', 'in:string,number,date,file'],
         ]);
 
         $workflow = Workflow::create([
-            'name'             => $validated['name'],
-            'document_type_id' => $validated['document_type_id'] ?? null,
-            'created_by'       => auth()->id(),
-            'is_system'        => false,
-            'is_active'        => false,
+            'name'                => $validated['name'],
+            'description'         => $validated['description'] ?? null,
+            'approval_type'       => $validated['approval_type'],
+            'allowed_departments' => $validated['allowed_department_ids'] ?? null,
+            'process_fields'      => $validated['process_fields'] ?? null,
+            'created_by'          => auth()->id(),
+            'is_system'           => false,
+            'is_active'           => false,
         ]);
 
-        $this->saveStages($workflow, $request->input('stages', []));
+        // Create initial stage with selected approvers
+        $approverIds = $validated['approver_ids'] ?? [];
+        if (count($approverIds) > 0) {
+            $stageType = match ($validated['approval_type']) {
+                'parallel', 'parallel_sequential' => 'parallel',
+                default                           => 'sequential',
+            };
+            $stage = WorkflowStage::create([
+                'workflow_id' => $workflow->id,
+                'name'        => 'Этап 1',
+                'stage_type'  => $stageType,
+                'sort_order'  => 0,
+            ]);
+            foreach ($approverIds as $userId) {
+                WorkflowStageApprover::create([
+                    'workflow_stage_id' => $stage->id,
+                    'approver_type'     => 'user',
+                    'approver_id'       => $userId,
+                    'is_required'       => true,
+                ]);
+            }
+        }
 
         $this->auditService->log('workflow_created', $workflow);
 
@@ -60,6 +111,11 @@ class WorkflowController extends Controller
         $workflow->load(['stages.approvers', 'documentType', 'creator']);
         $users = User::where('is_active', true)->get();
         return view('workflows.builder', compact('workflow', 'users'));
+    }
+
+    public function builder(Workflow $workflow)
+    {
+        return $this->show($workflow);
     }
 
     public function edit(Workflow $workflow)

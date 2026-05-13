@@ -13,7 +13,7 @@ class Document extends Model
     use HasFactory;
 
     protected $fillable = [
-        'title', 'document_type_id', 'initiator_id',
+        'title', 'document_type_id', 'workflow_id', 'initiator_id',
         'current_stage_id', 'status', 'data', 'bitrix24_task_id', 'deadline_at',
     ];
 
@@ -25,6 +25,11 @@ class Document extends Model
     public function type(): BelongsTo
     {
         return $this->belongsTo(DocumentType::class, 'document_type_id');
+    }
+
+    public function workflow(): BelongsTo
+    {
+        return $this->belongsTo(Workflow::class);
     }
 
     public function initiator(): BelongsTo

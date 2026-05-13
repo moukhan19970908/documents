@@ -13,11 +13,14 @@ class Workflow extends Model
 
     protected $fillable = [
         'name', 'description', 'document_type_id', 'created_by', 'is_system', 'is_active',
+        'approval_type', 'allowed_departments', 'process_fields',
     ];
 
     protected $casts = [
-        'is_system' => 'boolean',
-        'is_active' => 'boolean',
+        'is_system'           => 'boolean',
+        'is_active'           => 'boolean',
+        'allowed_departments' => 'array',
+        'process_fields'      => 'array',
     ];
 
     public function documentType(): BelongsTo

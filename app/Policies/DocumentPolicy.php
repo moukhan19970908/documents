@@ -14,11 +14,24 @@ class DocumentPolicy
 
     public function view(User $user, Document $document): bool
     {
+        // Anyone delegated to in any approval stage can view
+        $isDelegatee = $document->approvals()
+            ->whereHas('stages.decisions', fn($q) => $q
+                ->where('action', 'delegate')
+                ->where('delegated_to', $user->id))
+            ->exists();
+        if ($isDelegatee) {
+            return true;
+        }
+
         return match($user->role) {
             'admin'    => true,
             'director' => $document->initiator->department_id === $user->department_id
                           || $document->approvals()
                               ->whereHas('stages.decisions', fn($q) => $q->where('user_id', $user->id))
+                              ->exists()
+                          || $document->approvals()
+                              ->whereHas('stages.workflowStage.approvers', fn($q) => $q->where('approver_id', $user->id))
                               ->exists(),
             'linear'   => $document->initiator_id === $user->id
                           || $document->approvals()
@@ -60,8 +73,15 @@ class DocumentPolicy
             return false;
         }
 
-        return $activeStage->workflowStage->approvers()
-            ->where('approver_id', $user->id)
+        // Direct approver
+        if ($activeStage->workflowStage->approvers()->where('approver_id', $user->id)->exists()) {
+            return true;
+        }
+
+        // Delegated approver
+        return $activeStage->decisions()
+            ->where('action', 'delegate')
+            ->where('delegated_to', $user->id)
             ->exists();
     }
 }

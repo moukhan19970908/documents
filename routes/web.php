@@ -60,6 +60,7 @@ Route::middleware(['auth', 'audit'])->group(function () {
     // Workflows
     Route::resource('workflows', WorkflowController::class);
     Route::get('workflows/{workflow}/builder', [WorkflowController::class, 'builder'])->name('workflows.builder');
+    Route::get('api/workflows', [WorkflowController::class, 'apiIndex'])->name('api.workflows');
 
     // Tasks
     Route::get('/tasks', [DocumentController::class, 'tasks'])->name('tasks');

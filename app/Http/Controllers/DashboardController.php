@@ -14,7 +14,11 @@ class DashboardController extends Controller
 
         $pendingApprovals = DocumentApprovalStage::query()
             ->where('status', 'in_progress')
-            ->whereHas('workflowStage.approvers', fn($q) => $q->where('approver_id', $user->id))
+            ->where(fn($q) => $q
+                ->whereHas('workflowStage.approvers', fn($q2) => $q2->where('approver_id', $user->id))
+                ->orWhereHas('decisions', fn($q2) => $q2->where('action', 'delegate')->where('delegated_to', $user->id))
+            )
+            ->whereDoesntHave('decisions', fn($q) => $q->where('user_id', $user->id)->whereIn('action', ['approve', 'reject', 'delegate']))
             ->with([
                 'documentApproval.document.type',
                 'documentApproval.document.initiator',
@@ -38,7 +42,10 @@ class DashboardController extends Controller
             'processed_week' => DocumentApprovalDecision::where('user_id', $user->id)
                 ->where('decided_at', '>=', now()->subWeek())->count(),
             'overdue_count'  => DocumentApprovalStage::where('status', 'in_progress')
-                ->whereHas('workflowStage.approvers', fn($q) => $q->where('approver_id', $user->id))
+                ->where(fn($q) => $q
+                    ->whereHas('workflowStage.approvers', fn($q2) => $q2->where('approver_id', $user->id))
+                    ->orWhereHas('decisions', fn($q2) => $q2->where('action', 'delegate')->where('delegated_to', $user->id))
+                )
                 ->where('deadline_at', '<', now())
                 ->count(),
         ];
@@ -63,7 +70,11 @@ class DashboardController extends Controller
 
         $pendingStages = DocumentApprovalStage::query()
             ->where('status', 'in_progress')
-            ->whereHas('workflowStage.approvers', fn($q) => $q->where('approver_id', $user->id))
+            ->where(fn($q) => $q
+                ->whereHas('workflowStage.approvers', fn($q2) => $q2->where('approver_id', $user->id))
+                ->orWhereHas('decisions', fn($q2) => $q2->where('action', 'delegate')->where('delegated_to', $user->id))
+            )
+            ->whereDoesntHave('decisions', fn($q) => $q->where('user_id', $user->id)->whereIn('action', ['approve', 'reject', 'delegate']))
             ->with(['documentApproval.document.type', 'documentApproval.document.currentFile', 'workflowStage'])
             ->orderBy('deadline_at')
             ->get();

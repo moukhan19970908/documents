@@ -6,6 +6,7 @@ use App\Http\Requests\StoreDocumentRequest;
 use App\Models\Chat;
 use App\Models\Document;
 use App\Models\DocumentType;
+use App\Models\Workflow;
 use App\Models\User;
 use App\Models\Department;
 use App\Services\AuditService;
@@ -79,11 +80,13 @@ class DocumentController extends Controller
             $query->where(fn($q) => $q
                 ->where('initiator_id', $user->id)
                 ->orWhereHas('approvals.stages', fn($q2) => $q2->whereHas('workflowStage.approvers', fn($q3) => $q3->where('approver_id', $user->id)))
+                ->orWhereHas('approvals.stages.decisions', fn($q2) => $q2->where('action', 'delegate')->where('delegated_to', $user->id))
             );
         } elseif ($user->role === 'director') {
             $query->where(fn($q) => $q
                 ->whereHas('initiator', fn($q2) => $q2->where('department_id', $user->department_id))
                 ->orWhere('initiator_id', $user->id)
+                ->orWhereHas('approvals.stages.decisions', fn($q2) => $q2->where('action', 'delegate')->where('delegated_to', $user->id))
             );
         }
 
@@ -97,20 +100,25 @@ class DocumentController extends Controller
     public function create()
     {
         $this->authorize('create', Document::class);
-        $documentTypes = DocumentType::with('fields')->get();
-        $users = User::where('is_active', true)->where('id', '!=', auth()->id())
-            ->with('department')->orderBy('name')->get(['id', 'name', 'role', 'department_id']);
-        return view('documents.create', compact('documentTypes', 'users'));
+        $workflows = Workflow::where('is_active', true)
+            ->with(['stages.approvers.user'])
+            ->orderBy('name')
+            ->get();
+        return view('documents.create', compact('workflows'));
     }
 
     public function store(StoreDocumentRequest $request)
     {
+        // Merge custom_fields into data
+        $data = array_merge($request->data ?? [], $request->custom_fields ?? []);
+
         $document = Document::create([
             'title'            => $request->title,
+            'workflow_id'      => $request->workflow_id ?: null,
             'document_type_id' => $request->document_type_id ?: null,
             'initiator_id'     => auth()->id(),
             'status'           => 'draft',
-            'data'             => $request->data ?? [],
+            'data'             => $data,
             'deadline_at'      => $request->deadline_at ?: null,
         ]);
 
@@ -120,8 +128,15 @@ class DocumentController extends Controller
 
         $this->auditService->log('document_created', $document, null, $document->toArray());
 
-        // Auto-start ad-hoc approval if approvers selected
-        if ($request->filled('approvers') && is_array($request->approvers)) {
+        // Auto-start approval from the selected workflow
+        if ($document->workflow_id) {
+            $workflow = Workflow::with('stages.approvers')->find($document->workflow_id);
+            if ($workflow) {
+                $this->approvalEngine->startApproval($document, $workflow);
+                $this->auditService->log(auth()->user()->name . ' начал процесс «' . $document->title . '»', $document);
+            }
+        } elseif ($request->filled('approvers') && is_array($request->approvers)) {
+            // Legacy ad-hoc fallback
             $this->approvalEngine->startAdHocApproval($document, $request->approvers);
             $this->auditService->log(auth()->user()->name . ' начал процесс «' . $document->title . '»', $document);
         }
@@ -136,13 +151,16 @@ class DocumentController extends Controller
 
         $document->load([
             'type.fields',
+            'workflow',
             'initiator.department',
             'files',
             'activeApproval.workflow.stages.approvers.user',
             'activeApproval.stages.decisions.user',
+            'activeApproval.stages.decisions.delegatee.department',
             'activeApproval.stages.workflowStage.approvers.user',
             'approvals.workflow.stages.approvers.user',
             'approvals.stages.decisions.user',
+            'approvals.stages.decisions.delegatee',
             'approvals.stages.workflowStage.approvers.user',
             'notes.author',
             'relatedFiles.uploader',
@@ -223,9 +241,9 @@ class DocumentController extends Controller
             ->orderByDesc('updated_at');
 
         if ($filter === 'overdue') {
-            $query->whereHas('approvals.stages', fn($q) => $q->where('deadline', '<', now()));
+            $query->whereHas('approvals.stages', fn($q) => $q->where('deadline_at', '<', now()));
         } elseif ($filter === 'pending') {
-            $query->whereHas('approvals.stages', fn($q) => $q->where('status', 'active'));
+            $query->whereHas('approvals.stages', fn($q) => $q->where('status', 'in_progress'));
         } elseif ($filter === 'completed') {
             $query->whereIn('status', ['approved', 'signed']);
         }

@@ -36,7 +36,10 @@
                         @endif
                     </div>
                     <div class="flex-1 min-w-0">
-                        <p class="text-sm text-gray-800 {{ !$n->is_read ? 'font-semibold' : '' }}">{{ $n->message }}</p>
+                        <p class="text-sm text-gray-800 {{ !$n->is_read ? 'font-semibold' : '' }}">{{ $n->title }}</p>
+                        @if($n->body)
+                            <p class="text-xs text-gray-500 mt-0.5">{{ $n->body }}</p>
+                        @endif
                         <p class="text-xs text-gray-400 mt-1">{{ $n->created_at->diffForHumans() }}</p>
                     </div>
                     @if(!$n->is_read)

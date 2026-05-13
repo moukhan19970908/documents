@@ -59,7 +59,7 @@ class ApprovalController extends Controller
     {
         $this->authorize('update', $document);
 
-        if ($document->status !== 'draft') {
+        if (!in_array($document->status, ['draft', 'requires_changes'])) {
             return back()->with('error', 'Документ не готов к повторному согласованию.');
         }
 

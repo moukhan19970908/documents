@@ -122,16 +122,20 @@
 
     </div>
 
+    @php
+        $stagesData = $workflow->stages->sortBy('sort_order')->map(fn($s) => [
+            'id'             => $s->id,
+            'name'           => $s->name,
+            'stage_type'     => $s->stage_type,
+            'deadline_hours' => $s->deadline_hours,
+            'approvers'      => $s->approvers->map(fn($a) => ['approver_id' => $a->approver_id])->values()->toArray(),
+        ])->values();
+    @endphp
+
     <script>
     function workflowBuilder() {
         return {
-            stages: @json($workflow->stages->sortBy('sort_order')->map(fn($s) => [
-                'id'             => $s->id,
-                'name'           => $s->name,
-                'stage_type'     => $s->stage_type,
-                'deadline_hours' => $s->deadline_hours,
-                'approvers'      => $s->approvers->map(fn($a) => ['approver_id' => $a->approver_id])->values()->toArray(),
-            ])->values()),
+            stages: @json($stagesData),
             addStage() {
                 this.stages.push({ id: Date.now(), name: '', stage_type: 'sequential', deadline_hours: 24, approvers: [] });
             },

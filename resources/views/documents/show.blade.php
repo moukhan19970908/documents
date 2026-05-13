@@ -15,15 +15,37 @@
 
         $approval     = $document->activeApproval;
         $activeStage  = $approval?->activeStage();
-        $deadline     = $activeStage?->deadline_at;
-        $isOverdue    = $activeStage?->is_overdue ?? false;
+        $deadline     = $document->deadline_at;
+        $isOverdue    = $deadline && $deadline->isPast() && $document->status === 'in_review';
+
+        // Last request_changes comment
+        $lastChangesDecision = $document->approvals
+            ->flatMap(fn($a) => $a->stages)
+            ->flatMap(fn($s) => $s->decisions)
+            ->where('action', 'request_changes')
+            ->sortByDesc('decided_at')
+            ->first();
+        $lastChangesComment = $lastChangesDecision?->comment;
+        $lastChangesBy = $lastChangesDecision?->user?->name;
 
         $myApproverEntry = null;
         if ($activeStage) {
             $myApproverEntry = $activeStage->workflowStage?->approvers
                 ->firstWhere('approver_id', auth()->id());
+            // Also match if current user was delegated to
+            if (!$myApproverEntry) {
+                $delegatedToMe = $activeStage->decisions
+                    ->where('action', 'delegate')
+                    ->where('delegated_to', auth()->id())
+                    ->isNotEmpty();
+                if ($delegatedToMe) {
+                    $myApproverEntry = true;
+                }
+            }
         }
-        $canApprove = $myApproverEntry !== null;
+        $alreadyDecided = $activeStage?->decisions
+            ->contains('user_id', auth()->id()) ?? false;
+        $canApprove = $myApproverEntry !== null && !$alreadyDecided;
     @endphp
 
     {{-- ── Top bar ── --}}
@@ -36,7 +58,7 @@
             @if($deadline)
                 <span class="text-sm font-medium {{ $isOverdue ? 'text-red-600' : 'text-gray-600' }} flex items-center gap-1.5">
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                    Крайний срок: {{ $deadline->format('d.m.Y H:i') }}
+                    Крайний срок: {{ $deadline->format('d.m.Y') }}
                 </span>
             @endif
             <button class="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors">
@@ -89,9 +111,18 @@
                         <div class="space-y-4">
                             <div>
                                 <p class="text-xs text-gray-400">Тип документа</p>
-                                <p class="text-sm font-medium text-gray-900 mt-0.5">{{ $document->type?->name ?? '—' }}</p>
+                                <p class="text-sm font-medium text-gray-900 mt-0.5">{{ $document->workflow?->name ?? $document->type?->name ?? '—' }}</p>
                             </div>
-                            @if($document->data)
+                            @if($document->data && $document->workflow?->process_fields)
+                                @foreach($document->workflow->process_fields as $field)
+                                    @if(isset($document->data[$field['name']]) && $document->data[$field['name']] !== '')
+                                        <div>
+                                            <p class="text-xs text-gray-400">{{ $field['name'] }}</p>
+                                            <p class="text-sm font-medium text-gray-900 mt-0.5">{{ $document->data[$field['name']] }}</p>
+                                        </div>
+                                    @endif
+                                @endforeach
+                            @elseif($document->data)
                                 @foreach($document->type?->fields ?? [] as $field)
                                     @if(isset($document->data[$field->field_key]))
                                         <div>
@@ -146,7 +177,7 @@
                                 <iframe src="{{ route('documents.files.preview', [$document, $document->currentFile]) }}"
                                         class="w-full border-0" style="height:680px"></iframe>
                             @elseif(str_contains($mime, 'wordprocessingml') || str_contains($mime, 'msword'))
-                                <div class="p-4 bg-gray-50" style="min-height:680px">
+                                <div class="p-4 bg-gray-50" style="height:680px; overflow-y:auto">
                                     <div id="docx-render-container" class="w-full flex flex-col items-center gap-4"></div>
                                 </div>
                                 <script>
@@ -209,7 +240,14 @@
                             <div class="bg-white rounded-xl border border-orange-200 p-4">
                                 <div class="mb-3 flex items-start gap-2 p-3 bg-orange-50 rounded-lg">
                                     <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-orange-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
-                                    <p class="text-xs text-orange-700">Документ отправлен на доработку. Загрузите исправленную версию и нажмите кнопку ниже.</p>
+                                    <div>
+                                        <p class="text-xs text-orange-700 font-medium">Документ отправлен на доработку.</p>
+                                        @if($lastChangesComment)
+                                            <p class="text-xs text-orange-700 mt-1"><span class="font-semibold">{{ $lastChangesBy }}:</span> {{ $lastChangesComment }}</p>
+                                        @else
+                                            <p class="text-xs text-orange-600 mt-0.5">Загрузите исправленную версию и нажмите кнопку ниже.</p>
+                                        @endif
+                                    </div>
                                 </div>
                                 <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Повторное согласование</p>
                                 <form action="{{ route('documents.resubmit', $document) }}" method="POST">
@@ -298,7 +336,7 @@
                     {{-- Ваш шаг --}}
                     @if($canApprove)
                         @php $currentApprover = auth()->user(); @endphp
-                        <div class="bg-white rounded-xl border border-gray-200 p-4" x-data="{ comment: '', delegateOpen: false }">
+                        <div class="bg-white rounded-xl border border-gray-200 p-4" x-data="{ comment: '', delegateOpen: false, changesError: false }">
                             <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Ваш шаг</p>
 
                             <div class="flex items-center gap-3 mb-4">
@@ -338,12 +376,14 @@
                                 </button>
                             </form>
 
-                            <form action="{{ route('documents.request-changes', $document) }}" method="POST" class="mb-2">
+                            <form action="{{ route('documents.request-changes', $document) }}" method="POST" class="mb-2"
+                                  @submit.prevent="if(!comment.trim()){ changesError=true; } else { changesError=false; $el.submit(); }">
                                 @csrf
                                 <input type="hidden" name="comment" :value="comment">
                                 <button type="submit" class="w-full text-white py-2.5 rounded-lg text-sm font-semibold transition-colors" style="background:#f97316">
                                     Отправить на доработку
                                 </button>
+                                <p x-show="changesError" class="text-xs text-red-500 mt-1 text-center">Укажите комментарий для доработки</p>
                             </form>
 
                             <button @click="delegateOpen = !delegateOpen"
@@ -392,83 +432,153 @@
         <div x-show="tab === 'approval'">
             @if($approval)
                 @php
-                    $stages = $approval->stages;
-                    $nodes  = [[
-                        'type'   => 'initiator',
-                        'label'  => 'Инициатор',
-                        'name'   => $document->initiator->name,
-                        'date'   => $document->created_at->format('d.m.Y'),
-                        'status' => 'done',
-                        'isMe'   => false,
-                    ]];
-                    foreach ($stages as $stage) {
+                    // Build list of stage-groups for rendering
+                    // Each group = ['stage' => ..., 'approvers' => [...], 'type' => sequential|parallel]
+                    $stageGroups = [];
+                    foreach ($approval->stages->sortBy(fn($s) => $s->workflowStage?->sort_order ?? 0) as $stage) {
+                        $approverNodes = collect();
                         foreach ($stage->workflowStage?->approvers ?? [] as $ap) {
                             $decision = $stage->decisions->where('user_id', $ap->approver_id)->sortByDesc('decided_at')->first();
                             if ($decision) {
-                                $ns = $decision->action === 'approve' ? 'approved' : ($decision->action === 'reject' ? 'rejected' : 'delegated');
+                                if ($decision->action === 'delegate') {
+                                    // Original approver node — delegated
+                                    $approverNodes->push([
+                                        'user'   => $ap->user,
+                                        'status' => 'delegated',
+                                        'label'  => 'Делегировано',
+                                        'isMe'   => $ap->approver_id === auth()->id(),
+                                    ]);
+                                    // Delegatee node
+                                    $delegateeDecision = $stage->decisions->where('user_id', $decision->delegated_to)->sortByDesc('decided_at')->first();
+                                    if ($delegateeDecision) {
+                                        $dtStatus = match($delegateeDecision->action) {
+                                            'approve' => 'approved',
+                                            'reject'  => 'rejected',
+                                            default   => 'delegated',
+                                        };
+                                        $dtLabel = match($delegateeDecision->action) {
+                                            'approve' => $delegateeDecision->decided_at?->format('d.m.Y'),
+                                            'reject'  => 'Отклонено',
+                                            default   => 'Делегировано',
+                                        };
+                                    } else {
+                                        $dtStatus = $stage->status === 'in_progress' ? 'waiting' : 'pending';
+                                        $dtLabel  = $stage->deadline_at ? 'до ' . $stage->deadline_at->format('d.m.Y') : 'Ожидает';
+                                    }
+                                    $approverNodes->push([
+                                        'user'        => $decision->delegatee,
+                                        'status'      => $dtStatus,
+                                        'label'       => $dtLabel,
+                                        'isMe'        => $decision->delegated_to === auth()->id(),
+                                        'isDelegatee' => true,
+                                    ]);
+                                } else {
+                                    $status = match($decision->action) {
+                                        'approve' => 'approved',
+                                        'reject'  => 'rejected',
+                                        default   => 'delegated',
+                                    };
+                                    $label = match($decision->action) {
+                                        'approve' => $decision->decided_at?->format('d.m.Y'),
+                                        'reject'  => 'Отклонено',
+                                        default   => 'Делегировано',
+                                    };
+                                    $approverNodes->push([
+                                        'user'   => $ap->user,
+                                        'status' => $status,
+                                        'label'  => $label,
+                                        'isMe'   => $ap->approver_id === auth()->id(),
+                                    ]);
+                                }
                             } elseif ($stage->status === 'in_progress') {
-                                $ns = 'waiting';
+                                $approverNodes->push([
+                                    'user'   => $ap->user,
+                                    'status' => 'waiting',
+                                    'label'  => $stage->deadline_at ? 'до ' . $stage->deadline_at->format('d.m.Y') : 'Ожидает',
+                                    'isMe'   => $ap->approver_id === auth()->id(),
+                                ]);
                             } elseif ($stage->status === 'approved') {
-                                $ns = 'approved';
+                                $approverNodes->push([
+                                    'user'   => $ap->user,
+                                    'status' => 'approved',
+                                    'label'  => '',
+                                    'isMe'   => $ap->approver_id === auth()->id(),
+                                ]);
                             } else {
-                                $ns = 'pending';
+                                $approverNodes->push([
+                                    'user'   => $ap->user,
+                                    'status' => 'pending',
+                                    'label'  => '',
+                                    'isMe'   => $ap->approver_id === auth()->id(),
+                                ]);
                             }
-                            $nodes[] = [
-                                'type'   => 'approver',
-                                'label'  => $stage->workflowStage?->name ?? 'Согласование',
-                                'name'   => $ap->user?->name ?? '—',
-                                'date'   => $decision?->decided_at?->format('d.m.Y'),
-                                'status' => $ns,
-                                'isMe'   => $ap->approver_id === auth()->id(),
-                            ];
                         }
+                        $stageGroups[] = [
+                            'stage'     => $stage,
+                            'type'      => $stage->workflowStage?->stage_type ?? 'sequential',
+                            'name'      => $stage->workflowStage?->name ?? 'Этап',
+                            'approvers' => $approverNodes,
+                        ];
                     }
                 @endphp
+
                 <div class="bg-white rounded-xl border border-gray-200 p-6">
-                    <h2 class="text-sm font-semibold text-gray-800 mb-6">Цепочка согласования</h2>
-                    <div class="flex items-start gap-0 overflow-x-auto pb-2">
-                        @foreach($nodes as $i => $node)
-                            @php
-                                $circleCls = match($node['status']) {
-                                    'done', 'approved' => 'bg-green-100 text-green-700',
-                                    'rejected'         => 'bg-red-100 text-red-700',
-                                    'waiting'          => 'bg-[#5B4FE8] text-white',
-                                    'delegated'        => 'bg-yellow-100 text-yellow-700',
-                                    default            => 'bg-gray-100 text-gray-400',
-                                };
-                            @endphp
-                            <div class="flex items-center flex-shrink-0">
-                                <div class="flex flex-col items-center" style="width:100px">
-                                    <div class="w-10 h-10 rounded-full flex items-center justify-center {{ $circleCls }}">
-                                        @if(in_array($node['status'], ['done','approved']))
-                                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-                                        @elseif($node['status'] === 'rejected')
-                                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                                        @elseif($node['status'] === 'waiting')
-                                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-                                        @else
-                                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-                                        @endif
-                                    </div>
-                                    <div class="mt-2 text-center px-1">
-                                        <p class="text-[10px] text-gray-400 uppercase tracking-wide">{{ $node['label'] }}</p>
-                                        <p class="text-xs font-medium text-gray-900 mt-0.5 leading-tight">{{ $node['name'] }}</p>
-                                        @if($node['date'])
-                                            <p class="text-[10px] text-gray-400 mt-0.5">{{ $node['date'] }}</p>
-                                        @elseif($node['status'] === 'waiting')
-                                            <p class="text-[10px] mt-0.5 {{ $node['isMe'] ? 'text-[#5B4FE8] font-medium' : 'text-gray-400' }}">
-                                                {{ $node['isMe'] ? 'Ожидает вас' : 'В ожидании' }}
-                                            </p>
-                                        @else
-                                            <p class="text-[10px] text-gray-300 mt-0.5">Заблокировано</p>
-                                        @endif
+                    <h2 class="text-sm font-semibold text-gray-800 mb-8">Процесс согласования</h2>
+
+                    <div class="flex items-center flex-wrap gap-0 overflow-x-auto pb-2">
+
+                        {{-- Initiator node --}}
+                        @include('documents._approval_node', [
+                            'user'   => $document->initiator,
+                            'label'  => 'Инициатор',
+                            'status' => 'approved',
+                            'date'   => $document->created_at->format('d.m.Y'),
+                            'isMe'   => false,
+                        ])
+
+                        @foreach($stageGroups as $gi => $group)
+                            {{-- Arrow between groups --}}
+                            <div class="flex items-center self-center mt-[-20px] mx-1 shrink-0">
+                                <div class="w-8 h-px bg-gray-200"></div>
+                                <svg class="w-3 h-3 text-gray-300 -ml-1 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                            </div>
+
+                            @if($group['type'] === 'parallel' && $group['approvers']->count() > 1)
+                                {{-- Parallel group box --}}
+                                <div class="shrink-0 border-2 border-gray-200 rounded-2xl px-5 py-4 flex flex-col items-center gap-3 bg-gray-50/60">
+                                    <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Параллельное согласование</p>
+                                    <div class="flex items-start gap-4">
+                                        @foreach($group['approvers'] as $ap)
+                                            @include('documents._approval_node', [
+                                                'user'   => $ap['user'],
+                                                'label'  => $ap['user']?->department?->name ?? ($ap['user']?->position ?? ''),
+                                                'status' => $ap['status'],
+                                                'date'   => $ap['label'],
+                                                'isMe'   => $ap['isMe'],
+                                            ])
+                                        @endforeach
                                     </div>
                                 </div>
-                                @if(!$loop->last)
-                                    <div class="flex-shrink-0 w-6 h-px bg-gray-200 mt-[-32px]"></div>
-                                @endif
-                            </div>
+                            @else
+                                {{-- Sequential approvers (one per node) --}}
+                                @foreach($group['approvers'] as $ai => $ap)
+                                    @if($ai > 0)
+                                        <div class="flex items-center self-center mt-[-20px] mx-1 shrink-0">
+                                            <div class="w-8 h-px bg-gray-200"></div>
+                                            <svg class="w-3 h-3 text-gray-300 -ml-1 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                                        </div>
+                                    @endif
+                                    @include('documents._approval_node', [
+                                        'user'   => $ap['user'],
+                                        'label'  => $ap['user']?->department?->name ?? ($ap['user']?->position ?? ''),
+                                        'status' => $ap['status'],
+                                        'date'   => $ap['label'],
+                                        'isMe'   => $ap['isMe'],
+                                    ])
+                                @endforeach
+                            @endif
                         @endforeach
+
                     </div>
                 </div>
             @else
