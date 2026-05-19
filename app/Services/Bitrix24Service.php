@@ -156,7 +156,7 @@ class Bitrix24Service
 
             do {
                 $response = Http::post($this->webhookUrl . '/user.get', [
-                    'ACTIVE' => true,
+                    'FILTER' => ['ACTIVE' => 'Y'],
                     'start'  => $start,
                 ]);
 
@@ -164,60 +164,68 @@ class Bitrix24Service
                 $users = $data['result'] ?? [];
 
                 foreach ($users as $b24User) {
-                    $b24Id = (string) $b24User['ID'];
+                    try {
+                        $b24Id = (string) $b24User['ID'];
 
-                    // Resolve department: UF_DEPARTMENT is an array of Bitrix24 dept IDs
-                    $departmentId = null;
-                    $b24DeptIds = (array) ($b24User['UF_DEPARTMENT'] ?? []);
-                    if (!empty($b24DeptIds)) {
-                        $dept = Department::where('bitrix24_department_id', (string) $b24DeptIds[0])->first();
-                        $departmentId = $dept?->id;
-                    }
+                        // Resolve department: UF_DEPARTMENT is an array of Bitrix24 dept IDs
+                        $departmentId = null;
+                        $b24DeptIds   = (array) ($b24User['UF_DEPARTMENT'] ?? []);
+                        if (!empty($b24DeptIds)) {
+                            $dept         = Department::where('bitrix24_department_id', (string) $b24DeptIds[0])->first();
+                            $departmentId = $dept?->id;
+                        }
 
-                    $isActive  = (bool) ($b24User['ACTIVE'] ?? true);
-                    $name      = trim(($b24User['NAME'] ?? '') . ' ' . ($b24User['LAST_NAME'] ?? ''));
-                    $email     = $b24User['EMAIL'] ?? null;
-                    $photoUrl  = $b24User['PERSONAL_PHOTO'] ?? null;
-                    $position  = $b24User['WORK_POSITION'] ?? null;
+                        $isActive = (bool) ($b24User['ACTIVE'] ?? true);
+                        $name     = trim(($b24User['NAME'] ?? '') . ' ' . ($b24User['LAST_NAME'] ?? ''));
+                        $email    = $b24User['EMAIL'] ?? null;
+                        $photoUrl = $b24User['PERSONAL_PHOTO'] ?? null;
+                        $position = $b24User['WORK_POSITION'] ?? null;
 
-                    $existing = User::where('bitrix24_id', $b24Id)->first();
+                        // Fallback email for users without one (email column is NOT NULL + unique)
+                        if (empty($email)) {
+                            $email = 'bitrix24_' . $b24Id . '@noemail.local';
+                        }
 
-                    if ($existing) {
-                        $avatarPath = ($photoUrl && !$existing->avatar)
-                            ? $this->downloadAvatar($photoUrl, $b24Id)
-                            : $existing->avatar;
+                        $existing = User::where('bitrix24_id', $b24Id)->first();
 
-                        $existing->update([
-                            'name'          => $name ?: $existing->name,
-                            'email'         => $email ?: $existing->email,
-                            'position'      => $position ?? $existing->position,
-                            'department_id' => $departmentId ?? $existing->department_id,
-                            'is_active'     => $isActive,
-                            'avatar'        => $avatarPath,
-                        ]);
-                        $updated++;
-                    } else {
-                        $avatarPath = $photoUrl ? $this->downloadAvatar($photoUrl, $b24Id) : null;
+                        if ($existing) {
+                            $avatarPath = ($photoUrl && !$existing->avatar)
+                                ? $this->downloadAvatar($photoUrl, $b24Id)
+                                : $existing->avatar;
 
-                        // For new users without a password yet, mark inactive until they set one
-                        User::create([
-                            'name'          => $name ?: 'User #' . $b24Id,
-                            'email'         => $email,
-                            'password'      => null,
-                            'role'          => 'linear',
-                            'position'      => $position,
-                            'department_id' => $departmentId,
-                            'bitrix24_id'   => $b24Id,
-                            'is_active'     => $isActive,
-                            'avatar'        => $avatarPath,
-                        ]);
-                        $created++;
+                            $existing->update([
+                                'name'          => $name ?: $existing->name,
+                                'email'         => $email ?: $existing->email,
+                                'position'      => $position ?? $existing->position,
+                                'department_id' => $departmentId ?? $existing->department_id,
+                                'is_active'     => $isActive,
+                                'avatar'        => $avatarPath,
+                            ]);
+                            $updated++;
+                        } else {
+                            $avatarPath = $photoUrl ? $this->downloadAvatar($photoUrl, $b24Id) : null;
+
+                            User::create([
+                                'name'          => $name ?: 'User #' . $b24Id,
+                                'email'         => $email,
+                                'password'      => null,
+                                'role'          => 'linear',
+                                'position'      => $position,
+                                'department_id' => $departmentId,
+                                'bitrix24_id'   => $b24Id,
+                                'is_active'     => $isActive,
+                                'avatar'        => $avatarPath,
+                            ]);
+                            $created++;
+                        }
+                    } catch (\Exception $e) {
+                        Log::warning('Bitrix24 syncUsers: skipped user ' . ($b24User['ID'] ?? '?') . ': ' . $e->getMessage());
                     }
                 }
 
-                $total = $data['total'] ?? ($start + count($users));
-                $start += 50;
-            } while ($start < $total);
+                // Bitrix24 returns 'next' with the offset for the next page; absent when done
+                $start = $data['next'] ?? null;
+            } while ($start !== null);
         } catch (\Exception $e) {
             Log::error('Bitrix24 syncUsers failed: ' . $e->getMessage());
         }

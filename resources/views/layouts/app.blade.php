@@ -75,6 +75,57 @@
                         {{ $item['label'] }}
                     </a>
                 @endforeach
+
+                {{-- Trips --}}
+                <div class="pt-3 pb-1">
+                    <p class="px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Командировки</p>
+                </div>
+                <a href="{{ route('trips.index') }}"
+                   class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {{ request()->routeIs('trips.index') || (request()->routeIs('trips.*') && !request()->routeIs('trips.approvals') && !request()->routeIs('trips.registries.*')) ? 'bg-[#5B4FE8] text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+                    Мои заявки
+                </a>
+                @if(auth()->user()->isManager())
+                    <a href="{{ route('trips.approvals') }}"
+                       class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {{ request()->routeIs('trips.approvals') ? 'bg-[#5B4FE8] text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        На согласование
+                    </a>
+                    <a href="{{ route('trips.registries.index') }}"
+                       class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {{ request()->routeIs('trips.registries.*') ? 'bg-[#5B4FE8] text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                        Реестры
+                    </a>
+                @endif
+
+                {{-- Vacations --}}
+                <div class="pt-3 pb-1">
+                    <p class="px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Отпуска</p>
+                </div>
+                <a href="{{ route('vacations.index') }}"
+                   class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {{ request()->routeIs('vacations.index') || (request()->routeIs('vacations.*') && !request()->routeIs('vacations.approvals')) ? 'bg-[#5B4FE8] text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                    Мои заявки
+                </a>
+                @if(auth()->user()->isManager())
+                    <a href="{{ route('vacations.approvals') }}"
+                       class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {{ request()->routeIs('vacations.approvals') ? 'bg-[#5B4FE8] text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        На согласование
+                    </a>
+                @endif
+
+                {{-- Admin --}}
+                @if(auth()->user()->role === 'admin')
+                    <div class="pt-3 pb-1">
+                        <p class="px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Администрирование</p>
+                    </div>
+                    <a href="{{ route('admin.approval-routes.index') }}"
+                       class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {{ request()->routeIs('admin.approval-routes.*') ? 'bg-[#5B4FE8] text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h8m-8 6h16"/></svg>
+                        Маршруты
+                    </a>
+                @endif
             </nav>
 
             {{-- Bottom links --}}

@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Workflow extends Model
@@ -13,13 +14,14 @@ class Workflow extends Model
 
     protected $fillable = [
         'name', 'description', 'document_type_id', 'created_by', 'is_system', 'is_active',
-        'approval_type', 'allowed_departments', 'process_fields',
+        'approval_type', 'allowed_departments', 'allowed_users', 'process_fields',
     ];
 
     protected $casts = [
         'is_system'           => 'boolean',
         'is_active'           => 'boolean',
         'allowed_departments' => 'array',
+        'allowed_users'       => 'array',
         'process_fields'      => 'array',
     ];
 
@@ -36,5 +38,10 @@ class Workflow extends Model
     public function stages(): HasMany
     {
         return $this->hasMany(WorkflowStage::class)->orderBy('sort_order');
+    }
+
+    public function folders(): BelongsToMany
+    {
+        return $this->belongsToMany(WorkflowFolder::class, 'workflow_folder_workflow');
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Workflow;
+use App\Models\WorkflowFolder;
 use App\Models\WorkflowStage;
 use App\Models\WorkflowStageApprover;
 use App\Models\Department;
@@ -15,12 +16,31 @@ class WorkflowController extends Controller
 {
     public function __construct(private AuditService $auditService) {}
 
-    public function index()
+    public function index(Request $request)
     {
-        $workflows = Workflow::with(['documentType', 'creator', 'stages' => function ($q) {
+        $folderId = $request->query('folder_id');
+
+        $query = Workflow::where('is_active',true)->with(['documentType', 'creator', 'stages' => function ($q) {
             $q->withCount('approvers')->orderBy('sort_order');
-        }])->get();
-        return view('workflows.index', compact('workflows'));
+        }, 'folders']);
+
+        if ($folderId) {
+            $query->whereHas('folders', fn($q) => $q->where('workflow_folders.id', $folderId));
+        }
+
+        $workflows = $query->get();
+
+        $folderTree = WorkflowFolder::with(['children' => fn($q) => $q->withCount('workflows')])
+            ->withCount('workflows')
+            ->whereNull('parent_id')
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get();
+
+        $totalCount = Workflow::where('is_active',true)->count();
+        $currentFolder = $folderId ? WorkflowFolder::find($folderId) : null;
+
+        return view('workflows.index', compact('workflows', 'folderTree', 'totalCount', 'currentFolder', 'folderId'));
     }
 
     public function apiIndex()
@@ -45,9 +65,22 @@ class WorkflowController extends Controller
     public function create()
     {
         $this->authorize('create', Workflow::class);
-        $users = User::where('is_active', true)->orderBy('name')->get();
         $departments = Department::orderBy('name')->get();
-        return view('workflows.create', compact('users', 'departments'));
+        $users = User::where('is_active', true)->orderBy('name')->get(['id', 'name', 'position', 'department_id']);
+        $deptNamesById = $departments->pluck('name', 'id');
+        $usersForJs = $users->map(fn($u) => [
+            'id'            => $u->id,
+            'name'          => $u->name,
+            'position'      => $u->position ?? '',
+            'department_id' => $u->department_id,
+            'deptName'      => $deptNamesById[$u->department_id] ?? '',
+        ]);
+        $folderTree = WorkflowFolder::with('children')
+            ->whereNull('parent_id')
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get();
+        return view('workflows.create', compact('users', 'usersForJs', 'departments', 'folderTree'));
     }
 
     public function store(Request $request)
@@ -62,6 +95,10 @@ class WorkflowController extends Controller
             'approver_ids.*'           => ['exists:users,id'],
             'allowed_department_ids'   => ['nullable', 'array'],
             'allowed_department_ids.*' => ['exists:departments,id'],
+            'allowed_user_ids'         => ['nullable', 'array'],
+            'allowed_user_ids.*'       => ['exists:users,id'],
+            'folder_ids'               => ['nullable', 'array'],
+            'folder_ids.*'             => ['exists:workflow_folders,id'],
             'process_fields'           => ['nullable', 'array'],
             'process_fields.*.name'    => ['required_with:process_fields', 'string', 'max:255'],
             'process_fields.*.type'    => ['required_with:process_fields', 'in:string,number,date,file'],
@@ -72,10 +109,11 @@ class WorkflowController extends Controller
             'description'         => $validated['description'] ?? null,
             'approval_type'       => $validated['approval_type'],
             'allowed_departments' => $validated['allowed_department_ids'] ?? null,
+            'allowed_users'       => $validated['allowed_user_ids'] ?? null,
             'process_fields'      => $validated['process_fields'] ?? null,
             'created_by'          => auth()->id(),
             'is_system'           => false,
-            'is_active'           => false,
+            'is_active'           => true,
         ]);
 
         // Create initial stage with selected approvers
@@ -102,6 +140,11 @@ class WorkflowController extends Controller
         }
 
         $this->auditService->log('workflow_created', $workflow);
+
+        // Attach folders
+        if (!empty($validated['folder_ids'])) {
+            $workflow->folders()->sync($validated['folder_ids']);
+        }
 
         return redirect()->route('workflows.show', $workflow)->with('success', 'Воркфлоу создан.');
     }

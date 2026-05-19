@@ -15,7 +15,8 @@ class User extends Authenticatable
     use HasFactory, Notifiable;
 
     protected $fillable = [
-        'name', 'email', 'password', 'role', 'position', 'department_id',
+        'name', 'email', 'password', 'role', 'role_level', 'role_title',
+        'position', 'department_id', 'manager_id',
         'bitrix24_id', 'bitrix24_token', 'avatar', 'is_active',
         'notification_email', 'telegram_chat_id',
     ];
@@ -62,6 +63,54 @@ class User extends Authenticatable
         return $this->role === 'admin';
     }
 
+    public function isManager(): bool
+    {
+        return ($this->role_level ?? 1) >= 2 || in_array($this->role, ['admin', 'director']);
+    }
+
+    public function isAccounting(): bool
+    {
+        return $this->role === 'archiver'; // mapping archiver → accounting role
+    }
+
+    public function manager(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'manager_id');
+    }
+
+    public function subordinates(): HasMany
+    {
+        return $this->hasMany(User::class, 'manager_id');
+    }
+
+    public function directSubordinateIds(): array
+    {
+        return $this->subordinates()->pluck('id')->toArray();
+    }
+
+    public function allSubordinateIds(): array
+    {
+        $ids = [];
+        $queue = [$this->id];
+        while (!empty($queue)) {
+            $currentId = array_shift($queue);
+            $children = User::where('manager_id', $currentId)->pluck('id')->toArray();
+            $ids = array_merge($ids, $children);
+            $queue = array_merge($queue, $children);
+        }
+        return $ids;
+    }
+
+    public function tripRequests(): HasMany
+    {
+        return $this->hasMany(TripRequest::class);
+    }
+
+    public function vacationRequests(): HasMany
+    {
+        return $this->hasMany(VacationRequest::class);
+    }
+
     public function getAvatarUrlAttribute(): string
     {
         if ($this->avatar) {
@@ -72,6 +121,9 @@ class User extends Authenticatable
 
     public function getRoleLabelAttribute(): string
     {
+        if ($this->role_title) {
+            return $this->role_title;
+        }
         return match($this->role) {
             'admin'    => 'Администратор',
             'director' => 'Директор',

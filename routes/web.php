@@ -16,6 +16,13 @@ use App\Http\Controllers\EmployeesController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\DepartmentController;
 use App\Http\Controllers\Admin\DocumentTypeController;
+use App\Http\Controllers\Admin\WorkflowFolderController;
+use App\Http\Controllers\Admin\ApprovalRouteController;
+use App\Http\Controllers\Trip\TripRequestController;
+use App\Http\Controllers\Trip\TripApprovalController;
+use App\Http\Controllers\Trip\TripRegistryController;
+use App\Http\Controllers\Vacation\VacationRequestController;
+use App\Http\Controllers\Vacation\VacationApprovalController;
 
 // Auth
 Route::redirect('/', '/login');
@@ -78,5 +85,44 @@ Route::middleware(['auth', 'audit'])->group(function () {
         Route::resource('users', UserController::class);
         Route::resource('departments', DepartmentController::class);
         Route::resource('document-types', DocumentTypeController::class);
+        Route::resource('workflow-folders', WorkflowFolderController::class);
+        Route::resource('approval-routes', ApprovalRouteController::class);
+        Route::patch('approval-routes/{approval_route}/toggle', [ApprovalRouteController::class, 'toggle'])->name('approval-routes.toggle');
+    });
+
+    // Trips
+    Route::prefix('trips')->name('trips.')->group(function () {
+        Route::get('/', [TripRequestController::class, 'index'])->name('index');
+        Route::get('/create', [TripRequestController::class, 'create'])->name('create');
+        Route::post('/', [TripRequestController::class, 'store'])->name('store');
+        Route::get('/approvals', [TripApprovalController::class, 'index'])->name('approvals');
+        Route::get('/registries', [TripRegistryController::class, 'index'])->name('registries.index');
+        Route::post('/registries', [TripRegistryController::class, 'store'])->name('registries.store');
+        Route::get('/registries/{registry}', [TripRegistryController::class, 'show'])->name('registries.show');
+        Route::post('/registries/{registry}/send', [TripRegistryController::class, 'send'])->name('registries.send');
+        Route::post('/registries/{registry}/approve', [TripRegistryController::class, 'approve'])->name('registries.approve');
+        Route::post('/registries/{registry}/reject', [TripRegistryController::class, 'reject'])->name('registries.reject');
+        Route::post('/registries/{registry}/accounting', [TripRegistryController::class, 'sendToAccounting'])->name('registries.send-accounting');
+        Route::post('/registries/{registry}/accept', [TripRegistryController::class, 'accept'])->name('registries.accept');
+        Route::get('/{trip}', [TripRequestController::class, 'show'])->name('show');
+        Route::get('/{trip}/edit', [TripRequestController::class, 'edit'])->name('edit');
+        Route::put('/{trip}', [TripRequestController::class, 'update'])->name('update');
+        Route::post('/{trip}/approve', [TripApprovalController::class, 'approve'])->name('approve');
+        Route::post('/{trip}/reject', [TripApprovalController::class, 'reject'])->name('reject');
+        Route::post('/{trip}/revision', [TripApprovalController::class, 'revision'])->name('revision');
+    });
+
+    // Vacations
+    Route::prefix('vacations')->name('vacations.')->group(function () {
+        Route::get('/', [VacationRequestController::class, 'index'])->name('index');
+        Route::get('/create', [VacationRequestController::class, 'create'])->name('create');
+        Route::post('/', [VacationRequestController::class, 'store'])->name('store');
+        Route::get('/approvals', [VacationApprovalController::class, 'index'])->name('approvals');
+        Route::get('/{vacation}', [VacationRequestController::class, 'show'])->name('show');
+        Route::get('/{vacation}/edit', [VacationRequestController::class, 'edit'])->name('edit');
+        Route::put('/{vacation}', [VacationRequestController::class, 'update'])->name('update');
+        Route::post('/{vacation}/approve', [VacationApprovalController::class, 'approve'])->name('approve');
+        Route::post('/{vacation}/reject', [VacationApprovalController::class, 'reject'])->name('reject');
+        Route::post('/{vacation}/revision', [VacationApprovalController::class, 'revision'])->name('revision');
     });
 });

@@ -100,10 +100,30 @@ class DocumentController extends Controller
     public function create()
     {
         $this->authorize('create', Document::class);
+
+        $user = auth()->user();
+
         $workflows = Workflow::where('is_active', true)
             ->with(['stages.approvers.user'])
             ->orderBy('name')
-            ->get();
+            ->get()
+            ->filter(function ($workflow) use ($user) {
+                // No department restriction — accessible to all
+                if (empty($workflow->allowed_departments)) {
+                    return true;
+                }
+                // User's department must be in allowed_departments
+                if (!in_array($user->department_id, $workflow->allowed_departments)) {
+                    return false;
+                }
+                // If specific users are set, user must be in that list
+                if (!empty($workflow->allowed_users)) {
+                    return in_array($user->id, $workflow->allowed_users);
+                }
+                return true;
+            })
+            ->values();
+
         return view('documents.create', compact('workflows'));
     }
 
