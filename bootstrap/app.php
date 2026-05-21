@@ -13,8 +13,9 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
-            'role'  => \App\Http\Middleware\CheckRole::class,
-            'audit' => \App\Http\Middleware\AuditLog::class,
+            'role'      => \App\Http\Middleware\CheckRole::class,
+            'audit'     => \App\Http\Middleware\AuditLog::class,
+            'agreement' => \App\Http\Middleware\RequireAgreement::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

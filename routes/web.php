@@ -24,6 +24,8 @@ use App\Http\Controllers\Trip\TripRegistryController;
 use App\Http\Controllers\Vacation\VacationRequestController;
 use App\Http\Controllers\Vacation\VacationApprovalController;
 
+use App\Http\Controllers\AgreementController;
+
 // Auth
 Route::redirect('/', '/login');
 Route::get('/login', [LoginController::class, 'show'])->name('login');
@@ -32,7 +34,14 @@ Route::get('/auth/bitrix24', [BitrixSocialiteController::class, 'redirect'])->na
 Route::get('/auth/bitrix24/callback', [BitrixSocialiteController::class, 'callback'])->name('auth.bitrix24.callback');
 Route::post('/logout', [LoginController::class, 'logout'])->name('logout')->middleware('auth');
 
-Route::middleware(['auth', 'audit'])->group(function () {
+// Agreement (auth required, but no agreement check yet)
+Route::middleware('auth')->group(function () {
+    Route::get('/agreement', [AgreementController::class, 'show'])->name('agreement.show');
+    Route::post('/agreement/accept', [AgreementController::class, 'accept'])->name('agreement.accept');
+    Route::get('/agreement/decline', [AgreementController::class, 'decline'])->name('agreement.decline');
+});
+
+Route::middleware(['auth', 'agreement', 'audit'])->group(function () {
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 

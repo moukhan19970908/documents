@@ -44,14 +44,6 @@
             <div class="value">{{ $document->title }}</div>
         </div>
         <div class="meta-item">
-            <div class="label">ID</div>
-            <div class="value">D-{{ $document->id }}</div>
-        </div>
-        <div class="meta-item">
-            <div class="label">Тип</div>
-            <div class="value">{{ $document->type?->name ?? '—' }}</div>
-        </div>
-        <div class="meta-item">
             <div class="label">Инициатор</div>
             <div class="value">{{ $document->initiator->name }}</div>
         </div>
@@ -101,9 +93,9 @@
                             <td>{{ $decision->user->name }}</td>
                             <td>{{ $decision->user->department?->name ?? '—' }}</td>
                             <td>
-                                @if($decision->decision === 'approved')
-                                    <span class="badge badge-approved">ОДОБРЕНО</span>
-                                @elseif($decision->decision === 'rejected')
+                                @if($decision->action === 'approve')
+                                    <span class="badge badge-approved">Подписано</span>
+                                @elseif($decision->action === 'reject')
                                     <span class="badge badge-rejected">ОТКЛОНЕНО</span>
                                 @else
                                     <span class="badge badge-pending">ОЖИДАЕТ</span>

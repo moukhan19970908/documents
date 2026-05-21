@@ -18,7 +18,7 @@ class User extends Authenticatable
         'name', 'email', 'password', 'role', 'role_level', 'role_title',
         'position', 'department_id', 'manager_id',
         'bitrix24_id', 'bitrix24_token', 'avatar', 'is_active',
-        'notification_email', 'telegram_chat_id',
+        'notification_email', 'telegram_chat_id', 'agreement_accepted_at',
     ];
 
     protected $hidden = ['password', 'remember_token', 'bitrix24_token'];
@@ -26,10 +26,11 @@ class User extends Authenticatable
     protected function casts(): array
     {
         return [
-            'email_verified_at'  => 'datetime',
-            'password'           => 'hashed',
-            'is_active'          => 'boolean',
-            'notification_email' => 'boolean',
+            'email_verified_at'       => 'datetime',
+            'password'                => 'hashed',
+            'is_active'               => 'boolean',
+            'notification_email'      => 'boolean',
+            'agreement_accepted_at'   => 'datetime',
         ];
     }
 

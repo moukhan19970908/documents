@@ -13,8 +13,8 @@
         ];
         $statusBadge = $statusColors[$document->status] ?? 'bg-gray-100 text-gray-600';
 
-        $approval     = $document->activeApproval;
-        $activeStage  = $approval?->activeStage();
+        $approval     = $document->activeApproval ?? $document->approvals->sortByDesc('id')->first();
+        $activeStage  = $document->activeApproval?->activeStage();
         $deadline     = $document->deadline_at;
         $isOverdue    = $deadline && $deadline->isPast() && $document->status === 'in_review';
 
