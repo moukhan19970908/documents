@@ -90,6 +90,7 @@
                           class="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">{{ old('comment', $trip->comment) }}</textarea>
             </div>
 
+
             <div class="flex items-center gap-3">
                 <button type="submit" name="submit" value="1"
                         class="px-6 py-2.5 bg-[#5B4FE8] text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">

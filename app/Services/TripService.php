@@ -24,9 +24,15 @@ class TripService
         $transport     = (float) ($data['transport_total'] ?? 0);
         $total         = ($dailyRate * $days) + $accommodation + $transport;
 
-        return DB::transaction(function () use ($user, $data, $route, $total, $submit) {
+        $firstStep   = $route?->steps()->orderBy('step_order')->first();
+        $signatoryId = $firstStep
+            ? $this->approvalService->findApprover($user, $firstStep)?->id
+            : null;
+
+        return DB::transaction(function () use ($user, $data, $route, $total, $submit, $signatoryId) {
             $trip = TripRequest::create([
                 'user_id'              => $user->id,
+                'signatory_id'         => $signatoryId,
                 'route_id'             => $route?->id,
                 'current_step'         => 1,
                 'status'               => $submit ? 'pending' : 'draft',

@@ -14,6 +14,7 @@ use App\Models\Workflow;
 use App\Models\WorkflowStage;
 use App\Models\WorkflowStageApprover;
 use App\Jobs\SyncWithBitrix24;
+use App\Models\Task;
 use App\Services\ChatService;
 use Illuminate\Support\Facades\DB;
 
@@ -143,6 +144,7 @@ class ApprovalEngineService
 
         if ($allApproved || $workflowStage->stage_type === 'sequential') {
             $stage->update(['status' => 'approved', 'completed_at' => now()]);
+            $this->completeTasksForStage($stage);
             event(new ApprovalStageChanged($stage));
             $this->moveToNextStage($approval);
         }
@@ -156,6 +158,7 @@ class ApprovalEngineService
         ?string $comment
     ): void {
         $stage->update(['status' => 'rejected', 'completed_at' => now()]);
+        $this->cancelTasksForStage($stage);
         $approval->update(['status' => 'rejected', 'completed_at' => now()]);
         $document->update(['status' => 'rejected']);
 
@@ -176,6 +179,7 @@ class ApprovalEngineService
         ?string $comment
     ): void {
         $stage->update(['status' => 'requires_changes', 'completed_at' => now()]);
+        $this->cancelTasksForStage($stage);
         $approval->update(['status' => 'requires_changes']);
         $document->update(['status' => 'requires_changes']);
 
@@ -242,11 +246,34 @@ class ApprovalEngineService
         $approvers = User::whereIn('id', $approverIds)->get();
 
         foreach ($approvers as $approver) {
+            Task::create([
+                'document_id'                => $document->id,
+                'document_approval_stage_id' => $stage->id,
+                'assignee_id'                => $approver->id,
+                'title'                      => 'Согласовать: ' . $document->title,
+                'status'                     => 'pending',
+                'deadline_at'                => $stage->deadline_at,
+            ]);
+
             $this->notificationService->notify($approver, 'new_document', [
                 'title'       => $document->title,
                 'document_id' => $document->id,
             ]);
         }
+    }
+
+    private function completeTasksForStage(DocumentApprovalStage $stage): void
+    {
+        Task::where('document_approval_stage_id', $stage->id)
+            ->where('status', 'pending')
+            ->update(['status' => 'completed', 'completed_at' => now()]);
+    }
+
+    private function cancelTasksForStage(DocumentApprovalStage $stage): void
+    {
+        Task::where('document_approval_stage_id', $stage->id)
+            ->where('status', 'pending')
+            ->update(['status' => 'cancelled']);
     }
 
     private function completeApproval(DocumentApproval $approval): void

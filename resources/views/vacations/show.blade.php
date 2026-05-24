@@ -13,20 +13,32 @@
                 </span>
             </div>
             @if(in_array($vacation->status, ['draft', 'revision']) && $vacation->user_id === auth()->id())
-                @if($vacation->status === 'draft')
-                    <form action="{{ route('vacations.update', $vacation) }}" method="POST">
-                        @csrf @method('PUT')
-                        <input type="hidden" name="vacation_type" value="{{ $vacation->vacation_type }}">
-                        <input type="hidden" name="date_start" value="{{ $vacation->date_start->format('Y-m-d') }}">
-                        <input type="hidden" name="date_end" value="{{ $vacation->date_end->format('Y-m-d') }}">
-                        <input type="hidden" name="comment" value="{{ $vacation->comment }}">
-                        <input type="hidden" name="submit" value="1">
-                        <button type="submit" class="px-4 py-2 bg-[#5B4FE8] text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
-                            Отправить
-                        </button>
-                    </form>
-                @endif
+                <div class="flex gap-2">
+                    @if($vacation->status === 'draft')
+                        <form action="{{ route('vacations.update', $vacation) }}" method="POST">
+                            @csrf @method('PUT')
+                            <input type="hidden" name="vacation_type" value="{{ $vacation->vacation_type }}">
+                            <input type="hidden" name="date_start" value="{{ $vacation->date_start->format('Y-m-d') }}">
+                            <input type="hidden" name="date_end" value="{{ $vacation->date_end->format('Y-m-d') }}">
+                            <input type="hidden" name="comment" value="{{ $vacation->comment }}">
+                            <input type="hidden" name="submit" value="1">
+                            <button type="submit" class="px-4 py-2 bg-[#5B4FE8] text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
+                                Отправить
+                            </button>
+                        </form>
+                    @endif
+                </div>
             @endif
+            @can('delete', $vacation)
+                <form action="{{ route('vacations.destroy', $vacation) }}" method="POST"
+                      onsubmit="return confirm('Удалить заявку? Это действие необратимо.')">
+                    @csrf @method('DELETE')
+                    <button type="submit"
+                            class="px-4 py-2 border border-red-200 text-red-600 rounded-lg text-sm hover:bg-red-50 transition-colors">
+                        Удалить
+                    </button>
+                </form>
+            @endcan
         </div>
 
         @if(session('success'))
@@ -65,6 +77,10 @@
                             <dd class="text-gray-700 mt-0.5">{{ $vacation->comment }}</dd>
                         </div>
                     @endif
+                    <div class="col-span-2">
+                        <dt class="text-gray-400 text-xs">Подписант</dt>
+                        <dd class="font-medium text-gray-900 mt-0.5">{{ $vacation->signatory?->name ?? '—' }}</dd>
+                    </div>
                 </dl>
             </div>
 

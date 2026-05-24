@@ -4,18 +4,22 @@ namespace App\Http\Controllers\Vacation;
 
 use App\Http\Controllers\Controller;
 use App\Models\VacationRequest;
+use App\Services\ApprovalService;
 use App\Services\VacationService;
 use Illuminate\Http\Request;
 
 class VacationRequestController extends Controller
 {
-    public function __construct(private VacationService $vacationService) {}
+    public function __construct(
+        private VacationService $vacationService,
+        private ApprovalService $approvalService,
+    ) {}
 
     public function index(Request $request)
     {
         $user  = auth()->user();
         $query = VacationRequest::visibleBy($user)
-            ->with(['user.department', 'route'])
+            ->with(['user.department', 'route', 'signatory'])
             ->orderBy('created_at', 'desc');
 
         if ($request->filled('status')) {
@@ -40,8 +44,14 @@ class VacationRequestController extends Controller
             'comment'       => ['nullable', 'string'],
         ]);
 
+        $user = auth()->user();
+
+        if (!$this->approvalService->findRoute($user, 'vacation')) {
+            return back()->withInput()->with('error', 'Для вашего отдела не настроен маршрут согласования отпусков. Обратитесь к администратору.');
+        }
+
         $submit   = $request->boolean('submit');
-        $vacation = $this->vacationService->create(auth()->user(), $data, $submit);
+        $vacation = $this->vacationService->create($user, $data, $submit);
 
         $msg = $submit ? 'Заявка отправлена на согласование.' : 'Черновик сохранён.';
         return redirect()->route('vacations.show', $vacation)->with('success', $msg);
@@ -50,8 +60,15 @@ class VacationRequestController extends Controller
     public function show(VacationRequest $vacation)
     {
         $this->authorize('view', $vacation);
-        $vacation->load(['user.department', 'route.steps.approverUser', 'approvalLogs.approver']);
+        $vacation->load(['user.department', 'route.steps.approverUser', 'approvalLogs.approver', 'signatory']);
         return view('vacations.show', compact('vacation'));
+    }
+
+    public function destroy(VacationRequest $vacation)
+    {
+        $this->authorize('delete', $vacation);
+        $vacation->delete();
+        return redirect()->route('vacations.index')->with('success', 'Заявка удалена.');
     }
 
     public function update(Request $request, VacationRequest $vacation)

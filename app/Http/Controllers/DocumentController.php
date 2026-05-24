@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreDocumentRequest;
 use App\Models\Chat;
 use App\Models\Document;
+use App\Models\DocumentNote;
 use App\Models\DocumentType;
+use App\Models\Task;
 use App\Models\Workflow;
 use App\Models\User;
 use App\Models\Department;
@@ -217,6 +219,20 @@ class DocumentController extends Controller
         return view('documents.show', compact('document', 'approvers', 'chat'));
     }
 
+    public function storeNote(Request $request, Document $document)
+    {
+        $this->authorize('view', $document);
+
+        $request->validate(['body' => ['required', 'string', 'max:2000']]);
+
+        $document->notes()->create([
+            'user_id' => auth()->id(),
+            'body'    => $request->body,
+        ]);
+
+        return back()->with('success', 'Комментарий добавлен.');
+    }
+
     public function edit(Document $document)
     {
         $this->authorize('update', $document);
@@ -250,22 +266,31 @@ class DocumentController extends Controller
     public function tasks(Request $request)
     {
         $user = auth()->user();
+        $access = $user->resolveTasksAccess();
+
+        if ($access === 'none') {
+            abort(403, 'Нет доступа к задачам.');
+        }
+
         $filter = $request->get('filter', 'all');
 
-        $query = Document::with(['type', 'initiator'])
-            ->whereIn('status', ['in_review', 'requires_changes'])
-            ->whereHas('approvals.stages', function ($q) use ($user) {
-                $q->where('status', 'active')
-                  ->whereHas('workflowStage.approvers', fn($q2) => $q2->where('approver_id', $user->id));
-            })
-            ->orderByDesc('updated_at');
+        $query = Task::with(['document.type', 'document.initiator', 'assignee'])
+            ->orderByDesc('created_at');
 
-        if ($filter === 'overdue') {
-            $query->whereHas('approvals.stages', fn($q) => $q->where('deadline_at', '<', now()));
-        } elseif ($filter === 'pending') {
-            $query->whereHas('approvals.stages', fn($q) => $q->where('status', 'in_progress'));
+        if ($access === 'own') {
+            $query->where('assignee_id', $user->id);
+        } elseif ($access === 'department' && $user->department_id) {
+            $query->whereHas('assignee', fn($q) => $q->where('department_id', $user->department_id));
+        }
+        // 'full' — no filter, all tasks are visible
+
+        if ($filter === 'pending') {
+            $query->where('status', 'pending');
+        } elseif ($filter === 'overdue') {
+            $query->where('status', 'pending')
+                  ->where('deadline_at', '<', now());
         } elseif ($filter === 'completed') {
-            $query->whereIn('status', ['approved', 'signed']);
+            $query->whereIn('status', ['completed', 'cancelled']);
         }
 
         $tasks = $query->paginate(20)->withQueryString();

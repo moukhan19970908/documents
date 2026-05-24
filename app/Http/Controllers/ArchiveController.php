@@ -12,12 +12,25 @@ class ArchiveController extends Controller
 {
     public function index(Request $request)
     {
+        $user = auth()->user();
+        $access = $user->resolveArchiveAccess();
+
+        if ($access === 'none') {
+            abort(403, 'Нет доступа к архиву.');
+        }
+
         $tab = $request->get('tab', 'all');
         $folder = $request->get('folder');
 
         $query = Document::with(['type', 'initiator', 'currentFile'])
             ->whereIn('status', ['approved', 'signed', 'archived'])
             ->orderByDesc('updated_at');
+
+        if ($access === 'own') {
+            $query->where('initiator_id', $user->id);
+        } elseif ($access === 'department' && $user->department_id) {
+            $query->whereHas('initiator', fn($q) => $q->where('department_id', $user->department_id));
+        }
 
         if ($tab === 'approved') {
             $query->whereIn('status', ['approved', 'signed']);

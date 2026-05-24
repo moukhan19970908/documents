@@ -62,6 +62,16 @@ class DocumentPolicy
             || ($document->initiator_id === $user->id && $document->status === 'draft');
     }
 
+    public function cancelApproval(User $user, Document $document): bool
+    {
+        if (in_array($document->status, ['approved', 'rejected'])) {
+            return false;
+        }
+
+        return $user->role === 'admin'
+            || ($document->initiator_id === $user->id && $document->status === 'in_review');
+    }
+
     public function approve(User $user, Document $document): bool
     {
         if (!$document->activeApproval) {

@@ -24,40 +24,51 @@
     <div class="space-y-3">
         @forelse($tasks as $task)
             @php
-                $isOverdue = $task->deadline && now()->gt($task->deadline) && $task->status !== 'approved';
-                $priorityColor = $isOverdue ? 'border-l-red-400' : 'border-l-indigo-400';
+                $isOverdue = $task->isOverdue();
+                $priorityColor = $isOverdue ? 'border-l-red-400' : ($task->status === 'completed' ? 'border-l-green-400' : 'border-l-indigo-400');
             @endphp
             <div class="bg-white rounded-xl border border-gray-200 border-l-4 {{ $priorityColor }} p-4">
                 <div class="flex items-start justify-between gap-3">
                     <div class="flex-1 min-w-0">
                         <div class="flex items-center gap-2 mb-1">
-                            @if($task->type)
-                                <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{{ $task->type->name }}</span>
+                            @if($task->document->type)
+                                <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{{ $task->document->type->name }}</span>
                             @endif
                             @if($isOverdue)
                                 <span class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded font-semibold">Просрочено</span>
+                            @elseif($task->status === 'completed')
+                                <span class="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded font-semibold">Завершено</span>
+                            @elseif($task->status === 'cancelled')
+                                <span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded font-semibold">Отменено</span>
                             @endif
                         </div>
-                        <a href="{{ route('documents.show', $task) }}" class="font-semibold text-gray-900 hover:text-[#5B4FE8] block truncate">
+                        <a href="{{ route('documents.show', $task->document) }}" class="font-semibold text-gray-900 hover:text-[#5B4FE8] block truncate">
                             {{ $task->title }}
                         </a>
                         <div class="flex items-center gap-3 mt-2 text-xs text-gray-500">
                             <span class="flex items-center gap-1">
-                                <img src="{{ $task->initiator->avatar_url }}" class="w-4 h-4 rounded-full" alt="">
-                                {{ $task->initiator->name }}
+                                <img src="{{ $task->document->initiator->avatar_url }}" class="w-4 h-4 rounded-full" alt="">
+                                <span class="text-gray-400">Инициатор:</span> {{ $task->document->initiator->name }}
                             </span>
-                            @if($task->deadline)
+                            <span class="text-gray-300">·</span>
+                            <span class="flex items-center gap-1">
+                                <img src="{{ $task->assignee->avatar_url }}" class="w-4 h-4 rounded-full" alt="">
+                                <span class="text-gray-400">Исполнитель:</span> {{ $task->assignee->name }}
+                            </span>
+                            @if($task->deadline_at)
                                 <span class="flex items-center gap-1 {{ $isOverdue ? 'text-red-500 font-semibold' : '' }}">
                                     <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                                    {{ $task->deadline->format('d.m.Y') }}
+                                    {{ $task->deadline_at->format('d.m.Y') }}
                                 </span>
                             @endif
                         </div>
                     </div>
-                    <a href="{{ route('documents.show', $task) }}"
-                       class="shrink-0 bg-[#5B4FE8] text-white text-xs font-medium px-3 py-2 rounded-lg hover:bg-indigo-700 transition-colors">
-                        Рассмотреть
-                    </a>
+                    @if($task->status === 'pending')
+                        <a href="{{ route('documents.show', $task->document) }}"
+                           class="shrink-0 bg-[#5B4FE8] text-white text-xs font-medium px-3 py-2 rounded-lg hover:bg-indigo-700 transition-colors">
+                            Рассмотреть
+                        </a>
+                    @endif
                 </div>
             </div>
         @empty

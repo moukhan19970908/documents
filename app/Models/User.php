@@ -19,6 +19,7 @@ class User extends Authenticatable
         'position', 'department_id', 'manager_id',
         'bitrix24_id', 'bitrix24_token', 'avatar', 'is_active',
         'notification_email', 'telegram_chat_id', 'agreement_accepted_at',
+        'permissions','workflow_access_level','tasks_access_level','archive_access_level',
     ];
 
     protected $hidden = ['password', 'remember_token', 'bitrix24_token'];
@@ -31,6 +32,10 @@ class User extends Authenticatable
             'is_active'               => 'boolean',
             'notification_email'      => 'boolean',
             'agreement_accepted_at'   => 'datetime',
+            'permissions'            => 'array',
+            'workflow_access_level'  => 'string',
+            'tasks_access_level'     => 'string',
+            'archive_access_level'   => 'string',
         ];
     }
 
@@ -62,6 +67,93 @@ class User extends Authenticatable
     public function isAdmin(): bool
     {
         return $this->role === 'admin';
+    }
+
+    /**
+     * Resolve effective workflow access level for this user.
+     * Priority: individual setting > department setting > 'full' (backwards-compatible default)
+     */
+    public function resolveWorkflowAccess(): string
+    {
+        if ($this->isAdmin()) {
+            return 'full';
+        }
+
+        if ($this->workflow_access_level !== null) {
+            return $this->workflow_access_level;
+        }
+
+        // Fall back to department-level setting
+        $dept = $this->relationLoaded('department')
+            ? $this->department
+            : Department::find($this->department_id);
+
+        if ($dept && $dept->workflow_access_level !== null) {
+            return $dept->workflow_access_level;
+        }
+
+        // Default: full access (backwards-compatible for existing users)
+        return 'full';
+    }
+
+    public function resolveTasksAccess(): string
+    {
+        if ($this->isAdmin()) {
+            return 'full';
+        }
+
+        if ($this->tasks_access_level !== null) {
+            return $this->tasks_access_level;
+        }
+
+        $dept = $this->relationLoaded('department')
+            ? $this->department
+            : Department::find($this->department_id);
+
+        if ($dept && $dept->tasks_access_level !== null) {
+            return $dept->tasks_access_level;
+        }
+
+        return 'full';
+    }
+
+    public function resolveArchiveAccess(): string
+    {
+        if ($this->isAdmin()) {
+            return 'full';
+        }
+
+        if ($this->archive_access_level !== null) {
+            return $this->archive_access_level;
+        }
+
+        $dept = $this->relationLoaded('department')
+            ? $this->department
+            : Department::find($this->department_id);
+
+        if ($dept && $dept->archive_access_level !== null) {
+            return $dept->archive_access_level;
+        }
+
+        return 'full';
+    }
+
+    /**
+     * Check whether this user has been explicitly granted a permission.
+     * Admins always pass. When no permissions are set (null) the user is
+     * not restricted — the gate only activates once permissions are saved.
+     */
+    public function hasPermission(string $permission): bool
+    {
+        if ($this->isAdmin()) {
+            return true;
+        }
+
+        if ($this->permissions === null) {
+            return true; // no explicit restrictions set yet
+        }
+
+        return in_array($permission, $this->permissions, true);
     }
 
     public function isManager(): bool

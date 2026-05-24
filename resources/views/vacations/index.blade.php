@@ -37,6 +37,7 @@
                     <tr class="text-xs text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50">
                         <th class="text-left px-5 py-3 font-semibold">№</th>
                         <th class="text-left px-5 py-3 font-semibold">Сотрудник</th>
+                        <th class="text-left px-5 py-3 font-semibold">Подписант</th>
                         <th class="text-left px-5 py-3 font-semibold">Вид отпуска</th>
                         <th class="text-left px-5 py-3 font-semibold">Даты</th>
                         <th class="text-left px-5 py-3 font-semibold">Дней</th>
@@ -52,6 +53,13 @@
                             <td class="px-5 py-3.5">
                                 <div class="font-medium text-gray-900 text-sm">{{ $vacation->user->name }}</div>
                                 <div class="text-xs text-gray-400">{{ $vacation->user->department?->name }}</div>
+                            </td>
+                            <td class="px-5 py-3.5">
+                                @if($vacation->signatory)
+                                    <div class="font-medium text-gray-900 text-sm">{{ $vacation->signatory->name }}</div>
+                                @else
+                                    <span class="text-xs text-gray-400">—</span>
+                                @endif
                             </td>
                             <td class="px-5 py-3.5 text-gray-700">{{ $vacation->vacation_type_label }}</td>
                             <td class="px-5 py-3.5 text-gray-600 text-xs whitespace-nowrap">
@@ -70,7 +78,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="8" class="px-5 py-12 text-center text-gray-400 text-sm">
+                            <td colspan="9" class="px-5 py-12 text-center text-gray-400 text-sm">
                                 Заявок нет
                                 <div class="mt-2">
                                     <a href="{{ route('vacations.create') }}" class="text-[#5B4FE8] hover:underline">Создать первую заявку</a>

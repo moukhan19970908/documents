@@ -11,7 +11,7 @@ class Department extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'parent_id', 'head_user_id', 'bitrix24_department_id'];
+    protected $fillable = ['name', 'parent_id', 'head_user_id', 'bitrix24_department_id', 'workflow_access_level', 'tasks_access_level', 'archive_access_level'];
 
     public function parent(): BelongsTo
     {

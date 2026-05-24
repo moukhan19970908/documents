@@ -14,7 +14,7 @@ class TripRequest extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'user_id', 'route_id', 'current_step', 'status',
+        'user_id', 'signatory_id', 'route_id', 'current_step', 'status',
         'city', 'purpose', 'date_start', 'date_end',
         'daily_rate', 'accommodation_total', 'transport_total', 'total_amount', 'comment',
     ];
@@ -31,6 +31,11 @@ class TripRequest extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function signatory(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'signatory_id');
     }
 
     public function route(): BelongsTo

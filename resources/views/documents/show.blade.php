@@ -89,6 +89,7 @@
                 ['key' => 'approval',  'label' => 'Процесс согласования'],
                 ['key' => 'files',     'label' => 'Документ и версии'],
                 ['key' => 'chat',      'label' => 'Чат'],
+                ['key' => 'comments',  'label' => 'Комментарии'],
                 ['key' => 'history',   'label' => 'История'],
                 ['key' => 'related',   'label' => 'Связанные документы'],
             ] as $t)
@@ -332,6 +333,34 @@
                             </div>
                         @endcan
                     @endif
+
+                    {{-- Cancel approval (initiator / admin when in_review) --}}
+                    @can('cancelApproval', $document)
+                        <div class="bg-white rounded-xl border border-red-100 p-4" x-data="{ confirm: false }">
+                            <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Отмена согласования</p>
+                            <p class="text-xs text-gray-500 mb-3">Если согласование запущено ошибочно, вы можете отменить его — документ вернётся в черновики.</p>
+                            <button type="button" x-show="!confirm" @click="confirm = true"
+                                    class="w-full border border-red-200 text-red-600 py-2.5 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors">
+                                Отменить согласование
+                            </button>
+                            <div x-show="confirm" class="space-y-2" style="display:none">
+                                <p class="text-xs text-red-600 font-medium text-center">Подтвердите отмену</p>
+                                <div class="flex gap-2">
+                                    <button type="button" @click="confirm = false"
+                                            class="flex-1 border border-gray-200 text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
+                                        Нет
+                                    </button>
+                                    <form action="{{ route('documents.cancel-approval', $document) }}" method="POST" class="flex-1">
+                                        @csrf
+                                        <button type="submit"
+                                                class="w-full bg-[#5B4FE8] text-white py-2 rounded-lg text-sm font-semibold hover:bg-red-700">
+                                            Да, отменить
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    @endcan
 
                     {{-- Ваш шаг --}}
                     @if($canApprove)
@@ -685,9 +714,80 @@
             @endif
         </div>
 
-        {{-- ── TAB: ИСТОРИЯ ── --}}
-        <div x-show="tab === 'history'">
+        {{-- ── TAB: КОММЕНТАРИИ ── --}}
+        <div x-show="tab === 'comments'">
             @php
+                // Only decision-based comments from the approval workflow
+                $allComments = $document->approvals
+                    ->flatMap(fn($a) => $a->stages)
+                    ->flatMap(fn($s) => $s->decisions)
+                    ->filter(fn($d) => !empty($d->comment))
+                    ->map(fn($d) => [
+                        'user'       => $d->user,
+                        'body'       => $d->comment,
+                        'action'     => $d->action,
+                        'created_at' => $d->decided_at ?? $d->created_at,
+                    ])
+                    ->sortBy('created_at')
+                    ->values();
+
+                $actionLabels = [
+                    'approve'         => 'Согласовал',
+                    'reject'          => 'Отклонил',
+                    'request_changes' => 'Отправил на доработку',
+                    'delegate'        => 'Делегировал',
+                ];
+                $actionColors = [
+                    'approve'         => 'bg-green-100 text-green-700',
+                    'reject'          => 'bg-red-100 text-red-700',
+                    'request_changes' => 'bg-orange-100 text-orange-700',
+                    'delegate'        => 'bg-blue-100 text-blue-700',
+                ];
+            @endphp
+
+            <div class="max-w-3xl space-y-5">
+
+                {{-- Comment list --}}
+                <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <div class="px-5 py-3.5 border-b border-gray-100">
+                        <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest">
+                            Комментарии
+                            @if($allComments->isNotEmpty())
+                                <span class="ml-1 text-gray-500">({{ $allComments->count() }})</span>
+                            @endif
+                        </p>
+                    </div>
+
+                    @forelse($allComments as $entry)
+                        <div class="flex gap-4 px-5 py-4 border-b border-gray-50 last:border-0">
+                            <div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-600 shrink-0 mt-0.5">
+                                {{ mb_strtoupper(mb_substr($entry['user']?->name ?? '?', 0, 1)) }}
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2 flex-wrap mb-1">
+                                    <span class="text-sm font-medium text-gray-900">{{ $entry['user']?->name ?? 'Неизвестно' }}</span>
+                                    @if($entry['action'])
+                                        <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full {{ $actionColors[$entry['action']] ?? 'bg-gray-100 text-gray-600' }}">
+                                            {{ $actionLabels[$entry['action']] ?? $entry['action'] }}
+                                        </span>
+                                    @endif
+                                    <span class="text-xs text-gray-400">{{ $entry['created_at']?->format('d.m.Y H:i') }}</span>
+                                </div>
+                                <p class="text-sm text-gray-700 whitespace-pre-wrap">{{ $entry['body'] }}</p>
+                            </div>
+                        </div>
+                    @empty
+                        <div class="px-5 py-10 text-center text-sm text-gray-400">
+                            Комментариев пока нет
+                        </div>
+                    @endforelse
+                </div>
+
+            </div>
+        </div>
+
+        {{-- ── TAB: ИСТОРИЯ ── --}}
+        <div x-show="tab === 'history'">            @php
                 $approvalKeywords = ['начал процесс', 'согласовал', 'отказал', 'отправил на доработку', 'делегировал', 'загрузил связанный файл'];
                 $auditLogs = \App\Models\AuditLog::with('user')
                     ->where('model_type', 'App\Models\Document')

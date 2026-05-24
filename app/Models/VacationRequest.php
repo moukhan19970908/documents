@@ -13,7 +13,7 @@ class VacationRequest extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'user_id', 'route_id', 'current_step', 'status',
+        'user_id', 'signatory_id', 'route_id', 'current_step', 'status',
         'vacation_type', 'date_start', 'date_end', 'days_count', 'comment',
     ];
 
@@ -25,6 +25,11 @@ class VacationRequest extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function signatory(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'signatory_id');
     }
 
     public function route(): BelongsTo

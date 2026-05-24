@@ -17,9 +17,15 @@ class VacationService
 
         $days = Carbon::parse($data['date_start'])->diffInDays($data['date_end']) + 1;
 
-        return DB::transaction(function () use ($user, $data, $route, $days, $submit) {
+        $firstStep   = $route?->steps()->orderBy('step_order')->first();
+        $signatoryId = $firstStep
+            ? $this->approvalService->findApprover($user, $firstStep)?->id
+            : null;
+
+        return DB::transaction(function () use ($user, $data, $route, $days, $submit, $signatoryId) {
             $vacation = VacationRequest::create([
                 'user_id'       => $user->id,
+                'signatory_id'  => $signatoryId,
                 'route_id'      => $route?->id,
                 'current_step'  => 1,
                 'status'        => $submit ? 'pending' : 'draft',

@@ -40,6 +40,16 @@
                     @endif
                 </div>
             @endif
+            @can('delete', $trip)
+                <form action="{{ route('trips.destroy', $trip) }}" method="POST"
+                      onsubmit="return confirm('Удалить заявку? Это действие необратимо.')">
+                    @csrf @method('DELETE')
+                    <button type="submit"
+                            class="px-4 py-2 border border-red-200 text-red-600 rounded-lg text-sm hover:bg-red-50 transition-colors">
+                        Удалить
+                    </button>
+                </form>
+            @endcan
         </div>
 
         @if(session('success'))
@@ -73,6 +83,12 @@
                                 <dd class="text-gray-700 mt-0.5">{{ $trip->comment }}</dd>
                             </div>
                         @endif
+                        <div class="col-span-2">
+                            <dt class="text-gray-400 text-xs">Подписант</dt>
+                            <dd class="font-medium text-gray-900 mt-0.5">
+                                {{ $trip->signatory?->name ?? '—' }}
+                            </dd>
+                        </div>
                     </dl>
                 </div>
 

@@ -15,6 +15,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\EmployeesController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\DepartmentController;
+use App\Http\Controllers\Admin\AccessControlController;
 use App\Http\Controllers\Admin\DocumentTypeController;
 use App\Http\Controllers\Admin\WorkflowFolderController;
 use App\Http\Controllers\Admin\ApprovalRouteController;
@@ -53,7 +54,9 @@ Route::middleware(['auth', 'agreement', 'audit'])->group(function () {
     Route::post('documents/{document}/resubmit', [ApprovalController::class, 'resubmit'])->name('documents.resubmit');
     Route::post('documents/{document}/request-changes', [ApprovalController::class, 'requestChanges'])->name('documents.request-changes');
     Route::post('documents/{document}/delegate', [ApprovalController::class, 'delegate'])->name('documents.delegate');
+    Route::post('documents/{document}/cancel-approval', [ApprovalController::class, 'cancelApproval'])->name('documents.cancel-approval');
     Route::get('documents/{document}/approval-sheet', [ApprovalController::class, 'approvalSheet'])->name('documents.approval-sheet');
+    Route::post('documents/{document}/notes', [DocumentController::class, 'storeNote'])->name('documents.notes.store');
 
     // Files
     Route::post('documents/{document}/files', [DocumentFileController::class, 'store'])->name('documents.files.store');
@@ -91,6 +94,13 @@ Route::middleware(['auth', 'agreement', 'audit'])->group(function () {
 
     // Admin
     Route::middleware('role:admin')->prefix('admin')->name('admin.')->group(function () {
+        Route::get('access-control', AccessControlController::class)->name('access-control.index');
+        Route::post('access-control/users/{user}/workflow-access', [AccessControlController::class, 'updateUserWorkflowAccess'])->name('access-control.users.workflow-access');
+        Route::post('access-control/departments/{department}/workflow-access', [AccessControlController::class, 'updateDeptWorkflowAccess'])->name('access-control.depts.workflow-access');
+        Route::post('access-control/users/{user}/tasks-access', [AccessControlController::class, 'updateUserTasksAccess'])->name('access-control.users.tasks-access');
+        Route::post('access-control/departments/{department}/tasks-access', [AccessControlController::class, 'updateDeptTasksAccess'])->name('access-control.depts.tasks-access');
+        Route::post('access-control/users/{user}/archive-access', [AccessControlController::class, 'updateUserArchiveAccess'])->name('access-control.users.archive-access');
+        Route::post('access-control/departments/{department}/archive-access', [AccessControlController::class, 'updateDeptArchiveAccess'])->name('access-control.depts.archive-access');
         Route::resource('users', UserController::class);
         Route::resource('departments', DepartmentController::class);
         Route::resource('document-types', DocumentTypeController::class);
@@ -116,6 +126,7 @@ Route::middleware(['auth', 'agreement', 'audit'])->group(function () {
         Route::get('/{trip}', [TripRequestController::class, 'show'])->name('show');
         Route::get('/{trip}/edit', [TripRequestController::class, 'edit'])->name('edit');
         Route::put('/{trip}', [TripRequestController::class, 'update'])->name('update');
+        Route::delete('/{trip}', [TripRequestController::class, 'destroy'])->name('destroy');
         Route::post('/{trip}/approve', [TripApprovalController::class, 'approve'])->name('approve');
         Route::post('/{trip}/reject', [TripApprovalController::class, 'reject'])->name('reject');
         Route::post('/{trip}/revision', [TripApprovalController::class, 'revision'])->name('revision');
@@ -130,6 +141,7 @@ Route::middleware(['auth', 'agreement', 'audit'])->group(function () {
         Route::get('/{vacation}', [VacationRequestController::class, 'show'])->name('show');
         Route::get('/{vacation}/edit', [VacationRequestController::class, 'edit'])->name('edit');
         Route::put('/{vacation}', [VacationRequestController::class, 'update'])->name('update');
+        Route::delete('/{vacation}', [VacationRequestController::class, 'destroy'])->name('destroy');
         Route::post('/{vacation}/approve', [VacationApprovalController::class, 'approve'])->name('approve');
         Route::post('/{vacation}/reject', [VacationApprovalController::class, 'reject'])->name('reject');
         Route::post('/{vacation}/revision', [VacationApprovalController::class, 'revision'])->name('revision');

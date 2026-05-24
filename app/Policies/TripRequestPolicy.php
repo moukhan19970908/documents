@@ -27,7 +27,7 @@ class TripRequestPolicy
 
     public function delete(User $user, TripRequest $trip): bool
     {
-        return ($trip->user_id === $user->id && $trip->status === 'draft')
+        return ($trip->user_id === $user->id && in_array($trip->status, ['draft', 'pending']))
             || $user->isAdmin();
     }
 }

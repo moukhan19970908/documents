@@ -18,11 +18,28 @@ class WorkflowController extends Controller
 
     public function index(Request $request)
     {
+        $user        = auth()->user()->load('department');
+        $accessLevel = $user->resolveWorkflowAccess();
+
+        if ($accessLevel === 'none') {
+            return redirect()->route('dashboard');
+        }
+
         $folderId = $request->query('folder_id');
 
-        $query = Workflow::where('is_active',true)->with(['documentType', 'creator', 'stages' => function ($q) {
+        $query = Workflow::where('is_active', true)->with(['documentType', 'creator', 'stages' => function ($q) {
             $q->withCount('approvers')->orderBy('sort_order');
         }, 'folders']);
+
+        // Department-level access: show only workflows that include the user's department
+        if ($accessLevel === 'department' && $user->department_id) {
+            $deptId = $user->department_id;
+            $query->where(function ($q) use ($deptId) {
+                $q->whereNull('allowed_departments')
+                  ->orWhere('allowed_departments', '[]')
+                  ->orWhereJsonContains('allowed_departments', $deptId);
+            });
+        }
 
         if ($folderId) {
             $query->whereHas('folders', fn($q) => $q->where('workflow_folders.id', $folderId));

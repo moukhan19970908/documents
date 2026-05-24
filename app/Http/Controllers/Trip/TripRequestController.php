@@ -4,18 +4,22 @@ namespace App\Http\Controllers\Trip;
 
 use App\Http\Controllers\Controller;
 use App\Models\TripRequest;
+use App\Services\ApprovalService;
 use App\Services\TripService;
 use Illuminate\Http\Request;
 
 class TripRequestController extends Controller
 {
-    public function __construct(private TripService $tripService) {}
+    public function __construct(
+        private TripService $tripService,
+        private ApprovalService $approvalService,
+    ) {}
 
     public function index(Request $request)
     {
         $user  = auth()->user();
         $query = TripRequest::visibleBy($user)
-            ->with(['user.department', 'route'])
+            ->with(['user.department', 'route', 'signatory'])
             ->orderBy('created_at', 'desc');
 
         if ($request->filled('status')) {
@@ -50,8 +54,14 @@ class TripRequestController extends Controller
             'comment'             => ['nullable', 'string'],
         ]);
 
+        $user = auth()->user();
+
+        if (!$this->approvalService->findRoute($user, 'trip')) {
+            return back()->withInput()->with('error', 'Для вашего отдела не настроен маршрут согласования командировок. Обратитесь к администратору.');
+        }
+
         $submit = $request->boolean('submit');
-        $trip   = $this->tripService->create(auth()->user(), $data, $submit);
+        $trip   = $this->tripService->create($user, $data, $submit);
 
         $msg = $submit ? 'Заявка отправлена на согласование.' : 'Черновик сохранён.';
         return redirect()->route('trips.show', $trip)->with('success', $msg);
@@ -60,8 +70,21 @@ class TripRequestController extends Controller
     public function show(TripRequest $trip)
     {
         $this->authorize('view', $trip);
-        $trip->load(['user.department', 'route.steps.approverUser', 'approvalLogs.approver']);
+        $trip->load(['user.department', 'route.steps.approverUser', 'approvalLogs.approver', 'signatory']);
         return view('trips.show', compact('trip'));
+    }
+
+    public function edit(TripRequest $trip)
+    {
+        $this->authorize('update', $trip);
+        return view('trips.edit', compact('trip'));
+    }
+
+    public function destroy(TripRequest $trip)
+    {
+        $this->authorize('delete', $trip);
+        $trip->delete();
+        return redirect()->route('trips.index')->with('success', 'Заявка удалена.');
     }
 
     public function update(Request $request, TripRequest $trip)
@@ -79,7 +102,7 @@ class TripRequestController extends Controller
             'comment'             => ['nullable', 'string'],
         ]);
 
-        $days          = \Carbon\Carbon::parse($data['date_start'])->diffInDays($data['date_end']) + 1;
+        $days = \Carbon\Carbon::parse($data['date_start'])->diffInDays($data['date_end']) + 1;
         $data['total_amount'] = ($data['daily_rate'] * $days) + $data['accommodation_total'] + $data['transport_total'];
 
         $trip->update($data);

@@ -19,6 +19,12 @@
             </div>
         @endif
 
+        @if(session('error'))
+            <div class="bg-red-50 border border-red-200 rounded-xl p-4 mb-5 text-sm text-red-700">
+                {{ session('error') }}
+            </div>
+        @endif
+
         <form action="{{ route('vacations.store') }}" method="POST" class="space-y-5">
             @csrf
 

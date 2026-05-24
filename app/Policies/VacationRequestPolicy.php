@@ -27,7 +27,7 @@ class VacationRequestPolicy
 
     public function delete(User $user, VacationRequest $vacation): bool
     {
-        return ($vacation->user_id === $user->id && $vacation->status === 'draft')
+        return ($vacation->user_id === $user->id && in_array($vacation->status, ['draft', 'pending']))
             || $user->isAdmin();
     }
 }

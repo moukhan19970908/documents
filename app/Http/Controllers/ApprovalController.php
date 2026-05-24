@@ -8,6 +8,7 @@ use App\Models\Workflow;
 use App\Services\ApprovalEngineService;
 use App\Services\AuditService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class ApprovalController extends Controller
 {
@@ -144,6 +145,32 @@ class ApprovalController extends Controller
         $this->audit->log(auth()->user()->name . ' делегировал «' . $document->title . '»', $document);
 
         return back()->with('success', 'Задача делегирована.');
+    }
+
+    public function cancelApproval(Request $request, Document $document)
+    {
+        $this->authorize('cancelApproval', $document);
+
+        $approval = $document->activeApproval;
+        if (!$approval) {
+            return back()->with('error', 'Нет активного согласования.');
+        }
+
+        $title = $document->title;
+        $id    = $document->id;
+
+        // Delete physical files from storage
+        Storage::deleteDirectory("documents/{$id}");
+        Storage::deleteDirectory("approvals/{$id}");
+
+        // Delete the document — DB cascades remove all related records
+        // (files, approvals, stages, decisions, notes, related files, chats)
+        $document->delete();
+
+        $this->audit->log(auth()->user()->name . ' отменил и удалил документ «' . $title . '»');
+
+        return redirect()->route('documents.index')
+            ->with('success', 'Согласование отменено. Документ и все связанные файлы удалены.');
     }
 
     public function approvalSheet(Document $document)

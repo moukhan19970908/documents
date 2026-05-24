@@ -19,6 +19,12 @@
             </div>
         @endif
 
+        @if(session('error'))
+            <div class="bg-red-50 border border-red-200 rounded-xl p-4 mb-5 text-sm text-red-700">
+                {{ session('error') }}
+            </div>
+        @endif
+
         <form action="{{ route('trips.store') }}" method="POST" class="space-y-5">
             @csrf
 
@@ -91,6 +97,7 @@
                           class="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]"
                           placeholder="Дополнительная информация...">{{ old('comment') }}</textarea>
             </div>
+
 
             <div class="flex items-center gap-3">
                 <button type="submit" name="submit" value="1"
