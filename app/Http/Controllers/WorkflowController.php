@@ -215,7 +215,8 @@ class WorkflowController extends Controller
     {
         $this->authorize('delete', $workflow);
         $this->auditService->log('workflow_deleted', $workflow);
-        $workflow->delete();
+        $workflow->update(['is_active' => false]);
+        $workflow->save();
         return redirect()->route('workflows.index')->with('success', 'Воркфлоу удалён.');
     }
 

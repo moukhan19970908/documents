@@ -142,7 +142,7 @@
                                 <span class="text-xs px-2 py-1 rounded-full font-medium {{ $wf->is_active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500' }}">
                                     {{ $wf->is_active ? 'Активен' : 'Черновик' }}
                                 </span>
-                                <a href="{{ route('workflows.builder', $wf) }}" class="text-xs font-medium text-[#5B4FE8] border border-[#5B4FE8] px-3 py-1.5 rounded-lg hover:bg-indigo-50">Редактировать</a>
+                                <!-- <a href="{{ route('workflows.builder', $wf) }}" class="text-xs font-medium text-[#5B4FE8] border border-[#5B4FE8] px-3 py-1.5 rounded-lg hover:bg-indigo-50">Редактировать</a> -->
                                 <form action="{{ route('workflows.destroy', $wf) }}" method="POST" onsubmit="return confirm('Удалить маршрут?')">
                                     @csrf @method('DELETE')
                                     <button type="submit" class="text-xs font-medium text-red-500 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-50">Удалить</button>
