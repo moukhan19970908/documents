@@ -177,7 +177,7 @@
                             @if($mime === 'application/pdf')
                                 <iframe src="{{ route('documents.files.preview', [$document, $document->currentFile]) }}"
                                         class="w-full border-0" style="height:680px"></iframe>
-                            @elseif(str_contains($mime, 'wordprocessingml') || str_contains($mime, 'msword'))
+                            @elseif(str_contains($mime, 'wordprocessingml'))
                                 <div class="p-4 bg-gray-50" style="height:680px; overflow-y:auto">
                                     <div id="docx-render-container" class="w-full flex flex-col items-center gap-4"></div>
                                 </div>
@@ -200,6 +200,7 @@
                                     } catch(e) { console.error(e); }
                                 });
                                 </script>
+                            @elseif(str_contains($mime, 'msword'))
                             @elseif(str_starts_with($mime, 'image/'))
                                 <div class="flex items-center justify-center p-8 bg-gray-50" style="min-height:680px">
                                     <img src="{{ route('documents.files.preview', [$document, $document->currentFile]) }}"
@@ -208,7 +209,7 @@
                             @else
                                 <div class="flex flex-col items-center justify-center gap-4 py-24 bg-gray-50 text-gray-500">
                                     <svg xmlns="http://www.w3.org/2000/svg" class="w-14 h-14 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                                    <p class="text-sm">Предпросмотр недоступен</p>
+                                    <p class="text-sm">Предпросмотр недоступен для формата .doc</p>
                                     <a href="{{ route('documents.files.download', [$document, $document->currentFile]) }}"
                                        class="text-sm bg-[#5B4FE8] text-white px-4 py-2 rounded-lg hover:bg-indigo-700">Скачать</a>
                                 </div>
@@ -878,8 +879,7 @@
                                     $rfMime = $rf->mime_type;
                                     $rfCanPreview = $rfMime === 'application/pdf'
                                         || str_starts_with($rfMime, 'image/')
-                                        || str_contains($rfMime, 'wordprocessingml')
-                                        || str_contains($rfMime, 'msword');
+                                        || str_contains($rfMime, 'wordprocessingml');
                                 @endphp
                                 @if($rfCanPreview)
                                     <button @click="previewOpen = true"
