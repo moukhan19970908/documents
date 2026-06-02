@@ -9,7 +9,7 @@ class Task extends Model
 {
     protected $fillable = [
         'document_id', 'document_approval_stage_id', 'assignee_id',
-        'title', 'status', 'deadline_at', 'completed_at',
+        'title', 'status', 'deadline_at', 'completed_at', 'bitrix24_task_id',
     ];
 
     protected $casts = [

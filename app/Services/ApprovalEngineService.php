@@ -13,8 +13,8 @@ use App\Models\User;
 use App\Models\Workflow;
 use App\Models\WorkflowStage;
 use App\Models\WorkflowStageApprover;
-use App\Jobs\SyncWithBitrix24;
 use App\Models\Task;
+use App\Services\Bitrix24Service;
 use App\Services\ChatService;
 use Illuminate\Support\Facades\DB;
 
@@ -24,6 +24,7 @@ class ApprovalEngineService
         private NotificationService $notificationService,
         private AuditService $auditService,
         private ChatService $chatService,
+        private Bitrix24Service $bitrix24,
     ) {}
 
     public function startAdHocApproval(Document $doc, array $approverIds): DocumentApproval
@@ -81,8 +82,6 @@ class ApprovalEngineService
             $doc->update(['status' => 'in_review']);
 
             $this->activateNextStage($approval);
-
-            SyncWithBitrix24::dispatch($doc)->onQueue('bitrix24');
 
             $this->auditService->log('approval_started', $doc, null, ['workflow_id' => $workflow->id]);
 
@@ -246,7 +245,7 @@ class ApprovalEngineService
         $approvers = User::whereIn('id', $approverIds)->get();
 
         foreach ($approvers as $approver) {
-            Task::create([
+            $task = Task::create([
                 'document_id'                => $document->id,
                 'document_approval_stage_id' => $stage->id,
                 'assignee_id'                => $approver->id,
@@ -254,6 +253,11 @@ class ApprovalEngineService
                 'status'                     => 'pending',
                 'deadline_at'                => $stage->deadline_at,
             ]);
+
+            $bitrix24TaskId = $this->bitrix24->createTask($document, $approver);
+            if ($bitrix24TaskId) {
+                $task->update(['bitrix24_task_id' => $bitrix24TaskId]);
+            }
 
             $this->notificationService->notify($approver, 'new_document', [
                 'title'       => $document->title,
@@ -264,16 +268,30 @@ class ApprovalEngineService
 
     private function completeTasksForStage(DocumentApprovalStage $stage): void
     {
-        Task::where('document_approval_stage_id', $stage->id)
+        $tasks = Task::where('document_approval_stage_id', $stage->id)
             ->where('status', 'pending')
-            ->update(['status' => 'completed', 'completed_at' => now()]);
+            ->get();
+
+        foreach ($tasks as $task) {
+            if ($task->bitrix24_task_id) {
+                $this->bitrix24->completeTask($task->bitrix24_task_id);
+            }
+            $task->update(['status' => 'completed', 'completed_at' => now()]);
+        }
     }
 
     private function cancelTasksForStage(DocumentApprovalStage $stage): void
     {
-        Task::where('document_approval_stage_id', $stage->id)
+        $tasks = Task::where('document_approval_stage_id', $stage->id)
             ->where('status', 'pending')
-            ->update(['status' => 'cancelled']);
+            ->get();
+
+        foreach ($tasks as $task) {
+            if ($task->bitrix24_task_id) {
+                $this->bitrix24->completeTask($task->bitrix24_task_id);
+            }
+            $task->update(['status' => 'cancelled']);
+        }
     }
 
     private function completeApproval(DocumentApproval $approval): void

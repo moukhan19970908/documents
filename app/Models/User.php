@@ -219,7 +219,7 @@ class User extends Authenticatable
         }
         return match($this->role) {
             'admin'    => 'Администратор',
-            default    => $this->position,
+            default    => $this->position ?? '',
         };
     }
 }
