@@ -219,10 +219,7 @@ class User extends Authenticatable
         }
         return match($this->role) {
             'admin'    => 'Администратор',
-            'director' => 'Директор',
-            'linear'   => 'Линейный менеджер',
-            'archiver' => 'Архивариус',
-            default    => $this->role,
+            default    => $this->position,
         };
     }
 }
