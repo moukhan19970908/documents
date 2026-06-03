@@ -39,7 +39,7 @@
                 <option value="archived" {{ request('status') === 'archived' ? 'selected' : '' }}>Архив</option>
             </select>
         </div>
-        @if(auth()->user()->isAdmin())
+        @if(auth()->user()->isAdmin() || auth()->user()->workflow_access_level === 'full')
         <div class="w-44">
             <label class="text-xs text-gray-500 font-medium block mb-1">Департамент</label>
             <select name="department" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">

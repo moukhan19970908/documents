@@ -76,6 +76,7 @@ class DocumentController extends Controller
 
         // Apply policy filtering
         $user = auth()->user();
+        /*
         if ($user->role === 'archiver') {
             $query->whereIn('status', ['approved', 'signed', 'archived']);
         } elseif ($user->role === 'linear') {
@@ -91,7 +92,8 @@ class DocumentController extends Controller
                 ->orWhereHas('approvals.stages.decisions', fn($q2) => $q2->where('action', 'delegate')->where('delegated_to', $user->id))
             );
         }
-
+        // Admin and others see all
+        */
         $documents = $query->paginate(25)->withQueryString();
         $documentTypes = DocumentType::all();
         $departments = Department::all();
