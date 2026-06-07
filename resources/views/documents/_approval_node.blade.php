@@ -1,22 +1,25 @@
 @php
     $avatarBg = match($status) {
-        'approved' => 'ring-2 ring-green-400',
-        'rejected' => 'ring-2 ring-red-400',
-        'waiting'  => 'ring-2 ring-[#6C5CE7]',
-        'delegated'=> 'ring-2 ring-yellow-400',
-        default    => 'ring-2 ring-gray-200',
+        'approved'         => 'ring-2 ring-green-400',
+        'rejected'         => 'ring-2 ring-red-400',
+        'waiting'          => 'ring-2 ring-[#6C5CE7]',
+        'delegated'        => 'ring-2 ring-yellow-400',
+        'requires_changes' => 'ring-2 ring-orange-400',
+        default            => 'ring-2 ring-gray-200',
     };
     $badgeCls = match($status) {
-        'approved' => 'bg-green-100 text-green-700',
-        'rejected' => 'bg-red-100 text-red-700',
-        'waiting'  => 'bg-[#6C5CE7]/10 text-[#6C5CE7] font-semibold',
-        'delegated'=> 'bg-yellow-100 text-yellow-700',
-        default    => 'bg-gray-100 text-gray-400',
+        'approved'         => 'bg-green-100 text-green-700',
+        'rejected'         => 'bg-red-100 text-red-700',
+        'waiting'          => 'bg-[#6C5CE7]/10 text-[#6C5CE7] font-semibold',
+        'delegated'        => 'bg-yellow-100 text-yellow-700',
+        'requires_changes' => 'bg-orange-100 text-orange-600',
+        default            => 'bg-gray-100 text-gray-400',
     };
     $badgeIcon = match($status) {
-        'approved' => '✓',
-        'rejected' => '✗',
-        default    => null,
+        'approved'         => '✓',
+        'rejected'         => '✗',
+        'requires_changes' => '!',
+        default            => null,
     };
     $initials = $user ? mb_strtoupper(mb_substr($user->name, 0, 1)) : '?';
 @endphp
@@ -38,6 +41,10 @@
         @elseif($status === 'rejected')
             <span class="absolute -bottom-2 left-1/2 ml-4 mt-1 -translate-x-1/2 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
                 <svg class="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </span>
+        @elseif($status === 'requires_changes')
+            <span class="absolute -bottom-2 left-1/2 ml-4 mt-1 -translate-x-1/2 w-4 h-4 bg-orange-500 rounded-full flex items-center justify-center">
+                <svg class="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01"/></svg>
             </span>
         @endif
     </div>

@@ -561,7 +561,7 @@
                         @include('documents._approval_node', [
                             'user'   => $document->initiator,
                             'label'  => 'Инициатор',
-                            'status' => 'approved',
+                            'status' => $document->status === 'requires_changes' ? 'requires_changes' : 'approved',
                             'date'   => $document->created_at->format('d.m.Y'),
                             'isMe'   => false,
                         ])

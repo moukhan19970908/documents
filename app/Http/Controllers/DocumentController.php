@@ -71,32 +71,44 @@ class DocumentController extends Controller
         }
 
         if ($department = $request->get('department')) {
-            $query->whereHas('initiator', fn($q) => $q->where('department_id', $department));
+            $deptIds = Department::getDescendantIds((int) $department);
+            $query->whereHas('initiator', fn($q) => $q->whereIn('department_id', $deptIds));
         }
 
-        // Apply policy filtering
-        $user = auth()->user();
-        /*
-        if ($user->role === 'archiver') {
-            $query->whereIn('status', ['approved', 'signed', 'archived']);
-        } elseif ($user->role === 'linear') {
+        // Apply access-level-based filtering
+        $user      = auth()->user();
+        $docAccess = $user->resolveWorkflowAccess();
+
+        // Closure: documents where the user is an approver or delegate in any stage
+        $isInvolved = fn($q) => $q
+            ->where('initiator_id', $user->id)
+            ->orWhereHas('approvals.stages.workflowStage.approvers', fn($q2) => $q2->where('approver_id', $user->id))
+            ->orWhereHas('approvals.stages.decisions', fn($q2) => $q2->where('action', 'delegate')->where('delegated_to', $user->id));
+
+        if ($docAccess === 'department' && $user->department_id) {
+            $accessibleDeptIds = Department::getDescendantIds($user->department_id);
             $query->where(fn($q) => $q
-                ->where('initiator_id', $user->id)
-                ->orWhereHas('approvals.stages', fn($q2) => $q2->whereHas('workflowStage.approvers', fn($q3) => $q3->where('approver_id', $user->id)))
+                ->whereHas('initiator', fn($q2) => $q2->whereIn('department_id', $accessibleDeptIds))
+                ->orWhereHas('approvals.stages.workflowStage.approvers', fn($q2) => $q2->where('approver_id', $user->id))
                 ->orWhereHas('approvals.stages.decisions', fn($q2) => $q2->where('action', 'delegate')->where('delegated_to', $user->id))
             );
-        } elseif ($user->role === 'director') {
-            $query->where(fn($q) => $q
-                ->whereHas('initiator', fn($q2) => $q2->where('department_id', $user->department_id))
-                ->orWhere('initiator_id', $user->id)
-                ->orWhereHas('approvals.stages.decisions', fn($q2) => $q2->where('action', 'delegate')->where('delegated_to', $user->id))
-            );
+        } elseif ($docAccess === 'own') {
+            $query->where($isInvolved);
+        } elseif (!$user->isAdmin() && $docAccess === 'full') {
+            // full access: show all, but ensure involved documents are always visible
+            // no restriction needed — all documents visible
         }
-        // Admin and others see all
-        */
-        $documents = $query->paginate(25)->withQueryString();
+
+        $documents     = $query->paginate(25)->withQueryString();
         $documentTypes = DocumentType::all();
-        $departments = Department::all();
+
+        if ($user->isAdmin() || $docAccess === 'full') {
+            $departments = Department::all();
+        } elseif ($docAccess === 'department' && $user->department_id) {
+            $departments = Department::whereIn('id', Department::getDescendantIds($user->department_id))->get();
+        } else {
+            $departments = collect();
+        }
 
         return view('documents.index', compact('documents', 'documentTypes', 'departments'));
     }

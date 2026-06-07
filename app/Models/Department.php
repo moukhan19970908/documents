@@ -32,4 +32,23 @@ class Department extends Model
     {
         return $this->hasMany(User::class, 'department_id');
     }
+
+    /**
+     * Returns IDs of the given department and all its descendants (recursive).
+     */
+    public static function getDescendantIds(int $parentId): array
+    {
+        $all    = static::all(['id', 'parent_id']);
+        $result = [];
+        $queue  = [$parentId];
+
+        while (!empty($queue)) {
+            $current  = array_shift($queue);
+            $result[] = $current;
+            $children = $all->where('parent_id', $current)->pluck('id')->toArray();
+            $queue    = array_merge($queue, $children);
+        }
+
+        return $result;
+    }
 }

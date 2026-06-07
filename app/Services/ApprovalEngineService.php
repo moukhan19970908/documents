@@ -167,6 +167,14 @@ class ApprovalEngineService
             'document_id' => $document->id,
         ]);
 
+        $this->bitrix24->createRejectionTask(
+            $document,
+            $document->initiator,
+            $user,
+            $comment,
+            $stage->deadline_at
+        );
+
         event(new DocumentRejected($document, $user, $comment));
     }
 
@@ -188,6 +196,14 @@ class ApprovalEngineService
             'document_id' => $document->id,
             'reviewer'    => $user->name,
         ]);
+
+        $this->bitrix24->createRevisionTask(
+            $document,
+            $document->initiator,
+            $user,
+            $comment,
+            $stage->deadline_at
+        );
 
         event(new DocumentRejected($document, $user, $comment));
     }
@@ -241,6 +257,23 @@ class ApprovalEngineService
         $stage->update(['status' => 'in_progress', 'started_at' => now()]);
 
         $document = $approval->document;
+
+        // Determine sender: last approver of previous stage, or document initiator for the first stage
+        $previousStage = $approval->stages()
+            ->where('status', 'approved')
+            ->orderByDesc('completed_at')
+            ->first();
+
+        if ($previousStage) {
+            $lastDecision = $previousStage->decisions()
+                ->where('action', 'approve')
+                ->orderByDesc('decided_at')
+                ->first();
+            $sender = $lastDecision?->user ?? $document->initiator;
+        } else {
+            $sender = $document->initiator;
+        }
+
         $approverIds = $stage->workflowStage->approvers()->pluck('approver_id');
         $approvers = User::whereIn('id', $approverIds)->get();
 
@@ -254,7 +287,12 @@ class ApprovalEngineService
                 'deadline_at'                => $stage->deadline_at,
             ]);
 
-            $bitrix24TaskId = $this->bitrix24->createTask($document, $approver);
+            $bitrix24TaskId = $this->bitrix24->createApprovalTask(
+                $document,
+                $approver,
+                $sender,
+                $stage->deadline_at
+            );
             if ($bitrix24TaskId) {
                 $task->update(['bitrix24_task_id' => $bitrix24TaskId]);
             }

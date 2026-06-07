@@ -24,10 +24,17 @@ class SyncWithBitrix24 implements ShouldQueue
                 $stage = $this->document->activeApproval->activeStage();
                 if ($stage) {
                     $approverIds = $stage->workflowStage->approvers()->pluck('approver_id');
+                    $sender = $this->document->initiator;
+
                     foreach ($approverIds as $approverId) {
                         $approver = \App\Models\User::find($approverId);
                         if ($approver) {
-                            $taskId = $bitrix24->createTask($this->document, $approver);
+                            $taskId = $bitrix24->createApprovalTask(
+                                $this->document,
+                                $approver,
+                                $sender,
+                                $stage->deadline_at
+                            );
                             if ($taskId && !$this->document->bitrix24_task_id) {
                                 $this->document->update(['bitrix24_task_id' => $taskId]);
                             }

@@ -29,7 +29,8 @@ class ArchiveController extends Controller
         if ($access === 'own') {
             $query->where('initiator_id', $user->id);
         } elseif ($access === 'department' && $user->department_id) {
-            $query->whereHas('initiator', fn($q) => $q->where('department_id', $user->department_id));
+            $accessibleDeptIds = Department::getDescendantIds($user->department_id);
+            $query->whereHas('initiator', fn($q) => $q->whereIn('department_id', $accessibleDeptIds));
         }
 
         if ($tab === 'approved') {
@@ -55,7 +56,8 @@ class ArchiveController extends Controller
         }
 
         if ($department = $request->get('department')) {
-            $query->whereHas('initiator', fn($q) => $q->where('department_id', $department));
+            $deptIds = Department::getDescendantIds((int) $department);
+            $query->whereHas('initiator', fn($q) => $q->whereIn('department_id', $deptIds));
         }
 
         if ($type = $request->get('type')) {
@@ -63,7 +65,14 @@ class ArchiveController extends Controller
         }
 
         $documents = $query->paginate(25)->withQueryString();
-        $departments = Department::all();
+
+        if ($user->isAdmin() || $access === 'full') {
+            $departments = Department::all();
+        } elseif ($access === 'department' && $user->department_id) {
+            $departments = Department::whereIn('id', Department::getDescendantIds($user->department_id))->get();
+        } else {
+            $departments = collect();
+        }
         $documentTypes = DocumentType::all();
 
         // Build folder tree from document types

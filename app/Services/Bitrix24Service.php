@@ -21,27 +21,131 @@ class Bitrix24Service
         $this->baseUrl    = config('services.bitrix24.base_url', '');
     }
 
-    public function createTask(Document $document, User $assignee): ?string
-    {
+    /**
+     * Task type 1 — document arrived for approval.
+     * Sent to each approver of the activated stage.
+     */
+    public function createApprovalTask(
+        Document $document,
+        User $assignee,
+        User $sender,
+        ?\DateTimeInterface $deadline = null
+    ): ?string {
         if (empty($this->webhookUrl) || !$assignee->bitrix24_id) {
             return null;
         }
 
+        $url        = route('documents.show', $document->id);
+        $deadlineAt = $deadline ?? now()->addDays(3);
+        $deadlineStr = $deadlineAt instanceof \Carbon\Carbon
+            ? $deadlineAt->format('d.m.Y H:i')
+            : \Carbon\Carbon::parse($deadlineAt)->format('d.m.Y H:i');
+
+        $description = "Поступил новый документ на согласование - {$document->title} от {$sender->name}\n\n"
+            . $url . "\n\n"
+            . "Крайний срок: {$deadlineStr}";
+
         try {
             $response = Http::post($this->webhookUrl . '/tasks.task.add', [
                 'fields' => [
-                    'TITLE'          => 'Согласование: ' . $document->title,
+                    'TITLE'          => 'Согласуйте документ',
                     'RESPONSIBLE_ID' => $assignee->bitrix24_id,
-                    'DESCRIPTION'    => route('documents.show', $document->id),
-                    'DEADLINE'       => now()->addDays(3)->toIso8601String(),
+                    'DESCRIPTION'    => $description,
+                    'DEADLINE'       => $deadlineAt instanceof \Carbon\Carbon
+                        ? $deadlineAt->toIso8601String()
+                        : \Carbon\Carbon::parse($deadlineAt)->toIso8601String(),
                 ],
             ]);
 
             $data = $response->json();
             return (string) ($data['result']['task']['id'] ?? null);
         } catch (\Exception $e) {
-            Log::error('Bitrix24 createTask failed: ' . $e->getMessage());
+            Log::error('Bitrix24 createApprovalTask failed: ' . $e->getMessage());
             return null;
+        }
+    }
+
+    /**
+     * Task type 2 — document returned for revision.
+     * Sent to the initiator when an approver requests changes.
+     */
+    public function createRevisionTask(
+        Document $document,
+        User $initiator,
+        User $sender,
+        ?string $comment,
+        ?\DateTimeInterface $deadline = null
+    ): void {
+        if (empty($this->webhookUrl) || !$initiator->bitrix24_id) {
+            return;
+        }
+
+        $url         = route('documents.show', $document->id);
+        $deadlineAt  = $deadline ?? now()->addDays(3);
+        $deadlineStr = $deadlineAt instanceof \Carbon\Carbon
+            ? $deadlineAt->format('d.m.Y H:i')
+            : \Carbon\Carbon::parse($deadlineAt)->format('d.m.Y H:i');
+
+        $description = "{$sender->name} вернул документ {$document->title} на доработку\n\n"
+            . "Комментарий: " . ($comment ?: '—') . "\n\n"
+            . $url . "\n\n"
+            . "Крайний срок: {$deadlineStr}";
+
+        try {
+            Http::post($this->webhookUrl . '/tasks.task.add', [
+                'fields' => [
+                    'TITLE'          => 'Документ возвращен на доработку',
+                    'RESPONSIBLE_ID' => $initiator->bitrix24_id,
+                    'DESCRIPTION'    => $description,
+                    'DEADLINE'       => $deadlineAt instanceof \Carbon\Carbon
+                        ? $deadlineAt->toIso8601String()
+                        : \Carbon\Carbon::parse($deadlineAt)->toIso8601String(),
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Bitrix24 createRevisionTask failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Task type 3 — document fully rejected.
+     * Sent to the initiator only.
+     */
+    public function createRejectionTask(
+        Document $document,
+        User $initiator,
+        User $rejector,
+        ?string $comment,
+        ?\DateTimeInterface $deadline = null
+    ): void {
+        if (empty($this->webhookUrl) || !$initiator->bitrix24_id) {
+            return;
+        }
+
+        $url         = route('documents.show', $document->id);
+        $deadlineAt  = $deadline ?? now()->addDays(3);
+        $deadlineStr = $deadlineAt instanceof \Carbon\Carbon
+            ? $deadlineAt->format('d.m.Y H:i')
+            : \Carbon\Carbon::parse($deadlineAt)->format('d.m.Y H:i');
+
+        $description = "Документ {$document->title} отклонен в согласовании\n"
+            . "{$rejector->name} отклонил документ по причине: " . ($comment ?: '—') . "\n\n"
+            . $url . "\n\n"
+            . "Крайний срок: {$deadlineStr}";
+
+        try {
+            Http::post($this->webhookUrl . '/tasks.task.add', [
+                'fields' => [
+                    'TITLE'          => 'Документ отклонен',
+                    'RESPONSIBLE_ID' => $initiator->bitrix24_id,
+                    'DESCRIPTION'    => $description,
+                    'DEADLINE'       => $deadlineAt instanceof \Carbon\Carbon
+                        ? $deadlineAt->toIso8601String()
+                        : \Carbon\Carbon::parse($deadlineAt)->toIso8601String(),
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Bitrix24 createRejectionTask failed: ' . $e->getMessage());
         }
     }
 

@@ -57,7 +57,7 @@
                 @php
                     $navItems = [
                         ['route' => 'dashboard', 'label' => 'Дашборд', 'icon' => 'dashboard'],
-                        ['route' => 'tasks', 'label' => 'Мои задачи', 'icon' => 'tasks'],
+                        ['route' => 'tasks', 'label' => 'Мои задачи', 'icon' => 'tasks', 'url' => route('tasks', ['filter' => 'pending'])],
                         ['route' => 'documents.index', 'label' => 'Документы', 'icon' => 'document'],
                         ['route' => 'workflows.index', 'label' => 'Процессы', 'icon' => 'workflow'],
                         ['route' => 'archive.index', 'label' => 'Архив', 'icon' => 'archive'],
@@ -66,7 +66,7 @@
                 @endphp
 
                 @foreach($navItems as $item)
-                    <a href="{{ route($item['route']) }}"
+                    <a href="{{ $item['url'] ?? route($item['route']) }}"
                        class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
                               {{ request()->routeIs($item['route']) || request()->routeIs($item['route'].'.*')
                                  ? 'bg-[#5B4FE8] text-white'
@@ -243,7 +243,7 @@
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10-2a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1h-4a1 1 0 01-1-1v-6z"/></svg>
                     Дашборд
                 </a>
-                <a href="{{ route('tasks') }}" class="flex-1 flex flex-col items-center gap-1 text-xs {{ request()->routeIs('tasks') ? 'text-[#5B4FE8]' : 'text-gray-500' }}">
+                <a href="{{ route('tasks', ['filter' => 'pending']) }}" class="flex-1 flex flex-col items-center gap-1 text-xs {{ request()->routeIs('tasks') ? 'text-[#5B4FE8]' : 'text-gray-500' }}">
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
                     Задачи
                 </a>
