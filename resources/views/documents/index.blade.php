@@ -12,8 +12,25 @@
         </a>
     </div>
 
+    {{-- Admin scope toggle --}}
+    @if(auth()->user()->isAdmin())
+    <div class="flex gap-1 mb-4 bg-white border border-gray-200 rounded-lg p-1 w-fit">
+        <a href="{{ route('documents.index', array_merge(request()->except(['scope', 'page']), [])) }}"
+           class="px-4 py-1.5 rounded-md text-sm font-medium transition-colors {{ request('scope') !== 'all' ? 'bg-[#5B4FE8] text-white shadow-sm' : 'text-gray-500 hover:text-gray-700' }}">
+            Мои документы
+        </a>
+        <a href="{{ route('documents.index', array_merge(request()->except(['scope', 'page']), ['scope' => 'all'])) }}"
+           class="px-4 py-1.5 rounded-md text-sm font-medium transition-colors {{ request('scope') === 'all' ? 'bg-[#5B4FE8] text-white shadow-sm' : 'text-gray-500 hover:text-gray-700' }}">
+            Все документы
+        </a>
+    </div>
+    @endif
+
     {{-- Filters --}}
     <form method="GET" class="bg-white rounded-xl border border-gray-200 p-4 mb-5 flex flex-wrap gap-3 items-end">
+        @if(auth()->user()->isAdmin() && request('scope') === 'all')
+            <input type="hidden" name="scope" value="all">
+        @endif
         <div class="flex-1 min-w-48">
             <label class="text-xs text-gray-500 font-medium block mb-1">Поиск</label>
             <input type="text" name="search" value="{{ request('search') }}" placeholder="Название документа..."
@@ -60,7 +77,7 @@
         </div>
         <button type="submit" class="px-4 py-2 bg-[#5B4FE8] text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">Найти</button>
         @if(request()->hasAny(['search', 'type', 'status', 'date_from', 'date_to', 'department']))
-            <a href="{{ route('documents.index') }}" class="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-50">Сбросить</a>
+            <a href="{{ route('documents.index', request('scope') === 'all' ? ['scope' => 'all'] : []) }}" class="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-50">Сбросить</a>
         @endif
     </form>
 

@@ -85,7 +85,13 @@ class DocumentController extends Controller
             ->orWhereHas('approvals.stages.workflowStage.approvers', fn($q2) => $q2->where('approver_id', $user->id))
             ->orWhereHas('approvals.stages.decisions', fn($q2) => $q2->where('action', 'delegate')->where('delegated_to', $user->id));
 
-        if ($docAccess === 'department' && $user->department_id) {
+        if ($user->isAdmin()) {
+            // Admin: by default show only documents where they participate;
+            // pass ?scope=all to see all documents in the workspace.
+            if ($request->get('scope') !== 'all') {
+                $query->where($isInvolved);
+            }
+        } elseif ($docAccess === 'department' && $user->department_id) {
             $accessibleDeptIds = Department::getDescendantIds($user->department_id);
             $query->where(fn($q) => $q
                 ->whereHas('initiator', fn($q2) => $q2->whereIn('department_id', $accessibleDeptIds))
@@ -94,10 +100,8 @@ class DocumentController extends Controller
             );
         } elseif ($docAccess === 'own') {
             $query->where($isInvolved);
-        } elseif (!$user->isAdmin() && $docAccess === 'full') {
-            // full access: show all, but ensure involved documents are always visible
-            // no restriction needed — all documents visible
         }
+        // full access non-admin: no restriction — all documents visible
 
         $documents     = $query->paginate(25)->withQueryString();
         $documentTypes = DocumentType::all();

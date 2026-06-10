@@ -10,6 +10,28 @@ class ChatController extends Controller
 {
     public function __construct(private ChatService $chatService) {}
 
+    public function index()
+    {
+        $chats = Chat::whereHas('participants', fn($q) => $q->where('user_id', auth()->id()))
+            ->with(['document:id,title', 'messages' => fn($q) => $q->latest()->limit(1)->with('user:id,name')])
+            ->latest()
+            ->get();
+
+        return view('chats.index', compact('chats'));
+    }
+
+    public function show(Chat $chat)
+    {
+        $this->authorize('view', $chat);
+
+        $chat->load([
+            'document:id,title',
+            'messages' => fn($q) => $q->latest()->limit(30)->with('user:id,name'),
+        ]);
+
+        return view('chats.show', compact('chat'));
+    }
+
     public function messages(Request $request, Chat $chat)
     {
         $this->authorize('view', $chat);

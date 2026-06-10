@@ -70,6 +70,8 @@ Route::middleware(['auth', 'agreement', 'audit'])->group(function () {
     Route::delete('documents/{document}/related-files/{file}', [DocumentRelatedFileController::class, 'destroy'])->name('documents.related-files.destroy');
 
     // Chat
+    Route::get('chats', [ChatController::class, 'index'])->name('chats.index');
+    Route::get('chats/{chat}', [ChatController::class, 'show'])->name('chats.show');
     Route::get('chats/{chat}/messages', [ChatController::class, 'messages'])->name('chats.messages');
     Route::post('chats/{chat}/messages', [ChatController::class, 'store'])->name('chats.messages.store');
 

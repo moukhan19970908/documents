@@ -60,6 +60,7 @@
                         ['route' => 'tasks', 'label' => 'Мои задачи', 'icon' => 'tasks', 'url' => route('tasks', ['filter' => 'pending'])],
                         ['route' => 'documents.index', 'label' => 'Документы', 'icon' => 'document'],
                         ['route' => 'workflows.index', 'label' => 'Процессы', 'icon' => 'workflow'],
+                        ['route' => 'chats.index', 'label' => 'Чаты', 'icon' => 'chat'],
                         ['route' => 'archive.index', 'label' => 'Архив', 'icon' => 'archive'],
                         ['route' => 'employees.index', 'label' => 'Сотрудники', 'icon' => 'employees'],
                     ];
