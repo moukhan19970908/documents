@@ -16,6 +16,7 @@ use App\Services\ApprovalEngineService;
 use App\Services\DocumentVersionService;
 use App\Services\PdfGeneratorService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class DocumentController extends Controller
@@ -79,11 +80,14 @@ class DocumentController extends Controller
         $user      = auth()->user();
         $docAccess = $user->resolveWorkflowAccess();
 
-        // Closure: documents where the user is an approver or delegate in any stage
+        // Closure: documents where the user is an approver, delegator, or delegatee in any stage
         $isInvolved = fn($q) => $q
             ->where('initiator_id', $user->id)
             ->orWhereHas('approvals.stages.workflowStage.approvers', fn($q2) => $q2->where('approver_id', $user->id))
-            ->orWhereHas('approvals.stages.decisions', fn($q2) => $q2->where('action', 'delegate')->where('delegated_to', $user->id));
+            ->orWhereHas('approvals.stages.decisions', fn($q2) => $q2
+                ->where('delegated_to', $user->id)           // delegated TO this user
+                ->orWhere('user_id', $user->id)              // this user made any decision (approve/reject/delegate/…)
+            );
 
         if ($user->isAdmin()) {
             // Admin: by default show only documents where they participate;
@@ -96,7 +100,10 @@ class DocumentController extends Controller
             $query->where(fn($q) => $q
                 ->whereHas('initiator', fn($q2) => $q2->whereIn('department_id', $accessibleDeptIds))
                 ->orWhereHas('approvals.stages.workflowStage.approvers', fn($q2) => $q2->where('approver_id', $user->id))
-                ->orWhereHas('approvals.stages.decisions', fn($q2) => $q2->where('action', 'delegate')->where('delegated_to', $user->id))
+                ->orWhereHas('approvals.stages.decisions', fn($q2) => $q2
+                    ->where('delegated_to', $user->id)
+                    ->orWhere('user_id', $user->id)
+                )
             );
         } elseif ($docAccess === 'own') {
             $query->where($isInvolved);
@@ -152,19 +159,23 @@ class DocumentController extends Controller
         // Merge custom_fields into data
         $data = array_merge($request->data ?? [], $request->custom_fields ?? []);
 
-        $document = Document::create([
-            'title'            => $request->title,
-            'workflow_id'      => $request->workflow_id ?: null,
-            'document_type_id' => $request->document_type_id ?: null,
-            'initiator_id'     => auth()->id(),
-            'status'           => 'draft',
-            'data'             => $data,
-            'deadline_at'      => $request->deadline_at ?: null,
-        ]);
+        $document = DB::transaction(function () use ($request, $data) {
+            $document = Document::create([
+                'title'            => $request->title,
+                'workflow_id'      => $request->workflow_id ?: null,
+                'document_type_id' => $request->document_type_id ?: null,
+                'initiator_id'     => auth()->id(),
+                'status'           => 'draft',
+                'data'             => $data,
+                'deadline_at'      => $request->deadline_at ?: null,
+            ]);
 
-        if ($request->hasFile('file')) {
-            $this->versionService->storeFile($document, $request->file('file'));
-        }
+            if ($request->hasFile('file')) {
+                $this->versionService->storeFile($document, $request->file('file'));
+            }
+
+            return $document;
+        });
 
         $this->auditService->log('document_created', $document, null, $document->toArray());
 

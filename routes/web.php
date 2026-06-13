@@ -54,6 +54,8 @@ Route::middleware(['auth', 'agreement', 'audit'])->group(function () {
     Route::post('documents/{document}/resubmit', [ApprovalController::class, 'resubmit'])->name('documents.resubmit');
     Route::post('documents/{document}/request-changes', [ApprovalController::class, 'requestChanges'])->name('documents.request-changes');
     Route::post('documents/{document}/delegate', [ApprovalController::class, 'delegate'])->name('documents.delegate');
+    Route::post('documents/{document}/process-approve', [ApprovalController::class, 'processApprove'])->name('documents.process-approve');
+    Route::post('documents/{document}/process-reject', [ApprovalController::class, 'processReject'])->name('documents.process-reject');
     Route::post('documents/{document}/cancel-approval', [ApprovalController::class, 'cancelApproval'])->name('documents.cancel-approval');
     Route::get('documents/{document}/approval-sheet', [ApprovalController::class, 'approvalSheet'])->name('documents.approval-sheet');
     Route::post('documents/{document}/notes', [DocumentController::class, 'storeNote'])->name('documents.notes.store');
@@ -74,6 +76,7 @@ Route::middleware(['auth', 'agreement', 'audit'])->group(function () {
     Route::get('chats/{chat}', [ChatController::class, 'show'])->name('chats.show');
     Route::get('chats/{chat}/messages', [ChatController::class, 'messages'])->name('chats.messages');
     Route::post('chats/{chat}/messages', [ChatController::class, 'store'])->name('chats.messages.store');
+    Route::post('chats/{chat}/read', [ChatController::class, 'markRead'])->name('chats.read');
 
     // Archive
     Route::get('/archive', [ArchiveController::class, 'index'])->name('archive.index');

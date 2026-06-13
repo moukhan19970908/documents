@@ -18,7 +18,7 @@ class DocumentVersionService
 
         $version = ($document->files()->max('version') ?? 0) + 1;
 
-        $path = $file->store("documents/{$document->id}", 'local');
+        $path = $file->store("documents/{$document->id}", 's3');
 
         $documentFile = $document->files()->create([
             'file_path'   => $path,

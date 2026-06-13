@@ -359,7 +359,7 @@ class Bitrix24Service
             };
 
             $path = 'avatars/b24_' . $b24Id . '.' . $ext;
-            Storage::disk('public')->put($path, $response->body());
+            Storage::disk('s3')->put($path, $response->body());
 
             return $path;
         } catch (\Exception $e) {

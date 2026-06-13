@@ -36,6 +36,9 @@ class DocumentPolicy
             'linear'   => $document->initiator_id === $user->id
                           || $document->approvals()
                               ->whereHas('stages', fn($q) => $q->whereHas('workflowStage.approvers', fn($q2) => $q2->where('approver_id', $user->id)))
+                              ->exists()
+                          || $document->approvals()
+                              ->whereHas('stages.decisions', fn($q) => $q->where('user_id', $user->id))
                               ->exists(),
             'archiver' => in_array($document->status, ['approved', 'signed', 'archived']),
             default    => false,

@@ -7,6 +7,7 @@ use App\Models\Chat;
 use App\Models\ChatMessage;
 use App\Models\DocumentApproval;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 
 class ChatService
 {
@@ -59,4 +60,41 @@ class ChatService
 
         return $message;
     }
+
+    /**
+     * Mark all messages in the chat as read for the given user
+     * (only messages from other users that haven't been read yet).
+     */
+    public function markAsRead(Chat $chat, User $user): void
+    {
+        $unreadIds = $chat->messages()
+            ->where('user_id', '!=', $user->id)
+            ->whereDoesntHave('reads', fn($q) => $q->where('user_id', $user->id))
+            ->pluck('id');
+
+        if ($unreadIds->isEmpty()) {
+            return;
+        }
+
+        $now = now()->toDateTimeString();
+        $rows = $unreadIds->map(fn($id) => [
+            'chat_message_id' => $id,
+            'user_id'         => $user->id,
+            'read_at'         => $now,
+        ])->all();
+
+        DB::table('chat_message_reads')->insertOrIgnore($rows);
+    }
+
+    /**
+     * Count unread messages in a chat for a given user.
+     */
+    public function unreadCount(Chat $chat, User $user): int
+    {
+        return $chat->messages()
+            ->where('user_id', '!=', $user->id)
+            ->whereDoesntHave('reads', fn($q) => $q->where('user_id', $user->id))
+            ->count();
+    }
 }
+

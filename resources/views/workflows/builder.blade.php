@@ -68,17 +68,39 @@
                                     </div>
                                     <div class="space-y-2">
                                         <template x-for="(approver, ai) in stage.approvers" :key="ai">
-                                            <div class="flex items-center gap-2">
-                                                <select :name="`stages[${index}][approvers][${ai}]`" x-model="approver.approver_id"
-                                                        class="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#5B4FE8]">
-                                                    <option value="">— Выбрать сотрудника —</option>
-                                                    @foreach($users as $user)
-                                                        <option value="{{ $user->id }}">{{ $user->name }} ({{ $user->role_label }})</option>
-                                                    @endforeach
-                                                </select>
-                                                <button @click="removeApprover(index, ai)" type="button" class="text-gray-400 hover:text-red-500">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                                                </button>
+                                            <div class="flex flex-col gap-1.5">
+                                                <div class="flex items-center gap-2">
+                                                    <select :name="`stages[${index}][approvers][${ai}][approver_id]`" x-model="approver.approver_id"
+                                                            class="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#5B4FE8]">
+                                                        <option value="">— Выбрать сотрудника —</option>
+                                                        @foreach($users as $user)
+                                                            <option value="{{ $user->id }}">{{ $user->name }} ({{ $user->role_label }})</option>
+                                                        @endforeach
+                                                    </select>
+                                                    <button @click="removeApprover(index, ai)" type="button" class="text-gray-400 hover:text-red-500 shrink-0">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                                                    </button>
+                                                </div>
+                                                {{-- Participant type toggle --}}
+                                                <div class="flex items-center gap-1 ml-0.5">
+                                                    <span class="text-[11px] text-gray-400 mr-1">Роль:</span>
+                                                    <button type="button"
+                                                            @click="approver.participant_type = 'signatory'"
+                                                            :class="approver.participant_type !== 'process' ? 'bg-[#5B4FE8] text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'"
+                                                            class="text-[11px] px-2.5 py-0.5 rounded-l-full font-medium transition-colors border border-r-0"
+                                                            :style="approver.participant_type !== 'process' ? 'border-color:#5B4FE8' : 'border-color:#e5e7eb'">
+                                                        Подписант
+                                                    </button>
+                                                    <button type="button"
+                                                            @click="approver.participant_type = 'process'"
+                                                            :class="approver.participant_type === 'process' ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'"
+                                                            class="text-[11px] px-2.5 py-0.5 rounded-r-full font-medium transition-colors border"
+                                                            :style="approver.participant_type === 'process' ? 'border-color:#f97316' : 'border-color:#e5e7eb'">
+                                                        Процесс
+                                                    </button>
+                                                    <span x-show="approver.participant_type === 'process'" class="text-[11px] text-orange-500 ml-1">(только Одобрить / Не одобрить)</span>
+                                                </div>
+                                                <input type="hidden" :name="`stages[${index}][approvers][${ai}][participant_type]`" :value="approver.participant_type">
                                             </div>
                                         </template>
                                         <div x-show="stage.approvers.length === 0" class="text-xs text-gray-400 py-1">Согласующие не добавлены</div>
@@ -128,7 +150,7 @@
             'name'           => $s->name,
             'stage_type'     => $s->stage_type,
             'deadline_hours' => $s->deadline_hours,
-            'approvers'      => $s->approvers->map(fn($a) => ['approver_id' => $a->approver_id])->values()->toArray(),
+            'approvers'      => $s->approvers->map(fn($a) => ['approver_id' => $a->approver_id, 'participant_type' => $a->participant_type ?? 'signatory'])->values()->toArray(),
         ])->values();
     @endphp
 
@@ -143,7 +165,7 @@
                 this.stages.splice(index, 1);
             },
             addApprover(stageIndex) {
-                this.stages[stageIndex].approvers.push({ approver_id: '' });
+                this.stages[stageIndex].approvers.push({ approver_id: '', participant_type: 'signatory' });
             },
             removeApprover(stageIndex, approverIndex) {
                 this.stages[stageIndex].approvers.splice(approverIndex, 1);

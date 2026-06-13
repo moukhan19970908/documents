@@ -46,6 +46,8 @@
         $alreadyDecided = $activeStage?->decisions
             ->contains('user_id', auth()->id()) ?? false;
         $canApprove = $myApproverEntry !== null && !$alreadyDecided;
+        $isProcessParticipant = $myApproverEntry instanceof \App\Models\WorkflowStageApprover
+            && ($myApproverEntry->participant_type ?? 'signatory') === 'process';
     @endphp
 
     {{-- ── Top bar ── --}}
@@ -390,49 +392,72 @@
                                 </p>
                             @endif
 
-                            <form action="{{ route('documents.approve', $document) }}" method="POST" class="mb-2">
-                                @csrf
-                                <input type="hidden" name="comment" :value="comment">
-                                <button type="submit" class="w-full text-white py-2.5 rounded-lg text-sm font-semibold transition-colors" style="background:#22c55e">
-                                    Согласовать
-                                </button>
-                            </form>
+                            @if($isProcessParticipant)
+                                {{-- Process participant: only Одобрить / Не одобрить, no status effect --}}
+                                <div class="mb-3 px-3 py-2 bg-orange-50 border border-orange-100 rounded-lg">
+                                    <p class="text-xs text-orange-600 font-medium">Процесс (Одобрено/Не одобрено)</p>
+                                    <p class="text-xs text-orange-400 mt-0.5">Ваше решение не влияет на статус согласования</p>
+                                </div>
+                                <form action="{{ route('documents.process-approve', $document) }}" method="POST" class="mb-2">
+                                    @csrf
+                                    <input type="hidden" name="comment" :value="comment">
+                                    <button type="submit" class="w-full text-white py-2.5 rounded-lg text-sm font-semibold transition-colors" style="background:#22c55e">
+                                        Одобрить
+                                    </button>
+                                </form>
+                                <form action="{{ route('documents.process-reject', $document) }}" method="POST" class="mb-2">
+                                    @csrf
+                                    <input type="hidden" name="comment" :value="comment">
+                                    <button type="submit" class="w-full text-white py-2.5 rounded-lg text-sm font-semibold transition-colors" style="background:#ef4444">
+                                        Не одобрить
+                                    </button>
+                                </form>
+                            @else
+                                {{-- Signatory: full approval actions --}}
+                                <form action="{{ route('documents.approve', $document) }}" method="POST" class="mb-2">
+                                    @csrf
+                                    <input type="hidden" name="comment" :value="comment">
+                                    <button type="submit" class="w-full text-white py-2.5 rounded-lg text-sm font-semibold transition-colors" style="background:#22c55e">
+                                        Согласовать
+                                    </button>
+                                </form>
 
-                            <form action="{{ route('documents.reject', $document) }}" method="POST" class="mb-2">
-                                @csrf
-                                <input type="hidden" name="comment" :value="comment">
-                                <button type="submit" class="w-full text-white py-2.5 rounded-lg text-sm font-semibold transition-colors" style="background:#ef4444">
-                                    Отклонить
-                                </button>
-                            </form>
+                                <form action="{{ route('documents.reject', $document) }}" method="POST" class="mb-2">
+                                    @csrf
+                                    <input type="hidden" name="comment" :value="comment">
+                                    <button type="submit" class="w-full text-white py-2.5 rounded-lg text-sm font-semibold transition-colors" style="background:#ef4444">
+                                        Отклонить
+                                    </button>
+                                </form>
 
-                            <form action="{{ route('documents.request-changes', $document) }}" method="POST" class="mb-2"
-                                  @submit.prevent="if(!comment.trim()){ changesError=true; } else { changesError=false; $el.submit(); }">
-                                @csrf
-                                <input type="hidden" name="comment" :value="comment">
-                                <button type="submit" class="w-full text-white py-2.5 rounded-lg text-sm font-semibold transition-colors" style="background:#f97316">
-                                    Отправить на доработку
-                                </button>
-                                <p x-show="changesError" class="text-xs text-red-500 mt-1 text-center">Укажите комментарий для доработки</p>
-                            </form>
+                                <form action="{{ route('documents.request-changes', $document) }}" method="POST" class="mb-2"
+                                      @submit.prevent="if(!comment.trim()){ changesError=true; } else { changesError=false; $el.submit(); }">
+                                    @csrf
+                                    <input type="hidden" name="comment" :value="comment">
+                                    <button type="submit" class="w-full text-white py-2.5 rounded-lg text-sm font-semibold transition-colors" style="background:#f97316">
+                                        Отправить на доработку
+                                    </button>
+                                    <p x-show="changesError" class="text-xs text-red-500 mt-1 text-center">Укажите комментарий для доработки</p>
+                                </form>
 
-                            <button @click="delegateOpen = !delegateOpen"
-                                    class="w-full text-white py-2.5 rounded-lg text-sm font-semibold transition-colors mb-3" style="background:#3b82f6">
-                                Делегировать
-                            </button>
-
-                            <form x-show="delegateOpen" action="{{ route('documents.delegate', $document) }}" method="POST" class="mb-3 space-y-2" style="display:none">
-                                @csrf
-                                <select name="delegated_to" required class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
-                                    <option value="">— Выберите пользователя —</option>
-                                    @foreach(\App\Models\User::where('id', '!=', auth()->id())->where('is_active', true)->orderBy('name')->get() as $u)
-                                        <option value="{{ $u->id }}">{{ $u->name }}</option>
-                                    @endforeach
-                                </select>
-                                <button type="submit" class="w-full border border-gray-200 text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
-                                    Подтвердить делегирование
+                                <button @click="delegateOpen = !delegateOpen"
+                                        class="w-full text-white py-2.5 rounded-lg text-sm font-semibold transition-colors mb-3" style="background:#3b82f6">
+                                    Делегировать
                                 </button>
-                            </form>
+
+                                <form x-show="delegateOpen" action="{{ route('documents.delegate', $document) }}" method="POST" class="mb-3 space-y-2" style="display:none">
+                                    @csrf
+                                    <select name="delegated_to" required class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                                        <option value="">— Выберите пользователя —</option>
+                                        @foreach(\App\Models\User::where('id', '!=', auth()->id())->where('is_active', true)->orderBy('name')->get() as $u)
+                                            <option value="{{ $u->id }}">{{ $u->name }}</option>
+                                        @endforeach
+                                    </select>
+                                    <button type="submit" class="w-full border border-gray-200 text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
+                                        Подтвердить делегирование
+                                    </button>
+                                </form>
+                            @endif
 
                             <textarea x-model="comment" rows="3"
                                       placeholder="Добавить комментарий..."
@@ -504,14 +529,18 @@
                                     ]);
                                 } else {
                                     $status = match($decision->action) {
-                                        'approve' => 'approved',
-                                        'reject'  => 'rejected',
-                                        default   => 'delegated',
+                                        'approve'         => 'approved',
+                                        'reject'          => 'rejected',
+                                        'process_approve' => 'process_approved',
+                                        'process_reject'  => 'process_rejected',
+                                        default           => 'delegated',
                                     };
                                     $label = match($decision->action) {
-                                        'approve' => $decision->decided_at?->format('d.m.Y'),
-                                        'reject'  => 'Отклонено',
-                                        default   => 'Делегировано',
+                                        'approve'         => $decision->decided_at?->format('d.m.Y'),
+                                        'reject'          => 'Отклонено',
+                                        'process_approve' => 'Одобрено',
+                                        'process_reject'  => 'Не одобрено',
+                                        default           => 'Делегировано',
                                     };
                                     $approverNodes->push([
                                         'user'   => $ap->user,

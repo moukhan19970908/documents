@@ -1,5 +1,5 @@
-<x-app-layout>
-    <x-slot name="title">{{ $chat->document->title ?? 'Чат' }} — Vamin</x-slot>
+{{-- Not used: ChatController@show renders chats.index directly --}}
+
 
     <div class="mb-6 flex items-center gap-3">
         <a href="{{ route('chats.index') }}" class="text-gray-400 hover:text-gray-600">

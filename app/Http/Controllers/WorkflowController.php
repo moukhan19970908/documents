@@ -239,12 +239,16 @@ class WorkflowController extends Controller
                 'deadline_hours' => $stageData['deadline_hours'] ?? null,
             ]);
 
-            foreach ($stageData['approvers'] ?? [] as $approverId) {
+            foreach ($stageData['approvers'] ?? [] as $approverData) {
+                $approverId      = is_array($approverData) ? ($approverData['approver_id'] ?? null) : $approverData;
+                $participantType = is_array($approverData) ? ($approverData['participant_type'] ?? 'signatory') : 'signatory';
+                if (!$approverId) continue;
                 WorkflowStageApprover::create([
                     'workflow_stage_id' => $stage->id,
                     'approver_type'     => 'user',
                     'approver_id'       => $approverId,
                     'is_required'       => true,
+                    'participant_type'  => $participantType,
                 ]);
             }
         }

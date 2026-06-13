@@ -5,6 +5,8 @@
         'waiting'          => 'ring-2 ring-[#6C5CE7]',
         'delegated'        => 'ring-2 ring-yellow-400',
         'requires_changes' => 'ring-2 ring-orange-400',
+        'process_approved' => 'ring-2 ring-green-300',
+        'process_rejected' => 'ring-2 ring-red-300',
         default            => 'ring-2 ring-gray-200',
     };
     $badgeCls = match($status) {
@@ -13,12 +15,16 @@
         'waiting'          => 'bg-[#6C5CE7]/10 text-[#6C5CE7] font-semibold',
         'delegated'        => 'bg-yellow-100 text-yellow-700',
         'requires_changes' => 'bg-orange-100 text-orange-600',
+        'process_approved' => 'bg-green-50 text-green-600',
+        'process_rejected' => 'bg-red-50 text-red-600',
         default            => 'bg-gray-100 text-gray-400',
     };
     $badgeIcon = match($status) {
         'approved'         => '✓',
         'rejected'         => '✗',
         'requires_changes' => '!',
+        'process_approved' => '✓',
+        'process_rejected' => '✗',
         default            => null,
     };
     $initials = $user ? mb_strtoupper(mb_substr($user->name, 0, 1)) : '?';
@@ -46,6 +52,14 @@
             <span class="absolute -bottom-2 left-1/2 ml-4 mt-1 -translate-x-1/2 w-4 h-4 bg-orange-500 rounded-full flex items-center justify-center">
                 <svg class="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01"/></svg>
             </span>
+        @elseif($status === 'process_approved')
+            <span class="absolute -bottom-2 left-1/2 ml-4 mt-1 -translate-x-1/2 w-4 h-4 bg-green-400 rounded-full flex items-center justify-center" title="Одобрено (процесс)">
+                <svg class="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+            </span>
+        @elseif($status === 'process_rejected')
+            <span class="absolute -bottom-2 left-1/2 ml-4 mt-1 -translate-x-1/2 w-4 h-4 bg-red-400 rounded-full flex items-center justify-center" title="Не одобрено (процесс)">
+                <svg class="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </span>
         @endif
     </div>
 
@@ -61,7 +75,13 @@
 
     {{-- Status / date --}}
     @if($date)
-        <p class="text-[10px] mt-1 text-center leading-tight {{ $status === 'waiting' ? ($isMe ? 'text-[#6C5CE7] font-semibold' : 'text-gray-500') : ($status === 'rejected' ? 'text-red-500' : 'text-gray-400') }}">
+        <p class="text-[10px] mt-1 text-center leading-tight {{ match($status) {
+            'waiting'          => $isMe ? 'text-[#6C5CE7] font-semibold' : 'text-gray-500',
+            'rejected'         => 'text-red-500',
+            'process_approved' => 'text-green-600 font-medium',
+            'process_rejected' => 'text-red-500 font-medium',
+            default            => 'text-gray-400',
+        } }}">
             {{ $date }}
         </p>
     @endif

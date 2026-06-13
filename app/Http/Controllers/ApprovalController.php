@@ -123,6 +123,38 @@ class ApprovalController extends Controller
         return back()->with('success', 'Документ отправлен на доработку.');
     }
 
+    public function processApprove(ApproveDocumentRequest $request, Document $document)
+    {
+        $this->authorize('approve', $document);
+
+        $stage = $document->activeApproval?->activeStage();
+        if (!$stage) {
+            return back()->with('error', 'Нет активного этапа согласования.');
+        }
+
+        $this->engine->processDecision($stage, auth()->user(), 'process_approve', $request->comment);
+
+        $this->audit->log(auth()->user()->name . ' одобрил (процесс) «' . $document->title . '»', $document);
+
+        return back()->with('success', 'Решение записано.');
+    }
+
+    public function processReject(ApproveDocumentRequest $request, Document $document)
+    {
+        $this->authorize('approve', $document);
+
+        $stage = $document->activeApproval?->activeStage();
+        if (!$stage) {
+            return back()->with('error', 'Нет активного этапа согласования.');
+        }
+
+        $this->engine->processDecision($stage, auth()->user(), 'process_reject', $request->comment);
+
+        $this->audit->log(auth()->user()->name . ' не одобрил (процесс) «' . $document->title . '»', $document);
+
+        return back()->with('success', 'Решение записано.');
+    }
+
     public function delegate(Request $request, Document $document)
     {
         $this->authorize('approve', $document);

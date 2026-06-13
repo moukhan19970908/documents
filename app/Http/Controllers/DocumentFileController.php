@@ -42,7 +42,11 @@ class DocumentFileController extends Controller
     {
         $this->authorize('view', $document);
 
-        if (!Storage::exists($file->file_path)) {
+        try {
+            if (!Storage::exists($file->file_path)) {
+                abort(404);
+            }
+        } catch (\Throwable) {
             abort(404);
         }
 

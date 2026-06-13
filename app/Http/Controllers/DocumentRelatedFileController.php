@@ -22,7 +22,11 @@ class DocumentRelatedFileController extends Controller
         ]);
 
         $file = $request->file('file');
-        $path = $file->store("documents/{$document->id}/related", 'local');
+        $path = $file->store("documents/{$document->id}/related", 's3');
+
+        if ($path === false) {
+            return back()->withErrors(['file' => 'Не удалось загрузить файл на сервер. Попробуйте снова.']);
+        }
 
         $document->relatedFiles()->create([
             'uploaded_by' => auth()->id(),
@@ -42,7 +46,11 @@ class DocumentRelatedFileController extends Controller
     {
         $this->authorize('view', $document);
 
-        if (!Storage::exists($file->file_path)) {
+        try {
+            if (!Storage::exists($file->file_path)) {
+                abort(404);
+            }
+        } catch (\Throwable) {
             abort(404);
         }
 
@@ -53,7 +61,11 @@ class DocumentRelatedFileController extends Controller
     {
         $this->authorize('view', $document);
 
-        if (!Storage::exists($file->file_path)) {
+        try {
+            if (!Storage::exists($file->file_path)) {
+                abort(404);
+            }
+        } catch (\Throwable) {
             abort(404);
         }
 

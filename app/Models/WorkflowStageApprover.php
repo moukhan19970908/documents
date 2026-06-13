@@ -11,7 +11,7 @@ class WorkflowStageApprover extends Model
     use HasFactory;
 
     protected $fillable = [
-        'workflow_stage_id', 'approver_type', 'approver_id', 'is_required',
+        'workflow_stage_id', 'approver_type', 'approver_id', 'is_required', 'participant_type',
     ];
 
     protected $casts = [

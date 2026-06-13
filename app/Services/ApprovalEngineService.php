@@ -112,10 +112,11 @@ class ApprovalEngineService
             $document = $approval->document;
 
             match($action) {
-                'approve'         => $this->handleApprove($stage, $approval, $document),
-                'reject'          => $this->handleReject($stage, $approval, $document, $user, $comment),
-                'request_changes' => $this->handleRequestChanges($stage, $approval, $document, $user, $comment),
-                'delegate'        => $this->handleDelegate($stage, $document, $delegatedTo),
+                'approve'                    => $this->handleApprove($stage, $approval, $document),
+                'reject'                     => $this->handleReject($stage, $approval, $document, $user, $comment),
+                'request_changes'            => $this->handleRequestChanges($stage, $approval, $document, $user, $comment),
+                'delegate'                   => $this->handleDelegate($stage, $document, $delegatedTo),
+                'process_approve', 'process_reject' => $this->handleProcessDecision($stage, $approval),
             };
 
             $this->auditService->log("decision_{$action}", $document, null, [
@@ -132,7 +133,10 @@ class ApprovalEngineService
         Document $document
     ): void {
         $workflowStage = $stage->workflowStage;
-        $requiredApprovers = $workflowStage->approvers()->where('is_required', true)->pluck('approver_id');
+        $requiredApprovers = $workflowStage->approvers()
+            ->where('is_required', true)
+            ->where('participant_type', 'signatory')
+            ->pluck('approver_id');
         $approvedUserIds = $stage->decisions()->where('action', 'approve')->pluck('user_id');
 
         $allApproved = $requiredApprovers->diff($approvedUserIds)->isEmpty();
@@ -206,6 +210,26 @@ class ApprovalEngineService
         );
 
         event(new DocumentRejected($document, $user, $comment));
+    }
+
+    private function handleProcessDecision(
+        DocumentApprovalStage $stage,
+        DocumentApproval $approval
+    ): void {
+        $requiredSignatories = $stage->workflowStage->approvers()
+            ->where('is_required', true)
+            ->where('participant_type', 'signatory')
+            ->pluck('approver_id');
+
+        $approvedUserIds = $stage->decisions()->where('action', 'approve')->pluck('user_id');
+        $allSignatoriesApproved = $requiredSignatories->diff($approvedUserIds)->isEmpty();
+
+        if ($allSignatoriesApproved) {
+            $stage->update(['status' => 'approved', 'completed_at' => now()]);
+            $this->completeTasksForStage($stage);
+            event(new ApprovalStageChanged($stage));
+            $this->moveToNextStage($approval);
+        }
     }
 
     private function handleDelegate(
