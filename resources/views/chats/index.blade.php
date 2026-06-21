@@ -12,7 +12,8 @@
          style="height: calc(100vh - 64px)">
 
         {{-- ═══ LEFT PANEL: Chat list ═══ --}}
-        <div class="w-80 shrink-0 border-r border-gray-100 flex flex-col h-full {{ $activeChat ? 'hidden md:flex' : 'flex' }}">
+        <div class="shrink-0 border-r border-gray-100 flex flex-col h-full {{ $activeChat ? 'hidden md:flex' : 'flex' }}" style="
+    width: calc(var(--spacing) * 135);">
 
             {{-- Header --}}
             <div class="px-5 pt-5 pb-3 border-b border-gray-100">
