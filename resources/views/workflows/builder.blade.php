@@ -29,8 +29,9 @@
                 <input type="hidden" name="name" value="{{ $workflow->name }}">
 
                 <div class="space-y-3" id="stages-list">
-                    <template x-for="(stage, index) in stages" :key="stage.id">
+                    <template x-for="(stage, index) in stages" :key="stage._key">
                         <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                            <input type="hidden" :name="`stages[${index}][id]`" :value="stage.id ?? ''">
                             {{-- Stage header --}}
                             <div class="flex items-center gap-3 px-4 py-3 bg-gray-50 border-b border-gray-100">
                                 <div class="w-6 h-6 bg-[#5B4FE8] text-white rounded-full flex items-center justify-center text-xs font-bold" x-text="index + 1"></div>
@@ -131,7 +132,7 @@
             <div class="bg-white rounded-xl border border-gray-200 p-4">
                 <p class="text-xs font-semibold text-gray-700 uppercase tracking-widest mb-3">Предпросмотр</p>
                 <div class="space-y-2">
-                    <template x-for="(stage, index) in stages" :key="stage.id">
+                    <template x-for="(stage, index) in stages" :key="stage._key">
                         <div class="flex items-center gap-2">
                             <div class="w-6 h-6 bg-[#5B4FE8] text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0" x-text="index + 1"></div>
                             <span class="text-sm text-gray-700 truncate" x-text="stage.name || 'Этап ' + (index + 1)"></span>
@@ -147,6 +148,7 @@
     @php
         $stagesData = $workflow->stages->sortBy('sort_order')->map(fn($s) => [
             'id'             => $s->id,
+            '_key'           => 'db-' . $s->id,
             'name'           => $s->name,
             'stage_type'     => $s->stage_type,
             'deadline_hours' => $s->deadline_hours,
@@ -159,7 +161,7 @@
         return {
             stages: @json($stagesData),
             addStage() {
-                this.stages.push({ id: Date.now(), name: '', stage_type: 'sequential', deadline_hours: 24, approvers: [] });
+                this.stages.push({ id: null, _key: 'new-' + Date.now() + '-' + Math.random(), name: '', stage_type: 'sequential', deadline_hours: 24, approvers: [] });
             },
             removeStage(index) {
                 this.stages.splice(index, 1);

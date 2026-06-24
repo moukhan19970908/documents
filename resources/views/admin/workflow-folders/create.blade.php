@@ -26,9 +26,9 @@
                     <select name="parent_id"
                             class="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#6C5CE7] bg-white">
                         <option value="">— Корневая папка (верхний уровень) —</option>
-                        @foreach($rootFolders as $root)
-                            <option value="{{ $root->id }}" {{ old('parent_id', request('parent_id')) == $root->id ? 'selected' : '' }}>
-                                {{ $root->name }}
+                        @foreach($parentOptions as $opt)
+                            <option value="{{ $opt['id'] }}" {{ old('parent_id', request('parent_id')) == $opt['id'] ? 'selected' : '' }}>
+                                {{ str_repeat('— ', $opt['depth'] - 1) }}{{ $opt['name'] }}
                             </option>
                         @endforeach
                     </select>

@@ -6,6 +6,7 @@ use App\Models\Workflow;
 use App\Models\WorkflowFolder;
 use App\Models\WorkflowStage;
 use App\Models\WorkflowStageApprover;
+use App\Models\DocumentApprovalStage;
 use App\Models\Department;
 use App\Models\DocumentType;
 use App\Models\User;
@@ -47,7 +48,10 @@ class WorkflowController extends Controller
 
         $workflows = $query->get();
 
-        $folderTree = WorkflowFolder::with(['children' => fn($q) => $q->withCount('workflows')])
+        $folderTree = WorkflowFolder::with([
+                'children'          => fn($q) => $q->withCount('workflows'),
+                'children.children' => fn($q) => $q->withCount('workflows'),
+            ])
             ->withCount('workflows')
             ->whereNull('parent_id')
             ->orderBy('sort_order')
@@ -92,7 +96,7 @@ class WorkflowController extends Controller
             'department_id' => $u->department_id,
             'deptName'      => $deptNamesById[$u->department_id] ?? '',
         ]);
-        $folderTree = WorkflowFolder::with('children')
+        $folderTree = WorkflowFolder::with('children.children')
             ->whereNull('parent_id')
             ->orderBy('sort_order')
             ->orderBy('name')
@@ -202,9 +206,7 @@ class WorkflowController extends Controller
             'document_type_id' => $validated['document_type_id'] ?? null,
         ]);
 
-        // Rebuild stages
-        $workflow->stages()->delete();
-        $this->saveStages($workflow, $request->input('stages', []));
+        $this->syncStages($workflow, $request->input('stages', []));
 
         $this->auditService->log('workflow_updated', $workflow);
 
@@ -228,17 +230,37 @@ class WorkflowController extends Controller
         return back()->with('success', 'Воркфлоу опубликован.');
     }
 
-    private function saveStages(Workflow $workflow, array $stages): void
+    /**
+     * Upsert stages by id instead of delete-and-recreate, so stages that are
+     * already referenced by document approval history (FK from
+     * document_approval_stages) are not hard-deleted — that constraint is what
+     * made saving an in-use ("active") workflow fail.
+     */
+    private function syncStages(Workflow $workflow, array $stages): void
     {
+        $keptStageIds = [];
+
         foreach ($stages as $index => $stageData) {
-            $stage = WorkflowStage::create([
-                'workflow_id'    => $workflow->id,
+            $attributes = [
                 'name'           => $stageData['name'] ?? 'Этап ' . ($index + 1),
                 'stage_type'     => $stageData['stage_type'] ?? 'sequential',
                 'sort_order'     => $index,
                 'deadline_hours' => $stageData['deadline_hours'] ?? null,
-            ]);
+            ];
 
+            $stageId = $stageData['id'] ?? null;
+            $stage   = $stageId ? $workflow->stages()->find($stageId) : null;
+
+            if ($stage) {
+                $stage->update($attributes);
+            } else {
+                $stage = WorkflowStage::create($attributes + ['workflow_id' => $workflow->id]);
+            }
+
+            $keptStageIds[] = $stage->id;
+
+            // Approvers carry no approval-history references, so rebuilding them is safe.
+            $stage->approvers()->delete();
             foreach ($stageData['approvers'] ?? [] as $approverData) {
                 $approverId      = is_array($approverData) ? ($approverData['approver_id'] ?? null) : $approverData;
                 $participantType = is_array($approverData) ? ($approverData['participant_type'] ?? 'signatory') : 'signatory';
@@ -251,6 +273,16 @@ class WorkflowController extends Controller
                     'participant_type'  => $participantType,
                 ]);
             }
+        }
+
+        // Remove stages the user deleted, but keep any that are still referenced
+        // by approval history to avoid breaking the audit trail (and a FK error).
+        $removed = $workflow->stages()->whereNotIn('id', $keptStageIds ?: [0])->get();
+        foreach ($removed as $stage) {
+            $isReferenced = DocumentApprovalStage::where('workflow_stage_id', $stage->id)->exists();
+            if ($isReferenced) continue;
+            $stage->approvers()->delete();
+            $stage->delete();
         }
     }
 }

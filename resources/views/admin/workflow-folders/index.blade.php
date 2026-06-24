@@ -49,13 +49,32 @@
                                 <span class="text-xs text-gray-400">{{ $child->workflows_count }} {{ trans_choice('маршрут|маршрута|маршрутов', $child->workflows_count) }}</span>
                             </div>
                             <div class="flex items-center gap-2">
+                                <a href="{{ route('admin.workflow-folders.create', ['parent_id' => $child->id]) }}" class="text-xs text-[#5B4FE8] font-medium hover:underline">+ Подпапка</a>
                                 <a href="{{ route('admin.workflow-folders.edit', $child) }}" class="text-xs font-medium text-gray-500 hover:text-gray-700 border border-gray-200 px-2.5 py-1 rounded-lg hover:bg-gray-50">Изменить</a>
-                                <form action="{{ route('admin.workflow-folders.destroy', $child) }}" method="POST" onsubmit="return confirm('Удалить папку «{{ $child->name }}»?')">
+                                <form action="{{ route('admin.workflow-folders.destroy', $child) }}" method="POST" onsubmit="return confirm('Удалить папку «{{ $child->name }}» и все вложенные?')">
                                     @csrf @method('DELETE')
                                     <button type="submit" class="text-xs font-medium text-red-500 border border-red-200 px-2.5 py-1 rounded-lg hover:bg-red-50">Удалить</button>
                                 </form>
                             </div>
                         </div>
+
+                        {{-- Sub-sub-folders --}}
+                        @foreach($child->children as $grandchild)
+                            <div class="flex items-center justify-between px-5 py-3 border-b border-gray-50 last:border-0 bg-gray-50/50">
+                                <div class="flex items-center gap-3 ml-12">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>
+                                    <span class="text-sm text-gray-600">{{ $grandchild->name }}</span>
+                                    <span class="text-xs text-gray-400">{{ $grandchild->workflows_count }} {{ trans_choice('маршрут|маршрута|маршрутов', $grandchild->workflows_count) }}</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <a href="{{ route('admin.workflow-folders.edit', $grandchild) }}" class="text-xs font-medium text-gray-500 hover:text-gray-700 border border-gray-200 px-2.5 py-1 rounded-lg hover:bg-gray-50">Изменить</a>
+                                    <form action="{{ route('admin.workflow-folders.destroy', $grandchild) }}" method="POST" onsubmit="return confirm('Удалить папку «{{ $grandchild->name }}»?')">
+                                        @csrf @method('DELETE')
+                                        <button type="submit" class="text-xs font-medium text-red-500 border border-red-200 px-2.5 py-1 rounded-lg hover:bg-red-50">Удалить</button>
+                                    </form>
+                                </div>
+                            </div>
+                        @endforeach
                     @endforeach
                 </div>
             @endforeach

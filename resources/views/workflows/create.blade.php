@@ -55,6 +55,15 @@
                                                {{ in_array($child->id, old('folder_ids', [])) ? 'checked' : '' }}>
                                         <span class="text-sm text-gray-700">{{ $child->name }}</span>
                                     </label>
+                                    {{-- Sub-sub-folders --}}
+                                    @foreach($child->children as $grandchild)
+                                        <label class="inline-flex items-center gap-1.5 cursor-pointer select-none">
+                                            <input type="checkbox" name="folder_ids[]" value="{{ $grandchild->id }}"
+                                                   class="rounded border-gray-300 text-[#6C5CE7] focus:ring-[#6C5CE7]"
+                                                   {{ in_array($grandchild->id, old('folder_ids', [])) ? 'checked' : '' }}>
+                                            <span class="text-sm text-gray-500">{{ $child->name }} / {{ $grandchild->name }}</span>
+                                        </label>
+                                    @endforeach
                                 @endforeach
                             </div>
                         </div>
