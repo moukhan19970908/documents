@@ -567,9 +567,11 @@
                                     'isMe'   => $ap->approver_id === auth()->id(),
                                 ]);
                             } elseif ($stage->status === 'approved') {
+                                // Stage finished without this approver acting (e.g. process
+                                // participant skipped) — show neutral, not a green "signed".
                                 $approverNodes->push([
                                     'user'   => $ap->user,
-                                    'status' => 'approved',
+                                    'status' => 'pending',
                                     'label'  => '',
                                     'isMe'   => $ap->approver_id === auth()->id(),
                                 ]);

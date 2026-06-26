@@ -163,7 +163,6 @@
                                         $segments = collect([['color' => '#22C55E', 'label' => 'Инициатор: ' . $doc->initiator->name]]);
                                         foreach ($stages as $stage) {
                                             $approvers = $stage->workflowStage?->approvers ?? collect();
-                                            $decidedUserIds = $stage->decisions->pluck('user_id')->toArray();
                                             if ($approvers->isEmpty()) {
                                                 $color = match($stage->status) {
                                                     'approved'    => '#22C55E',
@@ -174,19 +173,25 @@
                                                 $segments->push(['color' => $color, 'label' => $stage->workflowStage?->name ?? 'Стадия']);
                                             } else {
                                                 foreach ($approvers as $ap) {
-                                                    if ($stage->status === 'approved') {
+                                                    // Colour each approver by their OWN decision, not the stage status.
+                                                    $decision = $stage->decisions->where('user_id', $ap->approver_id)->sortByDesc('decided_at')->first();
+                                                    $action   = $decision?->action;
+                                                    $name     = $ap->user?->name ?? '—';
+                                                    if (in_array($action, ['approve', 'process_approve'])) {
                                                         $color = '#22C55E';
-                                                        $label = 'Подписал: ' . ($ap->user?->name ?? '—');
-                                                    } elseif ($stage->status === 'rejected') {
+                                                        $label = 'Подписал: ' . $name;
+                                                    } elseif (in_array($action, ['reject', 'process_reject'])) {
                                                         $color = '#EF4444';
-                                                        $label = 'Отклонил: ' . ($ap->user?->name ?? '—');
+                                                        $label = 'Не одобрил: ' . $name;
+                                                    } elseif ($action === 'delegate') {
+                                                        $color = '#3B82F6';
+                                                        $label = 'Делегировал: ' . $name;
                                                     } elseif ($stage->status === 'in_progress') {
-                                                        $signed = in_array($ap->approver_id, $decidedUserIds);
-                                                        $color  = $signed ? '#3B82F6' : '#D1D5DB';
-                                                        $label  = ($signed ? 'Подписал: ' : 'На подписании у: ') . ($ap->user?->name ?? '—');
+                                                        $color = '#D1D5DB';
+                                                        $label = 'На подписании у: ' . $name;
                                                     } else {
                                                         $color = '#D1D5DB';
-                                                        $label = 'Ожидает: ' . ($ap->user?->name ?? '—');
+                                                        $label = 'Ожидает: ' . $name;
                                                     }
                                                     $segments->push(['color' => $color, 'label' => $label]);
                                                 }
