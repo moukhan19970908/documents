@@ -43,14 +43,16 @@ class DocumentFileController extends Controller
         $this->authorize('view', $document);
 
         try {
-            if (!Storage::exists($file->file_path)) {
+            $disk = Storage::disk('s3');
+
+            if (!$disk->exists($file->file_path)) {
                 abort(404, 'Файл не найден в хранилище.');
             }
 
-            return response(Storage::get($file->file_path), 200, [
+            return response($disk->get($file->file_path), 200, [
                 'Content-Type'        => $file->mime_type,
                 'Content-Disposition' => 'inline; filename="' . rawurlencode($file->file_name) . '"',
-                'Content-Length'      => Storage::size($file->file_path),
+                'Content-Length'      => $disk->size($file->file_path),
             ]);
         } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
             throw $e;

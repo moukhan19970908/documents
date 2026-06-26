@@ -40,6 +40,6 @@ class DocumentVersionService
 
     public function download(DocumentFile $file): \Symfony\Component\HttpFoundation\StreamedResponse
     {
-        return Storage::download($file->file_path, $file->file_name);
+        return Storage::disk('s3')->download($file->file_path, $file->file_name);
     }
 }

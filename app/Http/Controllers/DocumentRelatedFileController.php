@@ -46,34 +46,42 @@ class DocumentRelatedFileController extends Controller
     {
         $this->authorize('view', $document);
 
+        $disk = Storage::disk('s3');
+
         try {
-            if (!Storage::exists($file->file_path)) {
+            if (!$disk->exists($file->file_path)) {
                 abort(404);
             }
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+            throw $e;
         } catch (\Throwable) {
             abort(404);
         }
 
-        return Storage::download($file->file_path, $file->file_name);
+        return $disk->download($file->file_path, $file->file_name);
     }
 
     public function preview(Document $document, DocumentRelatedFile $file)
     {
         $this->authorize('view', $document);
 
+        $disk = Storage::disk('s3');
+
         try {
-            if (!Storage::exists($file->file_path)) {
+            if (!$disk->exists($file->file_path)) {
                 abort(404);
             }
+
+            return response($disk->get($file->file_path), 200, [
+                'Content-Type'        => $file->mime_type,
+                'Content-Disposition' => 'inline; filename="' . rawurlencode($file->file_name) . '"',
+                'Content-Length'      => $disk->size($file->file_path),
+            ]);
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+            throw $e;
         } catch (\Throwable) {
             abort(404);
         }
-
-        return response(Storage::get($file->file_path), 200, [
-            'Content-Type'        => $file->mime_type,
-            'Content-Disposition' => 'inline; filename="' . rawurlencode($file->file_name) . '"',
-            'Content-Length'      => Storage::size($file->file_path),
-        ]);
     }
 
     public function destroy(Document $document, DocumentRelatedFile $file)
@@ -85,7 +93,7 @@ class DocumentRelatedFileController extends Controller
             abort(403);
         }
 
-        Storage::delete($file->file_path);
+        Storage::disk('s3')->delete($file->file_path);
         $file->delete();
 
         return back()->with('success', 'Файл удалён.');
