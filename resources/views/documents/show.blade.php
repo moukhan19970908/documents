@@ -114,7 +114,7 @@
                         <div class="space-y-4">
                             <div>
                                 <p class="text-xs text-gray-400">Тип документа</p>
-                                <p class="text-sm font-medium text-gray-900 mt-0.5">{{ $document->workflow?->name ?? $document->type?->name ?? '—' }}</p>
+                                <p class="text-sm font-medium text-gray-900 mt-0.5">{{ $document->workflow?->name ?? $document->type?->name ?? 'Свой сценарий' }}</p>
                             </div>
                             @if($document->data && $document->workflow?->process_fields)
                                 @foreach($document->workflow->process_fields as $field)
@@ -125,12 +125,22 @@
                                         </div>
                                     @endif
                                 @endforeach
-                            @elseif($document->data)
-                                @foreach($document->type?->fields ?? [] as $field)
+                            @elseif($document->data && $document->type)
+                                @foreach($document->type->fields ?? [] as $field)
                                     @if(isset($document->data[$field->field_key]))
                                         <div>
                                             <p class="text-xs text-gray-400">{{ $field->label }}</p>
                                             <p class="text-sm font-medium text-gray-900 mt-0.5">{{ $document->data[$field->field_key] }}</p>
+                                        </div>
+                                    @endif
+                                @endforeach
+                            @elseif($document->data)
+                                {{-- Свой сценарий: дополнительные поля, заданные инициатором --}}
+                                @foreach($document->data as $key => $value)
+                                    @if($value !== '' && $value !== null)
+                                        <div>
+                                            <p class="text-xs text-gray-400">{{ $key }}</p>
+                                            <p class="text-sm font-medium text-gray-900 mt-0.5">{{ is_array($value) ? json_encode($value, JSON_UNESCAPED_UNICODE) : $value }}</p>
                                         </div>
                                     @endif
                                 @endforeach

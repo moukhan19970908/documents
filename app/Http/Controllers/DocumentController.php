@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreDocumentRequest;
 use App\Models\Chat;
 use App\Models\Document;
+use App\Models\DocumentApproval;
 use App\Models\DocumentNote;
 use App\Models\DocumentType;
 use App\Models\Task;
@@ -113,6 +114,26 @@ class DocumentController extends Controller
         $documents     = $query->paginate(25)->withQueryString();
         $documentTypes = DocumentType::all();
 
+        // Approver candidates for the "Свой сценарий" (ad-hoc) form.
+        // Linear users may pick only colleagues from their department + the department head.
+        $user->loadMissing('department');
+        $approversQuery = User::where('is_active', true)
+            ->where('id', '!=', $user->id)
+            ->with('department')
+            ->orderBy('name');
+
+        if ($user->role === 'linear' && $user->department_id) {
+            $deptHeadId = $user->department?->head_user_id;
+            $approversQuery->where(function ($q) use ($user, $deptHeadId) {
+                $q->where('department_id', $user->department_id);
+                if ($deptHeadId) {
+                    $q->orWhere('id', $deptHeadId);
+                }
+            });
+        }
+
+        $approverCandidates = $approversQuery->get(['id', 'name', 'department_id']);
+
         if ($user->isAdmin() || $docAccess === 'full') {
             $departments = Department::all();
         } elseif ($docAccess === 'department' && $user->department_id) {
@@ -121,7 +142,7 @@ class DocumentController extends Controller
             $departments = collect();
         }
 
-        return view('documents.index', compact('documents', 'documentTypes', 'departments'));
+        return view('documents.index', compact('documents', 'documentTypes', 'departments', 'approverCandidates'));
     }
 
     public function create()
@@ -287,8 +308,33 @@ class DocumentController extends Controller
     public function destroy(Document $document)
     {
         $this->authorize('delete', $document);
+
+        // Ad-hoc workflows created for a "свой сценарий" document are linked only
+        // through approvals (not documents.workflow_id). Capture them before the
+        // document — and its approvals — are removed, so we can clean them up after.
+        $adHocWorkflowIds = $document->approvals()
+            ->whereHas('workflow', fn($q) => $q->where('is_system', false)->where('is_active', false))
+            ->pluck('workflow_id')
+            ->unique();
+
         $this->auditService->log('document_deleted', $document);
-        $document->delete();
+
+        DB::transaction(function () use ($document, $adHocWorkflowIds) {
+            // Physical files (main versions + related files) live under documents/{id}.
+            Storage::disk('s3')->deleteDirectory("documents/{$document->id}");
+
+            // DB cascades remove files, notes, approvals, stages, decisions,
+            // related files, chats, messages and tasks.
+            $document->delete();
+
+            // Remove orphaned ad-hoc workflows (cascades their stages and approvers).
+            foreach ($adHocWorkflowIds as $workflowId) {
+                if (!DocumentApproval::where('workflow_id', $workflowId)->exists()) {
+                    Workflow::whereKey($workflowId)->delete();
+                }
+            }
+        });
+
         return redirect()->route('documents.index')->with('success', 'Документ удалён.');
     }
 

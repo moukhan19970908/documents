@@ -44,16 +44,24 @@ class DocumentFileController extends Controller
 
         try {
             if (!Storage::exists($file->file_path)) {
-                abort(404);
+                abort(404, 'Файл не найден в хранилище.');
             }
-        } catch (\Throwable) {
+
+            return response(Storage::get($file->file_path), 200, [
+                'Content-Type'        => $file->mime_type,
+                'Content-Disposition' => 'inline; filename="' . rawurlencode($file->file_name) . '"',
+                'Content-Length'      => Storage::size($file->file_path),
+            ]);
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            \Log::error('Не удалось получить файл документа из хранилища', [
+                'document_id' => $document->id,
+                'file_id'     => $file->id,
+                'file_path'   => $file->file_path,
+                'error'       => $e->getMessage(),
+            ]);
             abort(404);
         }
-
-        return response(Storage::get($file->file_path), 200, [
-            'Content-Type'        => $file->mime_type,
-            'Content-Disposition' => 'inline; filename="' . rawurlencode($file->file_name) . '"',
-            'Content-Length'      => Storage::size($file->file_path),
-        ]);
     }
 }

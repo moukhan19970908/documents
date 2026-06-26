@@ -1,15 +1,17 @@
 <x-app-layout>
     <x-slot name="title">Документы — Vamin</x-slot>
 
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex items-center justify-between mb-6" x-data="customScenario">
         <div>
             <h1 class="text-2xl font-bold text-gray-900">Документы</h1>
             <p class="text-sm text-gray-500 mt-1">Все документы рабочего пространства</p>
         </div>
-        <a href="{{ route('documents.create') }}" class="flex items-center gap-2 bg-[#5B4FE8] text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
+        <button type="button" @click="open = true" class="flex items-center gap-2 bg-[#5B4FE8] text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-            Новый документ
-        </a>
+            Свой сценарий
+        </button>
+
+        @include('documents.partials.custom-scenario-modal')
     </div>
 
     {{-- Admin scope toggle --}}
@@ -202,7 +204,25 @@
                             </td>
                             <td class="px-5 py-3.5 text-gray-500 text-xs">{{ $doc->updated_at->format('d.m.Y') }}</td>
                             <td class="px-5 py-3.5">
-                                <a href="{{ route('documents.show', $doc) }}" class="text-[#5B4FE8] text-xs font-medium hover:underline">Открыть</a>
+                                <div class="flex items-center gap-3" x-data="{ confirm: false }">
+                                    <a href="{{ route('documents.show', $doc) }}" class="text-[#5B4FE8] text-xs font-medium hover:underline">Открыть</a>
+                                    @can('delete', $doc)
+                                        <template x-if="!confirm">
+                                            <button type="button" @click="confirm = true" class="text-red-600 text-xs font-medium hover:underline">Удалить</button>
+                                        </template>
+                                        <template x-if="confirm">
+                                            <span class="inline-flex items-center gap-2">
+                                                <span class="text-xs text-gray-500">Удалить?</span>
+                                                <form action="{{ route('documents.destroy', $doc) }}" method="POST" class="inline">
+                                                    @csrf
+                                                    @method('DELETE')
+                                                    <button type="submit" class="text-red-600 text-xs font-semibold hover:underline">Да</button>
+                                                </form>
+                                                <button type="button" @click="confirm = false" class="text-xs text-gray-400 hover:underline">Нет</button>
+                                            </span>
+                                        </template>
+                                    @endcan
+                                </div>
                             </td>
                         </tr>
                     @empty
