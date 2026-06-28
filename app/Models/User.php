@@ -69,6 +69,11 @@ class User extends Authenticatable
         return $this->role === 'admin';
     }
 
+    public function isExternal(): bool
+    {
+        return $this->role === 'external';
+    }
+
     /**
      * Resolve effective workflow access level for this user.
      * Priority: individual setting > department setting > 'full' (backwards-compatible default)
@@ -77,6 +82,11 @@ class User extends Authenticatable
     {
         if ($this->isAdmin()) {
             return 'full';
+        }
+
+        // External participants only ever see their own documents.
+        if ($this->isExternal()) {
+            return 'own';
         }
 
         if ($this->workflow_access_level !== null) {
@@ -102,6 +112,10 @@ class User extends Authenticatable
             return 'full';
         }
 
+        if ($this->isExternal()) {
+            return 'own';
+        }
+
         if ($this->tasks_access_level !== null) {
             return $this->tasks_access_level;
         }
@@ -121,6 +135,10 @@ class User extends Authenticatable
     {
         if ($this->isAdmin()) {
             return 'full';
+        }
+
+        if ($this->isExternal()) {
+            return 'own';
         }
 
         if ($this->archive_access_level !== null) {
@@ -159,6 +177,19 @@ class User extends Authenticatable
     public function isManager(): bool
     {
         return ($this->role_level ?? 1) >= 2 || in_array($this->role, ['admin', 'director']);
+    }
+
+    /**
+     * Whether this user is named as a specific approver in any active route step.
+     * Optionally scoped to a request type (trip, vacation, vacation_registry).
+     */
+    public function isApprover(?string $requestType = null): bool
+    {
+        return ApprovalRouteStep::where('approver_user_id', $this->id)
+            ->when($requestType, fn ($q) => $q->whereHas('route', fn ($r) =>
+                $r->where('request_type', $requestType)->where('is_active', true)
+            ))
+            ->exists();
     }
 
     public function isAccounting(): bool
@@ -219,6 +250,7 @@ class User extends Authenticatable
         }
         return match($this->role) {
             'admin'    => 'Администратор',
+            'external' => 'Внешний участник',
             default    => $this->position ?? '',
         };
     }

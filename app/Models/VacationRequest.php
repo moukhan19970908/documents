@@ -44,6 +44,11 @@ class VacationRequest extends Model
             ->orderBy('created_at', 'desc');
     }
 
+    public function registryItem(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(RegistryItem::class, 'vacation_request_id');
+    }
+
     public function getVacationTypeLabelAttribute(): string
     {
         return match($this->vacation_type) {
@@ -63,6 +68,7 @@ class VacationRequest extends Model
             'approved' => 'Согласовано',
             'rejected' => 'Отклонено',
             'revision' => 'На доработке',
+            'in_registry' => 'В реестре',
             default    => $this->status,
         };
     }
@@ -75,6 +81,7 @@ class VacationRequest extends Model
             'approved' => 'bg-green-100 text-green-700',
             'rejected' => 'bg-red-100 text-red-700',
             'revision' => 'bg-orange-100 text-orange-700',
+            'in_registry' => 'bg-blue-100 text-blue-700',
             default    => 'bg-gray-100 text-gray-600',
         };
     }

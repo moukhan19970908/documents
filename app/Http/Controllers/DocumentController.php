@@ -118,6 +118,7 @@ class DocumentController extends Controller
         // Linear users may pick only colleagues from their department + the department head.
         $user->loadMissing('department');
         $approversQuery = User::where('is_active', true)
+            ->where('role', '!=', 'external')
             ->where('id', '!=', $user->id)
             ->with('department')
             ->orderBy('name');
@@ -151,6 +152,12 @@ class DocumentController extends Controller
 
         $user = auth()->user();
 
+        // External participants may only initiate their own ad-hoc "Свой сценарий",
+        // which lives as a modal on the documents list — no workflow-based form.
+        if ($user->isExternal()) {
+            return redirect()->route('documents.index');
+        }
+
         $workflows = Workflow::where('is_active', true)
             ->with(['stages.approvers.user'])
             ->orderBy('name')
@@ -180,11 +187,15 @@ class DocumentController extends Controller
         // Merge custom_fields into data
         $data = array_merge($request->data ?? [], $request->custom_fields ?? []);
 
-        $document = DB::transaction(function () use ($request, $data) {
+        // External participants can only run an ad-hoc custom scenario — never a
+        // predefined workflow or document type.
+        $isExternal = auth()->user()->isExternal();
+
+        $document = DB::transaction(function () use ($request, $data, $isExternal) {
             $document = Document::create([
                 'title'            => $request->title,
-                'workflow_id'      => $request->workflow_id ?: null,
-                'document_type_id' => $request->document_type_id ?: null,
+                'workflow_id'      => $isExternal ? null : ($request->workflow_id ?: null),
+                'document_type_id' => $isExternal ? null : ($request->document_type_id ?: null),
                 'initiator_id'     => auth()->id(),
                 'status'           => 'draft',
                 'data'             => $data,
@@ -244,6 +255,7 @@ class DocumentController extends Controller
         // linear: only users from the same department + the department head
         // director (and others): all users
         $approversQuery = User::where('is_active', true)
+            ->where('role', '!=', 'external')
             ->where('id', '!=', $document->initiator_id)
             ->with('department')
             ->orderBy('name');

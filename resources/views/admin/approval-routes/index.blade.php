@@ -17,6 +17,33 @@
         <div class="bg-green-50 border border-green-200 text-green-700 text-sm rounded-xl px-4 py-3 mb-5">{{ session('success') }}</div>
     @endif
 
+    {{-- Filters --}}
+    <form method="GET" class="bg-white rounded-xl border border-gray-200 p-4 mb-5 flex flex-wrap gap-3 items-end">
+        <div class="w-48">
+            <label class="text-xs text-gray-500 font-medium block mb-1">Тип заявки</label>
+            <select name="request_type" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                <option value="">Все типы</option>
+                <option value="trip" {{ request('request_type') === 'trip' ? 'selected' : '' }}>Командировка</option>
+                <option value="vacation" {{ request('request_type') === 'vacation' ? 'selected' : '' }}>Отпуск</option>
+                <option value="vacation_registry" {{ request('request_type') === 'vacation_registry' ? 'selected' : '' }}>Реестр отпусков</option>
+            </select>
+        </div>
+        <div class="w-56">
+            <label class="text-xs text-gray-500 font-medium block mb-1">Отдел</label>
+            <select name="department" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                <option value="">Все отделы</option>
+                <option value="none" {{ request('department') === 'none' ? 'selected' : '' }}>Общие (без отдела)</option>
+                @foreach($departments as $dept)
+                    <option value="{{ $dept->id }}" {{ (string) request('department') === (string) $dept->id ? 'selected' : '' }}>{{ $dept->name }}</option>
+                @endforeach
+            </select>
+        </div>
+        <button type="submit" class="px-4 py-2 bg-[#5B4FE8] text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">Найти</button>
+        @if(request()->hasAny(['request_type', 'department']))
+            <a href="{{ route('admin.approval-routes.index') }}" class="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-50">Сбросить</a>
+        @endif
+    </form>
+
     <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
@@ -35,7 +62,10 @@
                         <tr class="hover:bg-gray-50/50 transition-colors">
                             <td class="px-5 py-3.5 font-medium text-gray-900">{{ $route->name }}</td>
                             <td class="px-5 py-3.5 text-gray-600">
-                                {{ $route->request_type === 'trip' ? 'Командировка' : 'Отпуск' }}
+                                {{ $route->request_type_label }}
+                                @if($route->applies_to_role_level)
+                                    <span class="ml-1 text-xs text-gray-400">· ур. {{ $route->applies_to_role_level }}</span>
+                                @endif
                             </td>
                             <td class="px-5 py-3.5 text-gray-500">{{ $route->department?->name ?? 'Все отделы' }}</td>
                             <td class="px-5 py-3.5 text-gray-600">{{ $route->steps_count }}</td>

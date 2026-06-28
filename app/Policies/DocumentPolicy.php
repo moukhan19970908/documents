@@ -41,13 +41,20 @@ class DocumentPolicy
                               ->whereHas('stages.decisions', fn($q) => $q->where('user_id', $user->id))
                               ->exists(),
             'archiver' => in_array($document->status, ['approved', 'signed', 'archived']),
+            'external' => $document->initiator_id === $user->id
+                          || $document->approvals()
+                              ->whereHas('stages.workflowStage.approvers', fn($q) => $q->where('approver_id', $user->id))
+                              ->exists()
+                          || $document->approvals()
+                              ->whereHas('stages.decisions', fn($q) => $q->where('user_id', $user->id))
+                              ->exists(),
             default    => false,
         };
     }
 
     public function create(User $user): bool
     {
-        return in_array($user->role, ['admin', 'director', 'linear']);
+        return in_array($user->role, ['admin', 'director', 'linear', 'external']);
     }
 
     public function update(User $user, Document $document): bool

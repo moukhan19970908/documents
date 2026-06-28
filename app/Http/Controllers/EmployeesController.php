@@ -18,7 +18,7 @@ class EmployeesController extends Controller
         // Build nested tree: root nodes (no parent)
         $tree = $this->buildTree($allDepartments);
 
-        $totalUsers = User::where('is_active', true)->count();
+        $totalUsers = User::where('is_active', true)->where('role', '!=', 'external')->count();
 
         return view('employees.index', compact('tree', 'totalUsers'));
     }

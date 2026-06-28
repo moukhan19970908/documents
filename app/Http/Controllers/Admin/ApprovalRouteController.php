@@ -11,13 +11,29 @@ use Illuminate\Http\Request;
 
 class ApprovalRouteController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $routes = ApprovalRoute::with(['department', 'steps.approverUser'])
+        $query = ApprovalRoute::with(['department', 'steps.approverUser'])
+            ->withCount('steps')
             ->orderBy('request_type')
-            ->orderBy('name')
-            ->get();
-        return view('admin.approval-routes.index', compact('routes'));
+            ->orderBy('name');
+
+        if ($type = $request->get('request_type')) {
+            $query->where('request_type', $type);
+        }
+
+        if ($department = $request->get('department')) {
+            if ($department === 'none') {
+                $query->whereNull('department_id');
+            } else {
+                $query->where('department_id', $department);
+            }
+        }
+
+        $routes      = $query->get();
+        $departments = Department::orderBy('name')->get();
+
+        return view('admin.approval-routes.index', compact('routes', 'departments'));
     }
 
     public function create()
@@ -31,8 +47,9 @@ class ApprovalRouteController extends Controller
     {
         $data = $request->validate([
             'name'          => ['required', 'string', 'max:255'],
-            'request_type'  => ['required', 'in:trip,vacation'],
+            'request_type'  => ['required', 'in:trip,vacation,vacation_registry'],
             'department_id' => ['nullable', 'exists:departments,id'],
+            'applies_to_role_level' => ['nullable', 'integer', 'min:1', 'max:7'],
             'is_active'     => ['boolean'],
             'steps'         => ['required', 'array', 'min:1'],
             'steps.*.approver_role_level' => ['nullable', 'integer', 'min:1', 'max:7'],
@@ -43,6 +60,7 @@ class ApprovalRouteController extends Controller
             'name'          => $data['name'],
             'request_type'  => $data['request_type'],
             'department_id' => $data['department_id'] ?? null,
+            'applies_to_role_level' => $data['applies_to_role_level'] ?? null,
             'is_active'     => $request->boolean('is_active', true),
         ]);
 
@@ -69,8 +87,9 @@ class ApprovalRouteController extends Controller
     {
         $data = $request->validate([
             'name'          => ['required', 'string', 'max:255'],
-            'request_type'  => ['required', 'in:trip,vacation'],
+            'request_type'  => ['required', 'in:trip,vacation,vacation_registry'],
             'department_id' => ['nullable', 'exists:departments,id'],
+            'applies_to_role_level' => ['nullable', 'integer', 'min:1', 'max:7'],
             'steps'         => ['required', 'array', 'min:1'],
             'steps.*.approver_role_level' => ['nullable', 'integer', 'min:1', 'max:7'],
             'steps.*.approver_user_id'   => ['nullable', 'exists:users,id'],
@@ -80,6 +99,7 @@ class ApprovalRouteController extends Controller
             'name'          => $data['name'],
             'request_type'  => $data['request_type'],
             'department_id' => $data['department_id'] ?? null,
+            'applies_to_role_level' => $data['applies_to_role_level'] ?? null,
             'is_active'     => $request->boolean('is_active', true),
         ]);
 

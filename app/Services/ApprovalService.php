@@ -12,14 +12,27 @@ class ApprovalService
     /**
      * Find the best matching approval route for a user and request type.
      */
-    public function findRoute(User $user, string $type): ?ApprovalRoute
+    public function findRoute(User $user, string $type, bool $scopeByRoleLevel = true): ?ApprovalRoute
     {
-        return ApprovalRoute::where('request_type', $type)
+        $query = ApprovalRoute::where('request_type', $type)
             ->where('is_active', true)
             ->where(function ($q) use ($user) {
                 $q->where('department_id', $user->department_id)
                   ->orWhereNull('department_id');
-            })
+            });
+
+        // Role-level scoping distinguishes per-request routes (linear vs head).
+        // It is meaningless for registry routes, which have a single chain per
+        // department regardless of who collects the registry.
+        if ($scopeByRoleLevel) {
+            $level = $user->role_level ?? 1;
+            $query->where(function ($q) use ($level) {
+                $q->whereNull('applies_to_role_level')
+                  ->orWhere('applies_to_role_level', $level);
+            })->orderByRaw('applies_to_role_level IS NULL ASC'); // role-level-specific first
+        }
+
+        return $query
             ->orderByRaw('department_id IS NULL ASC') // department-specific first
             ->first();
     }
@@ -85,31 +98,58 @@ class ApprovalService
                 return false;
             }
             $step = $request->route->steps->firstWhere('step_order', $request->current_step);
-            if (!$step) {
+            return $this->approverMatchesStep($approver, $step, $request->user);
+        });
+    }
+
+    /**
+     * Get registries pending approval by the given user.
+     */
+    public function getPendingRegistriesForApprover(User $approver, string $type): \Illuminate\Support\Collection
+    {
+        $pending = \App\Models\Registry::where('type', $type)
+            ->where('status', 'pending')
+            ->with(['creator.department', 'route.steps', 'items'])
+            ->get();
+
+        return $pending->filter(function ($registry) use ($approver) {
+            if (!$registry->route) {
                 return false;
             }
-            // Specific user check
-            if ($step->approver_user_id) {
-                return $step->approver_user_id === $approver->id;
-            }
-            // Role level check — approver must have sufficient level
-            if ($step->approver_role_level) {
-                $approverLevel = $approver->role_level ?? 1;
-                if ($approverLevel < $step->approver_role_level) {
-                    return false;
-                }
-                // Approver must be in the requester's manager chain
-                $manager = $request->user->manager;
-                while ($manager) {
-                    if ($manager->id === $approver->id) {
-                        return true;
-                    }
-                    $manager = $manager->manager;
-                }
-                // Admins / directors see all
-                return $approver->isAdmin() || $approver->role === 'director';
-            }
-            return false;
+            $step = $registry->route->steps->firstWhere('step_order', $registry->current_step);
+            return $this->approverMatchesStep($approver, $step, $registry->creator);
         });
+    }
+
+    /**
+     * Whether the given approver is responsible for a route step, given the requester.
+     */
+    private function approverMatchesStep(User $approver, ?ApprovalRouteStep $step, ?User $requester): bool
+    {
+        if (!$step) {
+            return false;
+        }
+        // Specific user check
+        if ($step->approver_user_id) {
+            return $step->approver_user_id === $approver->id;
+        }
+        // Role level check — approver must have sufficient level
+        if ($step->approver_role_level) {
+            $approverLevel = $approver->role_level ?? 1;
+            if ($approverLevel < $step->approver_role_level) {
+                return false;
+            }
+            // Approver must be in the requester's manager chain
+            $manager = $requester?->manager;
+            while ($manager) {
+                if ($manager->id === $approver->id) {
+                    return true;
+                }
+                $manager = $manager->manager;
+            }
+            // Admins / directors see all
+            return $approver->isAdmin() || $approver->role === 'director';
+        }
+        return false;
     }
 }

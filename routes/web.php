@@ -19,11 +19,13 @@ use App\Http\Controllers\Admin\AccessControlController;
 use App\Http\Controllers\Admin\DocumentTypeController;
 use App\Http\Controllers\Admin\WorkflowFolderController;
 use App\Http\Controllers\Admin\ApprovalRouteController;
+use App\Http\Controllers\Admin\ExternalParticipantController;
 use App\Http\Controllers\Trip\TripRequestController;
 use App\Http\Controllers\Trip\TripApprovalController;
 use App\Http\Controllers\Trip\TripRegistryController;
 use App\Http\Controllers\Vacation\VacationRequestController;
 use App\Http\Controllers\Vacation\VacationApprovalController;
+use App\Http\Controllers\Vacation\VacationRegistryController;
 
 use App\Http\Controllers\AgreementController;
 
@@ -42,7 +44,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/agreement/decline', [AgreementController::class, 'decline'])->name('agreement.decline');
 });
 
-Route::middleware(['auth', 'agreement', 'audit'])->group(function () {
+Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRestriction::class])->group(function () {
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
@@ -107,6 +109,8 @@ Route::middleware(['auth', 'agreement', 'audit'])->group(function () {
         Route::post('access-control/users/{user}/archive-access', [AccessControlController::class, 'updateUserArchiveAccess'])->name('access-control.users.archive-access');
         Route::post('access-control/departments/{department}/archive-access', [AccessControlController::class, 'updateDeptArchiveAccess'])->name('access-control.depts.archive-access');
         Route::resource('users', UserController::class);
+        Route::resource('external-participants', ExternalParticipantController::class)
+            ->only(['index', 'create', 'store', 'destroy']);
         Route::resource('departments', DepartmentController::class);
         Route::resource('document-types', DocumentTypeController::class);
         Route::resource('workflow-folders', WorkflowFolderController::class);
@@ -143,6 +147,14 @@ Route::middleware(['auth', 'agreement', 'audit'])->group(function () {
         Route::get('/create', [VacationRequestController::class, 'create'])->name('create');
         Route::post('/', [VacationRequestController::class, 'store'])->name('store');
         Route::get('/approvals', [VacationApprovalController::class, 'index'])->name('approvals');
+        Route::get('/registries', [VacationRegistryController::class, 'index'])->name('registries.index');
+        Route::post('/registries', [VacationRegistryController::class, 'store'])->name('registries.store');
+        Route::get('/registries/{registry}', [VacationRegistryController::class, 'show'])->name('registries.show');
+        Route::post('/registries/{registry}/send', [VacationRegistryController::class, 'send'])->name('registries.send');
+        Route::post('/registries/{registry}/approve', [VacationRegistryController::class, 'approve'])->name('registries.approve');
+        Route::post('/registries/{registry}/reject', [VacationRegistryController::class, 'reject'])->name('registries.reject');
+        Route::post('/registries/{registry}/accounting', [VacationRegistryController::class, 'sendToAccounting'])->name('registries.send-accounting');
+        Route::post('/registries/{registry}/accept', [VacationRegistryController::class, 'accept'])->name('registries.accept');
         Route::get('/{vacation}', [VacationRequestController::class, 'show'])->name('show');
         Route::get('/{vacation}/edit', [VacationRequestController::class, 'edit'])->name('edit');
         Route::put('/{vacation}', [VacationRequestController::class, 'update'])->name('update');

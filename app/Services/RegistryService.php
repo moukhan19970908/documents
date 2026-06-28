@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Registry;
 use App\Models\RegistryItem;
 use App\Models\TripRequest;
+use App\Models\VacationRequest;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 
@@ -40,6 +41,38 @@ class RegistryService
                     'trip_request_id' => $trip->id,
                 ]);
                 $trip->update(['status' => 'in_registry']);
+            }
+
+            return $registry;
+        });
+    }
+
+    public function createVacationRegistry(User $creator, string $title, array $vacationIds, ?string $comment = null): Registry
+    {
+        return DB::transaction(function () use ($creator, $title, $vacationIds, $comment) {
+            $vacations = VacationRequest::whereIn('id', $vacationIds)
+                ->where('status', 'approved')
+                ->get();
+
+            $route = $this->approvalService->findRoute($creator, 'vacation_registry', false);
+
+            $registry = Registry::create([
+                'type'         => 'vacation',
+                'created_by'   => $creator->id,
+                'route_id'     => $route?->id,
+                'current_step' => 1,
+                'status'       => 'draft',
+                'title'        => $title,
+                'total_amount' => 0,
+                'comment'      => $comment,
+            ]);
+
+            foreach ($vacations as $vacation) {
+                RegistryItem::create([
+                    'registry_id'         => $registry->id,
+                    'vacation_request_id' => $vacation->id,
+                ]);
+                $vacation->update(['status' => 'in_registry']);
             }
 
             return $registry;

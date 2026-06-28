@@ -30,7 +30,7 @@ class WorkflowController extends Controller
 
         $query = Workflow::where('is_active', true)->with(['documentType', 'creator', 'stages' => function ($q) {
             $q->withCount('approvers')->orderBy('sort_order');
-        }, 'folders']);
+        }, 'folders'])->orderBy('name');
 
         // Department-level access: show only workflows that include the user's department
         if ($accessLevel === 'department' && $user->department_id) {

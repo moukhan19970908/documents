@@ -8,9 +8,20 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ApprovalRoute extends Model
 {
-    protected $fillable = ['name', 'request_type', 'department_id', 'is_active'];
+    protected $fillable = ['name', 'request_type', 'department_id', 'applies_to_role_level', 'is_active'];
 
     protected $casts = ['is_active' => 'boolean'];
+
+    public const REQUEST_TYPE_LABELS = [
+        'trip'              => 'Командировка',
+        'vacation'          => 'Отпуск',
+        'vacation_registry' => 'Реестр отпусков',
+    ];
+
+    public function getRequestTypeLabelAttribute(): string
+    {
+        return self::REQUEST_TYPE_LABELS[$this->request_type] ?? $this->request_type;
+    }
 
     public function department(): BelongsTo
     {

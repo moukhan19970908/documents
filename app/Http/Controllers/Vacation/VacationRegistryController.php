@@ -1,15 +1,15 @@
 <?php
 
-namespace App\Http\Controllers\Trip;
+namespace App\Http\Controllers\Vacation;
 
 use App\Http\Controllers\Controller;
 use App\Models\Registry;
-use App\Models\TripRequest;
+use App\Models\VacationRequest;
 use App\Services\RegistryService;
 use App\Services\ApprovalService;
 use Illuminate\Http\Request;
 
-class TripRegistryController extends Controller
+class VacationRegistryController extends Controller
 {
     public function __construct(
         private RegistryService $registryService,
@@ -19,7 +19,7 @@ class TripRegistryController extends Controller
     public function index()
     {
         $user       = auth()->user();
-        $registries = Registry::where('type', 'trip')
+        $registries = Registry::where('type', 'vacation')
             ->where(function ($q) use ($user) {
                 if (!$user->isAdmin() && $user->role !== 'director') {
                     $q->where('created_by', $user->id);
@@ -30,41 +30,45 @@ class TripRegistryController extends Controller
             ->paginate(20);
 
         // Incoming registries to approve
-        $incoming = $this->approvalService->getPendingRegistriesForApprover($user, 'trip');
+        $incoming = $this->approvalService->getPendingRegistriesForApprover($user, 'vacation');
 
-        // Available trip requests to add to registry
-        $availableTrips = TripRequest::where('status', 'approved')
+        // Available vacation requests to add to registry
+        $availableVacations = VacationRequest::where('status', 'approved')
             ->whereDoesntHave('registryItem')
             ->visibleBy($user)
             ->with('user')
             ->get();
 
-        return view('trips.registries.index', compact('registries', 'incoming', 'availableTrips'));
+        return view('vacations.registries.index', compact('registries', 'incoming', 'availableVacations'));
     }
 
     public function store(Request $request)
     {
         $request->validate([
-            'title'    => ['required', 'string', 'max:255'],
-            'trip_ids' => ['required', 'array', 'min:1'],
-            'trip_ids.*' => ['exists:trip_requests,id'],
-            'comment'  => ['nullable', 'string'],
+            'title'          => ['required', 'string', 'max:255'],
+            'vacation_ids'   => ['required', 'array', 'min:1'],
+            'vacation_ids.*' => ['exists:vacation_requests,id'],
+            'comment'        => ['nullable', 'string'],
         ]);
 
-        $registry = $this->registryService->createTripRegistry(
+        if (!$this->approvalService->findRoute(auth()->user(), 'vacation_registry', false)) {
+            return back()->withInput()->with('error', 'Не настроен маршрут согласования реестра отпусков для вашего отдела. Обратитесь к администратору.');
+        }
+
+        $registry = $this->registryService->createVacationRegistry(
             auth()->user(),
             $request->title,
-            $request->trip_ids,
+            $request->vacation_ids,
             $request->comment,
         );
 
-        return redirect()->route('trips.registries.show', $registry)->with('success', 'Реестр создан.');
+        return redirect()->route('vacations.registries.show', $registry)->with('success', 'Реестр создан.');
     }
 
     public function show(Registry $registry)
     {
-        $registry->load(['items.tripRequest.user.department', 'creator', 'approvalLogs.approver']);
-        return view('trips.registries.show', compact('registry'));
+        $registry->load(['items.vacationRequest.user.department', 'creator', 'approvalLogs.approver']);
+        return view('vacations.registries.show', compact('registry'));
     }
 
     public function send(Registry $registry)

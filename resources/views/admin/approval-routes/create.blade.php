@@ -36,6 +36,7 @@
                                 class="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8] bg-white">
                             <option value="trip" {{ old('request_type') === 'trip' ? 'selected' : '' }}>Командировки</option>
                             <option value="vacation" {{ old('request_type') === 'vacation' ? 'selected' : '' }}>Отпуска</option>
+                            <option value="vacation_registry" {{ old('request_type') === 'vacation_registry' ? 'selected' : '' }}>Реестр отпусков</option>
                         </select>
                     </div>
                     <div>
@@ -48,6 +49,17 @@
                             @endforeach
                         </select>
                     </div>
+                </div>
+                <div>
+                    <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Применять к уровню роли заявителя (необязательно)</label>
+                    <select name="applies_to_role_level"
+                            class="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8] bg-white">
+                        <option value="">Все заявители</option>
+                        @foreach(range(1, 7) as $lvl)
+                            <option value="{{ $lvl }}" {{ (string) old('applies_to_role_level') === (string) $lvl ? 'selected' : '' }}>Уровень {{ $lvl }}</option>
+                        @endforeach
+                    </select>
+                    <p class="text-xs text-gray-400 mt-1">Напр. уровень 1 — для линейных, уровень 2 — для руководителей отделов. Маршрут «для всех» используется, если нет маршрута под конкретный уровень.</p>
                 </div>
                 <div class="flex items-center gap-2">
                     <input type="checkbox" name="is_active" id="is_active" value="1"

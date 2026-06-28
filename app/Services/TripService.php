@@ -37,6 +37,7 @@ class TripService
                 'current_step'         => 1,
                 'status'               => $submit ? 'pending' : 'draft',
                 'city'                 => $data['city'],
+                'location_type'        => $data['location_type'] ?? null,
                 'purpose'              => $data['purpose'],
                 'date_start'           => $data['date_start'],
                 'date_end'             => $data['date_end'],

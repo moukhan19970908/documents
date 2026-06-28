@@ -15,7 +15,7 @@ class TripRequest extends Model
 
     protected $fillable = [
         'user_id', 'signatory_id', 'route_id', 'current_step', 'status',
-        'city', 'purpose', 'date_start', 'date_end',
+        'city', 'location_type', 'purpose', 'date_start', 'date_end',
         'daily_rate', 'accommodation_total', 'transport_total', 'total_amount', 'comment',
     ];
 

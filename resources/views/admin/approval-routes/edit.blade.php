@@ -2,7 +2,7 @@
     <x-slot name="title">Изменить маршрут — Vamin</x-slot>
 
     @php
-        $initSteps = $route->steps->map(fn($s) => [
+        $initSteps = $approvalRoute->steps->map(fn($s) => [
             'approver_role_level' => $s->approver_role_level,
             'approver_user_id' => $s->approver_user_id ?? '',
         ])->values()->toArray();
@@ -29,13 +29,13 @@
             </div>
         @endif
 
-        <form action="{{ route('admin.approval-routes.update', $route) }}" method="POST" class="space-y-5">
+        <form action="{{ route('admin.approval-routes.update', $approvalRoute) }}" method="POST" class="space-y-5">
             @csrf @method('PUT')
 
             <div class="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
                 <div>
                     <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Название *</label>
-                    <input type="text" name="name" value="{{ old('name', $route->name) }}" required
+                    <input type="text" name="name" value="{{ old('name', $approvalRoute->name) }}" required
                            class="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
                 </div>
                 <div class="grid grid-cols-2 gap-4">
@@ -43,8 +43,9 @@
                         <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Тип заявок *</label>
                         <select name="request_type" required
                                 class="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8] bg-white">
-                            <option value="trip" {{ old('request_type', $route->request_type) === 'trip' ? 'selected' : '' }}>Командировки</option>
-                            <option value="vacation" {{ old('request_type', $route->request_type) === 'vacation' ? 'selected' : '' }}>Отпуска</option>
+                            <option value="trip" {{ old('request_type', $approvalRoute->request_type) === 'trip' ? 'selected' : '' }}>Командировки</option>
+                            <option value="vacation" {{ old('request_type', $approvalRoute->request_type) === 'vacation' ? 'selected' : '' }}>Отпуска</option>
+                            <option value="vacation_registry" {{ old('request_type', $approvalRoute->request_type) === 'vacation_registry' ? 'selected' : '' }}>Реестр отпусков</option>
                         </select>
                     </div>
                     <div>
@@ -53,14 +54,25 @@
                                 class="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8] bg-white">
                             <option value="">Все отделы</option>
                             @foreach($departments as $dept)
-                                <option value="{{ $dept->id }}" {{ old('department_id', $route->department_id) == $dept->id ? 'selected' : '' }}>{{ $dept->name }}</option>
+                                <option value="{{ $dept->id }}" {{ old('department_id', $approvalRoute->department_id) == $dept->id ? 'selected' : '' }}>{{ $dept->name }}</option>
                             @endforeach
                         </select>
                     </div>
                 </div>
+                <div>
+                    <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Применять к уровню роли заявителя (необязательно)</label>
+                    <select name="applies_to_role_level"
+                            class="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8] bg-white">
+                        <option value="">Все заявители</option>
+                        @foreach(range(1, 7) as $lvl)
+                            <option value="{{ $lvl }}" {{ (string) old('applies_to_role_level', $approvalRoute->applies_to_role_level) === (string) $lvl ? 'selected' : '' }}>Уровень {{ $lvl }}</option>
+                        @endforeach
+                    </select>
+                    <p class="text-xs text-gray-400 mt-1">Напр. уровень 1 — для линейных, уровень 2 — для руководителей отделов. Маршрут «для всех» используется, если нет маршрута под конкретный уровень.</p>
+                </div>
                 <div class="flex items-center gap-2">
                     <input type="checkbox" name="is_active" id="is_active" value="1"
-                           {{ old('is_active', $route->is_active) ? 'checked' : '' }}
+                           {{ old('is_active', $approvalRoute->is_active) ? 'checked' : '' }}
                            class="rounded border-gray-300 text-[#5B4FE8] focus:ring-[#5B4FE8]">
                     <label for="is_active" class="text-sm text-gray-600">Активен</label>
                 </div>

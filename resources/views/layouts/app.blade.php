@@ -45,7 +45,7 @@
 
             {{-- New request button --}}
             <div class="p-3">
-                <a href="{{ route('documents.create') }}"
+                <a href="{{ auth()->user()->isExternal() ? route('documents.index') : route('documents.create') }}"
                    class="flex items-center justify-center gap-2 w-full bg-[#5B4FE8] text-white rounded-lg py-2.5 text-sm font-medium hover:bg-indigo-700 transition-colors">
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
                     Новый сценарий
@@ -55,15 +55,26 @@
             {{-- Navigation --}}
             <nav class="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto">
                 @php
-                    $navItems = [
-                        ['route' => 'dashboard', 'label' => 'Дашборд', 'icon' => 'dashboard'],
-                        ['route' => 'tasks', 'label' => 'Мои задачи', 'icon' => 'tasks', 'url' => route('tasks', ['filter' => 'pending'])],
-                        ['route' => 'documents.index', 'label' => 'Документы', 'icon' => 'document'],
-                        ['route' => 'workflows.index', 'label' => 'Процессы', 'icon' => 'workflow'],
-                        ['route' => 'chats.index', 'label' => 'Чаты', 'icon' => 'chat'],
-                        ['route' => 'archive.index', 'label' => 'Архив', 'icon' => 'archive'],
-                        ['route' => 'employees.index', 'label' => 'Сотрудники', 'icon' => 'employees'],
-                    ];
+                    if (auth()->user()->isExternal()) {
+                        // External participants: only their own workspace.
+                        $navItems = [
+                            ['route' => 'dashboard', 'label' => 'Дашборд', 'icon' => 'dashboard'],
+                            ['route' => 'tasks', 'label' => 'Мои задачи', 'icon' => 'tasks', 'url' => route('tasks', ['filter' => 'pending'])],
+                            ['route' => 'documents.index', 'label' => 'Документы', 'icon' => 'document'],
+                            ['route' => 'chats.index', 'label' => 'Чаты', 'icon' => 'chat'],
+                            ['route' => 'archive.index', 'label' => 'Архив', 'icon' => 'archive'],
+                        ];
+                    } else {
+                        $navItems = [
+                            ['route' => 'dashboard', 'label' => 'Дашборд', 'icon' => 'dashboard'],
+                            ['route' => 'tasks', 'label' => 'Мои задачи', 'icon' => 'tasks', 'url' => route('tasks', ['filter' => 'pending'])],
+                            ['route' => 'documents.index', 'label' => 'Документы', 'icon' => 'document'],
+                            ['route' => 'workflows.index', 'label' => 'Процессы', 'icon' => 'workflow'],
+                            ['route' => 'chats.index', 'label' => 'Чаты', 'icon' => 'chat'],
+                            ['route' => 'archive.index', 'label' => 'Архив', 'icon' => 'archive'],
+                            ['route' => 'employees.index', 'label' => 'Сотрудники', 'icon' => 'employees'],
+                        ];
+                    }
                 @endphp
 
                 @foreach($navItems as $item)
@@ -77,6 +88,7 @@
                     </a>
                 @endforeach
 
+                @unless(auth()->user()->isExternal())
                 {{-- Trips --}}
                 <div class="pt-3 pb-1">
                     <p class="px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Командировки</p>
@@ -86,12 +98,14 @@
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
                     Мои заявки
                 </a>
-                @if(auth()->user()->isManager())
+                @if(auth()->user()->isManager() || auth()->user()->isApprover('trip'))
                     <a href="{{ route('trips.approvals') }}"
                        class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {{ request()->routeIs('trips.approvals') ? 'bg-[#5B4FE8] text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                         На согласование
                     </a>
+                @endif
+                @if(auth()->user()->isManager())
                     <a href="{{ route('trips.registries.index') }}"
                        class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {{ request()->routeIs('trips.registries.*') ? 'bg-[#5B4FE8] text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
@@ -104,17 +118,25 @@
                     <p class="px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Отпуска</p>
                 </div>
                 <a href="{{ route('vacations.index') }}"
-                   class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {{ request()->routeIs('vacations.index') || (request()->routeIs('vacations.*') && !request()->routeIs('vacations.approvals')) ? 'bg-[#5B4FE8] text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
+                   class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {{ request()->routeIs('vacations.index') || (request()->routeIs('vacations.*') && !request()->routeIs('vacations.approvals') && !request()->routeIs('vacations.registries.*')) ? 'bg-[#5B4FE8] text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                     Мои заявки
                 </a>
-                @if(auth()->user()->isManager())
+                @if(auth()->user()->isManager() || auth()->user()->isApprover('vacation'))
                     <a href="{{ route('vacations.approvals') }}"
                        class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {{ request()->routeIs('vacations.approvals') ? 'bg-[#5B4FE8] text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                         На согласование
                     </a>
                 @endif
+                @if(auth()->user()->isManager() || auth()->user()->isApprover('vacation_registry'))
+                    <a href="{{ route('vacations.registries.index') }}"
+                       class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {{ request()->routeIs('vacations.registries.*') ? 'bg-[#5B4FE8] text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                        Реестры
+                    </a>
+                @endif
+                @endunless
 
                 {{-- Admin --}}
                 @if(auth()->user()->role === 'admin')
@@ -130,6 +152,11 @@
                        class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {{ request()->routeIs('admin.approval-routes.*') ? 'bg-[#5B4FE8] text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h8m-8 6h16"/></svg>
                         Маршруты
+                    </a>
+                    <a href="{{ route('admin.external-participants.index') }}"
+                       class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {{ request()->routeIs('admin.external-participants.*') ? 'bg-[#5B4FE8] text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-3a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/></svg>
+                        Внешние участники
                     </a>
                 @endif
             </nav>
@@ -193,11 +220,13 @@
                     </button>
 
                     {{-- Upload CTA --}}
+                    @unless(auth()->user()->isExternal())
                     <a href="{{ route('documents.create') }}"
                        class="hidden md:flex items-center gap-2 bg-[#5B4FE8] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
                         Загрузить документ
                     </a>
+                    @endunless
 
                     {{-- Avatar --}}
                     <div x-data="{ open: false }" class="relative">

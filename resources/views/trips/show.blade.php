@@ -26,13 +26,13 @@
                     @if($trip->status === 'draft')
                         <form action="{{ route('trips.update', $trip) }}" method="POST">
                             @csrf @method('PUT')
-                            <input type="hidden" name="city" value="{{ $trip->city }}">
+                            <input type="hidden" name="city_type" value="{{ $trip->location_type }}">
+                            <input type="hidden" name="city_name" value="{{ $trip->city }}">
                             <input type="hidden" name="purpose" value="{{ $trip->purpose }}">
                             <input type="hidden" name="date_start" value="{{ $trip->date_start->format('Y-m-d') }}">
                             <input type="hidden" name="date_end" value="{{ $trip->date_end->format('Y-m-d') }}">
                             <input type="hidden" name="daily_rate" value="{{ $trip->daily_rate }}">
                             <input type="hidden" name="accommodation_total" value="{{ $trip->accommodation_total }}">
-                            <input type="hidden" name="transport_total" value="{{ $trip->transport_total }}">
                             <input type="hidden" name="comment" value="{{ $trip->comment }}">
                             <input type="hidden" name="submit" value="1">
                             <button type="submit" class="px-3 py-1.5 bg-[#5B4FE8] text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
@@ -102,10 +102,12 @@
                         <span>Проживание</span>
                         <span>{{ number_format($trip->accommodation_total, 0, '.', ' ') }} ₽</span>
                     </div>
-                    <div class="flex justify-between text-gray-600">
-                        <span>Переезд</span>
-                        <span>{{ number_format($trip->transport_total, 0, '.', ' ') }} ₽</span>
-                    </div>
+                    @if($trip->transport_total > 0)
+                        <div class="flex justify-between text-gray-600">
+                            <span>Переезд</span>
+                            <span>{{ number_format($trip->transport_total, 0, '.', ' ') }} ₽</span>
+                        </div>
+                    @endif
                     <div class="border-t border-gray-100 pt-2 flex justify-between font-semibold">
                         <span class="text-gray-900">Итого</span>
                         <span class="text-[#5B4FE8]">{{ number_format($trip->total_amount, 0, '.', ' ') }} ₽</span>

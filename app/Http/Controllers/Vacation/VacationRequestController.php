@@ -18,7 +18,7 @@ class VacationRequestController extends Controller
     public function index(Request $request)
     {
         $user  = auth()->user();
-        $query = VacationRequest::visibleBy($user)
+        $query = VacationRequest::where('user_id', $user->id)
             ->with(['user.department', 'route', 'signatory'])
             ->orderBy('created_at', 'desc');
 

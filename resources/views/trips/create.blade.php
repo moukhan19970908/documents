@@ -1,7 +1,14 @@
 <x-app-layout>
     <x-slot name="title">Новая командировка — Vamin</x-slot>
 
-    <div class="max-w-2xl" x-data="tripCreate()">
+    <div class="max-w-2xl" x-data="tripCreate(@js($norms), {
+        cityType: '{{ old('city_type', '') }}',
+        cityName: @js(old('city_name', '')),
+        dateStart: '{{ old('date_start', '') }}',
+        dateEnd: '{{ old('date_end', '') }}',
+        dailyRate: {{ old('daily_rate', 0) }},
+        accommodation: {{ old('accommodation_total', 0) }},
+    })">
         <div class="mb-6 flex items-center gap-4">
             <a href="{{ route('trips.index') }}" class="text-gray-400 hover:text-gray-600">
                 <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
@@ -31,21 +38,31 @@
             <div class="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
                 <div class="grid grid-cols-2 gap-4">
                     <div class="col-span-2">
-                        <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Город / Направление *</label>
-                        <input type="text" name="city" value="{{ old('city') }}" required
+                        <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Направление *</label>
+                        <select name="city_type" x-model="cityType" @change="onCityChange()" required
+                                class="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 bg-white focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                            <option value="">— выберите —</option>
+                            <option value="moscow">Москва</option>
+                            <option value="spb">Санкт-Петербург</option>
+                            <option value="sochi">Сочи</option>
+                            <option value="other_rf">Другие города РФ</option>
+                            <option value="abroad">За границей</option>
+                        </select>
+                    </div>
+                    <div class="col-span-2" x-show="needsCityInput" x-cloak>
+                        <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Город *</label>
+                        <input type="text" name="city_name" x-model="cityName" x-bind:required="needsCityInput"
                                class="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]"
-                               placeholder="Москва, Санкт-Петербург...">
+                               placeholder="Введите город">
                     </div>
                     <div>
                         <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Дата начала *</label>
-                        <input type="date" name="date_start" id="date_start" x-model="dateStart"
-                               value="{{ old('date_start') }}" required
+                        <input type="date" name="date_start" x-model="dateStart" required
                                class="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
                     </div>
                     <div>
                         <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Дата окончания *</label>
-                        <input type="date" name="date_end" id="date_end" x-model="dateEnd"
-                               value="{{ old('date_end') }}" required
+                        <input type="date" name="date_end" x-model="dateEnd" required
                                class="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
                     </div>
                     <div class="col-span-2">
@@ -58,32 +75,28 @@
             </div>
 
             <div class="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
-                <h2 class="text-xs font-semibold text-gray-600 uppercase tracking-widest">Расходы</h2>
-                <div class="grid grid-cols-3 gap-4">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-xs font-semibold text-gray-600 uppercase tracking-widest">Расходы</h2>
+                    <span class="text-xs text-gray-400">Категория: <span class="font-medium text-gray-600">{{ $norms['label'] }}</span></span>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Суточные (₽/день)</label>
-                        <input type="number" name="daily_rate" id="daily_rate" x-model="dailyRate"
-                               value="{{ old('daily_rate', 0) }}" min="0" step="0.01"
+                        <input type="number" name="daily_rate" x-model="dailyRate" min="0" step="0.01"
                                class="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
                     </div>
                     <div>
                         <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Проживание (₽)</label>
-                        <input type="number" name="accommodation_total" id="accommodation" x-model="accommodation"
-                               value="{{ old('accommodation_total', 0) }}" min="0" step="0.01"
+                        <input type="number" name="accommodation_total" x-model="accommodation" min="0" step="0.01"
                                class="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
-                    </div>
-                    <div>
-                        <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Переезд (₽)</label>
-                        <input type="number" name="transport_total" id="transport" x-model="transport"
-                               value="{{ old('transport_total', 0) }}" min="0" step="0.01"
-                               class="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                        <p class="text-xs text-gray-400 mt-1" x-text="accommodationHint" x-show="accommodationHint"></p>
                     </div>
                 </div>
 
                 <div class="bg-[#5B4FE8]/5 rounded-xl p-4 flex items-center justify-between">
                     <div class="text-sm text-gray-600">
                         Суточные × <span x-text="days" class="font-semibold text-gray-900"></span> дн.
-                        + Проживание + Переезд
+                        + Проживание
                     </div>
                     <div class="text-lg font-bold text-[#5B4FE8]">
                         <span x-text="formatMoney(total)"></span> ₽
@@ -115,13 +128,30 @@
 
     @push('scripts')
     <script>
-    function tripCreate() {
+    function tripCreate(norms, initial) {
         return {
-            dateStart: '{{ old('date_start', '') }}',
-            dateEnd: '{{ old('date_end', '') }}',
-            dailyRate: {{ old('daily_rate', 0) }},
-            accommodation: {{ old('accommodation_total', 0) }},
-            transport: {{ old('transport_total', 0) }},
+            norms: norms,
+            cityType: initial.cityType || '',
+            cityName: initial.cityName || '',
+            dateStart: initial.dateStart || '',
+            dateEnd: initial.dateEnd || '',
+            dailyRate: parseFloat(initial.dailyRate) || 0,
+            accommodation: parseFloat(initial.accommodation) || 0,
+
+            init() {
+                this.$watch('dateStart', () => this.syncAccommodation());
+                this.$watch('dateEnd', () => this.syncAccommodation());
+            },
+
+            get needsCityInput() {
+                return this.cityType === 'other_rf' || this.cityType === 'abroad';
+            },
+
+            get nightlyLimit() {
+                if (!this.cityType) return null;
+                const v = this.norms.nightly[this.cityType];
+                return (v === null || v === undefined) ? null : parseFloat(v);
+            },
 
             get days() {
                 if (!this.dateStart || !this.dateEnd) return 0;
@@ -133,8 +163,27 @@
 
             get total() {
                 return (parseFloat(this.dailyRate) || 0) * this.days
-                     + (parseFloat(this.accommodation) || 0)
-                     + (parseFloat(this.transport) || 0);
+                     + (parseFloat(this.accommodation) || 0);
+            },
+
+            get accommodationHint() {
+                if (!this.cityType) return '';
+                if (this.cityType === 'abroad') return 'За границей — введите сумму вручную.';
+                if (this.nightlyLimit === null) return 'По фактическим расходам.';
+                return 'Норма: ' + this.formatMoney(this.nightlyLimit) + ' ₽/сутки';
+            },
+
+            // Position-based per-diem; accommodation = nightly limit × days. GD/abroad stay manual.
+            onCityChange() {
+                if (!this.cityType || this.cityType === 'abroad') return;
+                this.dailyRate = this.norms.dailyRate;
+                this.syncAccommodation();
+            },
+
+            syncAccommodation() {
+                if (!this.cityType || this.cityType === 'abroad') return;
+                if (this.nightlyLimit === null) return;
+                this.accommodation = this.nightlyLimit * this.days;
             },
 
             formatMoney(val) {
