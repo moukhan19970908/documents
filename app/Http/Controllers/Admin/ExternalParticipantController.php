@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Services\AuditService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
@@ -47,11 +48,27 @@ class ExternalParticipantController extends Controller
         ]);
 
         // Send credentials via the queue (database queue connection).
-        Mail::to($user->email)->queue(
-            new ExternalParticipantCredentials($user, $password, route('login'))
-        );
+        $mailQueued = true;
+
+        try {
+            Mail::to($user->email)->queue(
+                new ExternalParticipantCredentials($user, $password, route('login'))
+            );
+        } catch (\Throwable $e) {
+            $mailQueued = false;
+            Log::error('Не удалось поставить письмо с доступом внешнего участника в очередь', [
+                'user_id' => $user->id,
+                'email'   => $user->email,
+                'error'   => $e->getMessage(),
+            ]);
+        }
 
         $this->auditService->log('external_participant_created', $user);
+
+        if (! $mailQueued) {
+            return redirect()->route('admin.external-participants.index')
+                ->with('success', 'Внешний участник создан, но письмо с паролем не было отправлено. Проверьте лог.');
+        }
 
         return redirect()->route('admin.external-participants.index')
             ->with('success', 'Внешний участник создан. Пароль отправлен на почту.');
