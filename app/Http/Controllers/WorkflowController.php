@@ -196,14 +196,18 @@ class WorkflowController extends Controller
         $this->authorize('update', $workflow);
 
         $validated = $request->validate([
-            'name'             => ['required', 'string', 'max:255'],
-            'document_type_id' => ['nullable', 'exists:document_types,id'],
-            'stages'           => ['nullable', 'array'],
+            'name'                  => ['required', 'string', 'max:255'],
+            'document_type_id'      => ['nullable', 'exists:document_types,id'],
+            'stages'                => ['nullable', 'array'],
+            'process_fields'        => ['nullable', 'array'],
+            'process_fields.*.name' => ['required_with:process_fields', 'string', 'max:255'],
+            'process_fields.*.type' => ['required_with:process_fields', 'in:string,number,date,file'],
         ]);
 
         $workflow->update([
             'name'             => $validated['name'],
             'document_type_id' => $validated['document_type_id'] ?? null,
+            'process_fields'   => $validated['process_fields'] ?? null,
         ]);
 
         $this->syncStages($workflow, $request->input('stages', []));

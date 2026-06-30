@@ -116,6 +116,42 @@
                     </div>
                 </div>
 
+                {{-- Process fields --}}
+                <div class="bg-white rounded-xl border border-gray-200 p-4 mt-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <p class="text-sm font-semibold text-gray-700">Поля процесса</p>
+                        <button @click="addField()" type="button"
+                                class="flex items-center gap-1.5 text-sm text-[#5B4FE8] font-medium hover:underline">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                            Добавить поле
+                        </button>
+                    </div>
+
+                    <div x-show="processFields.length === 0" class="text-sm text-gray-400 text-center py-6 border-2 border-dashed border-gray-100 rounded-xl">
+                        Нет полей. Нажмите «Добавить поле».
+                    </div>
+
+                    <div class="space-y-2">
+                        <template x-for="(field, fi) in processFields" :key="fi">
+                            <div class="flex items-center gap-2">
+                                <input type="text" :name="`process_fields[${fi}][name]`" x-model="field.name"
+                                       placeholder="Название поля"
+                                       class="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#5B4FE8]">
+                                <select :name="`process_fields[${fi}][type]`" x-model="field.type"
+                                        class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#5B4FE8] bg-white">
+                                    <option value="string">Строка</option>
+                                    <option value="number">Число</option>
+                                    <option value="date">Дата</option>
+                                    <option value="file">Файл</option>
+                                </select>
+                                <button @click="removeField(fi)" type="button" class="p-2 text-gray-400 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50 shrink-0">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                </button>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
                 <div class="mt-5 flex items-center gap-3">
                     <button type="submit" class="px-6 py-2.5 bg-[#5B4FE8] text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
                         Сохранить маршрут
@@ -160,6 +196,13 @@
     function workflowBuilder() {
         return {
             stages: @json($stagesData),
+            processFields: @json($workflow->process_fields ?? []),
+            addField() {
+                this.processFields.push({ name: '', type: 'string' });
+            },
+            removeField(index) {
+                this.processFields.splice(index, 1);
+            },
             addStage() {
                 this.stages.push({ id: null, _key: 'new-' + Date.now() + '-' + Math.random(), name: '', stage_type: 'sequential', deadline_hours: 24, approvers: [] });
             },
