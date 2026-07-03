@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(xargs grep -l \"document_fields\")",
-      "PowerShell(php -l \"c:\\\\xampp\\\\htdocs\\\\documents\\\\app\\\\Http\\\\Controllers\\\\WorkflowController.php\")"
+      "PowerShell(php -l \"c:\\\\xampp\\\\htdocs\\\\documents\\\\app\\\\Http\\\\Controllers\\\\WorkflowController.php\")",
+      "Bash(php -l app/Providers/AppServiceProvider.php)",
+      "Bash(xargs ls)",
+      "Bash(php -l app/Http/Controllers/WorkflowController.php)"
     ]
   }
 }

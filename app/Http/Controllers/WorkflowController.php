@@ -172,9 +172,23 @@ class WorkflowController extends Controller
 
     public function show(Workflow $workflow)
     {
-        $workflow->load(['stages.approvers', 'documentType', 'creator']);
+        $workflow->load(['stages.approvers', 'documentType', 'creator', 'folders']);
         $users = User::where('is_active', true)->get();
-        return view('workflows.builder', compact('workflow', 'users'));
+        $departments = Department::orderBy('name')->get();
+        $deptNamesById = $departments->pluck('name', 'id');
+        $usersForJs = $users->map(fn($u) => [
+            'id'            => $u->id,
+            'name'          => $u->name,
+            'position'      => $u->position ?? '',
+            'department_id' => $u->department_id,
+            'deptName'      => $deptNamesById[$u->department_id] ?? '',
+        ]);
+        $folderTree = WorkflowFolder::with('children.children')
+            ->whereNull('parent_id')
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get();
+        return view('workflows.builder', compact('workflow', 'users', 'departments', 'usersForJs', 'folderTree'));
     }
 
     public function builder(Workflow $workflow)
@@ -196,21 +210,31 @@ class WorkflowController extends Controller
         $this->authorize('update', $workflow);
 
         $validated = $request->validate([
-            'name'                  => ['required', 'string', 'max:255'],
-            'document_type_id'      => ['nullable', 'exists:document_types,id'],
-            'stages'                => ['nullable', 'array'],
-            'process_fields'        => ['nullable', 'array'],
-            'process_fields.*.name' => ['required_with:process_fields', 'string', 'max:255'],
-            'process_fields.*.type' => ['required_with:process_fields', 'in:string,number,date,file'],
+            'name'                     => ['required', 'string', 'max:255'],
+            'document_type_id'         => ['nullable', 'exists:document_types,id'],
+            'stages'                   => ['nullable', 'array'],
+            'process_fields'           => ['nullable', 'array'],
+            'process_fields.*.name'    => ['required_with:process_fields', 'string', 'max:255'],
+            'process_fields.*.type'    => ['required_with:process_fields', 'in:string,number,date,file'],
+            'allowed_department_ids'   => ['nullable', 'array'],
+            'allowed_department_ids.*' => ['exists:departments,id'],
+            'allowed_user_ids'         => ['nullable', 'array'],
+            'allowed_user_ids.*'       => ['exists:users,id'],
+            'folder_ids'               => ['nullable', 'array'],
+            'folder_ids.*'             => ['exists:workflow_folders,id'],
         ]);
 
         $workflow->update([
-            'name'             => $validated['name'],
-            'document_type_id' => $validated['document_type_id'] ?? null,
-            'process_fields'   => $validated['process_fields'] ?? null,
+            'name'                => $validated['name'],
+            'document_type_id'    => $validated['document_type_id'] ?? null,
+            'process_fields'      => $validated['process_fields'] ?? null,
+            'allowed_departments' => $validated['allowed_department_ids'] ?? null,
+            'allowed_users'       => $validated['allowed_user_ids'] ?? null,
         ]);
 
         $this->syncStages($workflow, $request->input('stages', []));
+
+        $workflow->folders()->sync($validated['folder_ids'] ?? []);
 
         $this->auditService->log('workflow_updated', $workflow);
 

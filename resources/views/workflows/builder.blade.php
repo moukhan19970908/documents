@@ -50,8 +50,8 @@
                                         <label class="text-xs text-gray-500 block mb-1">Тип согласования</label>
                                         <select :name="`stages[${index}][stage_type]`" x-model="stage.stage_type"
                                                 class="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#5B4FE8]">
-                                            <option value="sequential">Все согласующие (последовательно)</option>
-                                            <option value="parallel">Любой из согласующих (параллельно)</option>
+                                            <option value="sequential">Любой из согласующих (кто-то один подписал — дальше)</option>
+                                            <option value="parallel">Все согласующие (нужны подписи всех)</option>
                                         </select>
                                     </div>
                                     <div class="w-40">
@@ -113,6 +113,123 @@
 
                     <div x-show="stages.length === 0" class="bg-white rounded-xl border border-dashed border-gray-300 py-10 text-center text-gray-400 text-sm">
                         Добавьте первый этап согласования
+                    </div>
+                </div>
+
+                {{-- Folders --}}
+                <div class="bg-white rounded-xl border border-gray-200 p-4 mt-4">
+                    <p class="text-sm font-semibold text-gray-700 mb-3">Папки</p>
+                    @php $selectedFolderIds = $workflow->folders->pluck('id')->all(); @endphp
+                    <div class="space-y-2">
+                        @foreach($folderTree as $rootFolder)
+                            <div>
+                                <p class="text-xs font-semibold text-gray-500 mb-1.5 flex items-center gap-1.5">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>
+                                    {{ $rootFolder->name }}
+                                </p>
+                                <div class="flex flex-wrap gap-2 pl-1">
+                                    <label class="inline-flex items-center gap-1.5 cursor-pointer select-none">
+                                        <input type="checkbox" name="folder_ids[]" value="{{ $rootFolder->id }}"
+                                               class="rounded border-gray-300 text-[#5B4FE8] focus:ring-[#5B4FE8]"
+                                               {{ in_array($rootFolder->id, $selectedFolderIds) ? 'checked' : '' }}>
+                                        <span class="text-sm text-gray-700">{{ $rootFolder->name }}</span>
+                                    </label>
+                                    @foreach($rootFolder->children as $child)
+                                        <label class="inline-flex items-center gap-1.5 cursor-pointer select-none">
+                                            <input type="checkbox" name="folder_ids[]" value="{{ $child->id }}"
+                                                   class="rounded border-gray-300 text-[#5B4FE8] focus:ring-[#5B4FE8]"
+                                                   {{ in_array($child->id, $selectedFolderIds) ? 'checked' : '' }}>
+                                            <span class="text-sm text-gray-700">{{ $child->name }}</span>
+                                        </label>
+                                        @foreach($child->children as $grandchild)
+                                            <label class="inline-flex items-center gap-1.5 cursor-pointer select-none">
+                                                <input type="checkbox" name="folder_ids[]" value="{{ $grandchild->id }}"
+                                                       class="rounded border-gray-300 text-[#5B4FE8] focus:ring-[#5B4FE8]"
+                                                       {{ in_array($grandchild->id, $selectedFolderIds) ? 'checked' : '' }}>
+                                                <span class="text-sm text-gray-500">{{ $child->name }} / {{ $grandchild->name }}</span>
+                                            </label>
+                                        @endforeach
+                                    @endforeach
+                                </div>
+                            </div>
+                            @if(!$loop->last)
+                                <div class="border-t border-gray-100 my-2"></div>
+                            @endif
+                        @endforeach
+                        @if($folderTree->isEmpty())
+                            <p class="text-sm text-gray-400">Папки не созданы.</p>
+                        @endif
+                    </div>
+                </div>
+
+                {{-- Who can create the process --}}
+                <div class="bg-white rounded-xl border border-gray-200 p-4 mt-4 space-y-5">
+                    <div>
+                        <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Кто может создать процесс</label>
+                        <div class="relative" @click.outside="deptOpen = false">
+                            <div class="min-h-[46px] w-full border border-gray-200 rounded-lg px-3 py-2 flex flex-wrap gap-1.5 cursor-text focus-within:ring-2 focus-within:ring-[#5B4FE8]"
+                                 @click="deptOpen = true">
+                                <template x-for="dept in selectedDepts" :key="dept.id">
+                                    <span class="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 text-xs font-medium rounded-md px-2 py-1">
+                                        <span x-text="dept.name"></span>
+                                        <button type="button" @click.stop="removeDept(dept.id)" class="hover:opacity-70 ml-0.5">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+                                        </button>
+                                    </span>
+                                </template>
+                                <input type="text" x-model="deptSearch" @focus="deptOpen = true"
+                                       placeholder="Поиск отдела…"
+                                       class="flex-1 min-w-[160px] text-sm outline-none bg-transparent py-0.5">
+                            </div>
+                            <div x-show="deptOpen && filteredDepts.length > 0" x-transition
+                                 class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-y-auto">
+                                <template x-for="dept in filteredDepts" :key="dept.id">
+                                    <div @click="addDept(dept)"
+                                         class="px-4 py-2.5 text-sm text-gray-700 hover:bg-[#5B4FE8]/5 cursor-pointer" x-text="dept.name"></div>
+                                </template>
+                            </div>
+                        </div>
+                        <template x-for="dept in selectedDepts" :key="'di-' + dept.id">
+                            <input type="hidden" name="allowed_department_ids[]" :value="dept.id">
+                        </template>
+                        <p class="mt-1.5 text-xs text-gray-400">Если не выбрать отдел — процесс доступен всем.</p>
+                    </div>
+
+                    <div x-show="selectedDepts.length > 0" x-transition>
+                        <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Конкретные сотрудники <span class="font-normal normal-case text-gray-400">(необязательно)</span></label>
+                        <div class="relative" @click.outside="userOpen = false">
+                            <div class="min-h-[46px] w-full border border-gray-200 rounded-lg px-3 py-2 flex flex-wrap gap-1.5 cursor-text focus-within:ring-2 focus-within:ring-[#5B4FE8]"
+                                 @click="userOpen = true">
+                                <template x-for="user in selectedUsers" :key="'su-' + user.id">
+                                    <span class="inline-flex items-center gap-1 bg-[#5B4FE8]/10 text-[#5B4FE8] text-xs font-medium rounded-md px-2 py-1">
+                                        <span x-text="user.name"></span>
+                                        <button type="button" @click.stop="removeUser(user.id)" class="hover:opacity-70 ml-0.5">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
+                                        </button>
+                                    </span>
+                                </template>
+                                <input type="text" x-model="userSearch" @focus="userOpen = true"
+                                       placeholder="Поиск сотрудника…"
+                                       class="flex-1 min-w-[160px] text-sm outline-none bg-transparent py-0.5">
+                            </div>
+                            <div x-show="userOpen && filteredUsers.length > 0" x-transition
+                                 class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-y-auto">
+                                <template x-for="user in filteredUsers" :key="'uo-' + user.id">
+                                    <div @click="addUser(user)"
+                                         class="px-4 py-2.5 text-sm text-gray-700 hover:bg-[#5B4FE8]/5 cursor-pointer flex items-center gap-2.5">
+                                        <div class="w-7 h-7 shrink-0 rounded-full bg-[#5B4FE8]/20 flex items-center justify-center text-[#5B4FE8] text-xs font-semibold" x-text="user.name.charAt(0).toUpperCase()"></div>
+                                        <div>
+                                            <div x-text="user.name" class="font-medium leading-tight"></div>
+                                            <div x-show="user.deptName" x-text="user.deptName" class="text-xs text-gray-400 leading-tight"></div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                        <template x-for="user in selectedUsers" :key="'ui-' + user.id">
+                            <input type="hidden" name="allowed_user_ids[]" :value="user.id">
+                        </template>
+                        <p class="mt-1.5 text-xs text-gray-400">Если не выбрать — доступно всему отделу</p>
                     </div>
                 </div>
 
@@ -190,6 +307,11 @@
             'deadline_hours' => $s->deadline_hours,
             'approvers'      => $s->approvers->map(fn($a) => ['approver_id' => $a->approver_id, 'participant_type' => $a->participant_type ?? 'signatory'])->values()->toArray(),
         ])->values();
+
+        $allowedDeptIds = $workflow->allowed_departments ?? [];
+        $initialDepts   = $departments->whereIn('id', $allowedDeptIds)->map(fn($d) => ['id' => $d->id, 'name' => $d->name])->values();
+        $allowedUserIds = $workflow->allowed_users ?? [];
+        $initialUsers   = $usersForJs->whereIn('id', $allowedUserIds)->values();
     @endphp
 
     <script>
@@ -197,6 +319,51 @@
         return {
             stages: @json($stagesData),
             processFields: @json($workflow->process_fields ?? []),
+
+            selectedDepts: @json($initialDepts),
+            deptSearch: '',
+            deptOpen: false,
+            allDepts: @json($departments->map(fn($d) => ['id' => $d->id, 'name' => $d->name])->values()),
+
+            selectedUsers: @json($initialUsers),
+            userSearch: '',
+            userOpen: false,
+            allUsers: @json($usersForJs),
+
+            get filteredDepts() {
+                const q = this.deptSearch.toLowerCase();
+                return this.allDepts.filter(d =>
+                    d.name.toLowerCase().includes(q)
+                    && !this.selectedDepts.find(s => s.id === d.id)
+                );
+            },
+            get filteredUsers() {
+                const q = this.userSearch.toLowerCase();
+                const deptIds = this.selectedDepts.map(d => d.id);
+                return this.allUsers.filter(u =>
+                    deptIds.includes(u.department_id)
+                    && u.name.toLowerCase().includes(q)
+                    && !this.selectedUsers.find(s => s.id === u.id)
+                );
+            },
+            addDept(dept) {
+                this.selectedDepts.push(dept);
+                this.deptSearch = '';
+                this.deptOpen = false;
+            },
+            removeDept(id) {
+                this.selectedDepts = this.selectedDepts.filter(d => d.id !== id);
+                const remainingDeptIds = this.selectedDepts.map(d => d.id);
+                this.selectedUsers = this.selectedUsers.filter(u => remainingDeptIds.includes(u.department_id));
+            },
+            addUser(user) {
+                this.selectedUsers.push(user);
+                this.userSearch = '';
+                this.userOpen = false;
+            },
+            removeUser(id) {
+                this.selectedUsers = this.selectedUsers.filter(u => u.id !== id);
+            },
             addField() {
                 this.processFields.push({ name: '', type: 'string' });
             },

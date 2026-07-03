@@ -171,6 +171,24 @@
                                                     default       => '#D1D5DB',
                                                 };
                                                 $segments->push(['color' => $color, 'label' => $stage->workflowStage?->name ?? 'Стадия']);
+                                            } elseif (($stage->workflowStage?->stage_type ?? 'sequential') === 'sequential') {
+                                                // "Любой из согласующих": одной подписи достаточно, этап
+                                                // завершён — показываем один сегмент, а не по каждому.
+                                                $approved = $stage->decisions->whereIn('action', ['approve', 'process_approve'])->sortByDesc('decided_at')->first();
+                                                $rejected = $stage->decisions->whereIn('action', ['reject', 'process_reject'])->sortByDesc('decided_at')->first();
+                                                $signerName = fn($uid) => $approvers->firstWhere('approver_id', $uid)?->user?->name
+                                                    ?? \App\Models\User::find($uid)?->name ?? '—';
+                                                if ($approved) {
+                                                    $segments->push(['color' => '#22C55E', 'label' => 'Подписал: ' . $signerName($approved->user_id)]);
+                                                } elseif ($rejected) {
+                                                    $segments->push(['color' => '#EF4444', 'label' => 'Не одобрил: ' . $signerName($rejected->user_id)]);
+                                                } elseif ($stage->status === 'approved') {
+                                                    $segments->push(['color' => '#22C55E', 'label' => 'Этап пройден']);
+                                                } elseif ($stage->status === 'in_progress') {
+                                                    $segments->push(['color' => '#D1D5DB', 'label' => 'На подписании (любой из согласующих)']);
+                                                } else {
+                                                    $segments->push(['color' => '#D1D5DB', 'label' => 'Ожидает']);
+                                                }
                                             } else {
                                                 foreach ($approvers as $ap) {
                                                     // Colour each approver by their OWN decision, not the stage status.

@@ -406,7 +406,7 @@
                                 {{-- Process participant: only Одобрить / Не одобрить, no status effect --}}
                                 <div class="mb-3 px-3 py-2 bg-orange-50 border border-orange-100 rounded-lg">
                                     <p class="text-xs text-orange-600 font-medium">Процесс (Одобрено/Не одобрено)</p>
-                                    <p class="text-xs text-orange-400 mt-0.5">Ваше решение не влияет на статус согласования</p>
+                                    <p class="text-xs text-orange-400 mt-0.5">Выберите ваше решение и напишите комментарий</p>
                                 </div>
                                 <form action="{{ route('documents.process-approve', $document) }}" method="POST" class="mb-2">
                                     @csrf
@@ -619,6 +619,22 @@
                                 <div class="shrink-0 border-2 border-gray-200 rounded-2xl px-5 py-4 flex flex-col items-center gap-3 bg-gray-50/60">
                                     <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Параллельное согласование</p>
                                     <div class="flex items-start gap-4">
+                                        @foreach($group['approvers'] as $ap)
+                                            @include('documents._approval_node', [
+                                                'user'   => $ap['user'],
+                                                'label'  => $ap['user']?->department?->name ?? ($ap['user']?->position ?? ''),
+                                                'status' => $ap['status'],
+                                                'date'   => $ap['label'],
+                                                'isMe'   => $ap['isMe'],
+                                            ])
+                                        @endforeach
+                                    </div>
+                                </div>
+                            @elseif($group['type'] === 'sequential' && $group['approvers']->count() > 1)
+                                {{-- "Любой из согласующих": подписывает один из них — группируем вертикально --}}
+                                <div class="shrink-0 self-center border-2 border-dashed border-gray-200 rounded-2xl px-5 py-4 flex flex-col items-center gap-1 bg-gray-50/60">
+                                    <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Любой из согласующих</p>
+                                    <div class="flex flex-col items-center gap-4">
                                         @foreach($group['approvers'] as $ap)
                                             @include('documents._approval_node', [
                                                 'user'   => $ap['user'],
