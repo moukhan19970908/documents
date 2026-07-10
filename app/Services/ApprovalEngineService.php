@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Events\ApprovalStageChanged;
 use App\Events\DocumentApproved;
+use App\Events\DocumentCommentPosted;
 use App\Events\DocumentRejected;
 use App\Models\Document;
 use App\Models\DocumentApproval;
@@ -125,6 +126,12 @@ class ApprovalEngineService
                 'comment'  => $comment,
             ]);
         });
+
+        // Notify open document viewers of the new comment in real time.
+        if (filled($comment)) {
+            $document = $stage->documentApproval->document;
+            event(new DocumentCommentPosted($document, $user, $comment));
+        }
     }
 
     private function handleApprove(

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="vapid-public-key" content="{{ config('webpush.public_key') }}">
     <title>{{ $title ?? 'Vamin' }}</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
@@ -313,5 +314,125 @@
     </div>
 
     @stack('scripts')
+
+    @auth
+    {{-- Real-time browser notifications (new document to approve, chat message, trip/vacation approval) --}}
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const uid = {{ auth()->id() }};
+
+        // ── Sound (Web Audio, no asset needed) ───────────────────────────────
+        let audioCtx = null;
+        const initAudio = () => {
+            if (!audioCtx && (window.AudioContext || window.webkitAudioContext)) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+        };
+        // Browsers require a user gesture before audio can play, so the
+        // AudioContext is created only on the first click — never earlier
+        // (that avoids the "AudioContext was not allowed to start" warning).
+        document.addEventListener('click', initAudio, { once: true });
+        const playBeep = () => {
+            if (!audioCtx || audioCtx.state !== 'running') return;
+            try {
+                const o = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                o.connect(g); g.connect(audioCtx.destination);
+                o.type = 'sine'; o.frequency.value = 880;
+                g.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+                g.gain.exponentialRampToValueAtTime(0.25, audioCtx.currentTime + 0.02);
+                g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.35);
+                o.start(); o.stop(audioCtx.currentTime + 0.35);
+            } catch (e) {}
+        };
+
+        // ── Toast (bottom-right) ─────────────────────────────────────────────
+        const container = document.createElement('div');
+        container.style.cssText = 'position:fixed;bottom:1rem;right:1rem;z-index:9999;display:flex;flex-direction:column;gap:.5rem;max-width:360px;';
+        document.body.appendChild(container);
+
+        const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        const accentByType = {
+            new_message: '#5B4FE8', new_document: '#5B4FE8',
+            trip_approval: '#0ea5e9', vacation_approval: '#0ea5e9',
+            document_approved: '#22c55e', document_rejected: '#ef4444',
+        };
+
+        const showToast = (e) => {
+            const accent = accentByType[e.type] || '#5B4FE8';
+            const el = document.createElement('div');
+            el.style.cssText = `background:#fff;border:1px solid #e5e7eb;border-left:4px solid ${accent};border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.15);padding:12px 14px;cursor:pointer;transition:transform .25s ease,opacity .25s ease;transform:translateX(120%);opacity:0;`;
+            el.innerHTML = `<div style="font-weight:600;font-size:13px;color:#111827;margin-bottom:3px;">${escapeHtml(e.title || 'Уведомление')}</div><div style="font-size:12px;color:#4b5563;line-height:1.35;">${escapeHtml(e.body)}</div>`;
+            el.onclick = () => { if (e.url) { window.focus(); window.location.href = e.url; } el.remove(); };
+            container.appendChild(el);
+            requestAnimationFrame(() => { el.style.transform = 'translateX(0)'; el.style.opacity = '1'; });
+            setTimeout(() => { el.style.transform = 'translateX(120%)'; el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 7000);
+        };
+
+        // For an OPEN & FOCUSED tab: in-page toast + sound.
+        // Background / closed tabs are handled by the Web Push service worker
+        // (see registerPush below), so we don't fire a native Notification here.
+        const handle = (e) => {
+            playBeep();
+            showToast(e);
+        };
+
+        const subscribeEcho = () => {
+            if (!window.Echo) { setTimeout(subscribeEcho, 500); return; }
+            window.Echo.private('user.' + uid).listen('.notify', handle);
+        };
+        subscribeEcho();
+
+        // ── Web Push (delivers OS notifications even when the site is closed) ─
+        const vapidPublicKey = document.querySelector('meta[name="vapid-public-key"]')?.content;
+        const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+
+        const urlB64ToUint8Array = (base64) => {
+            const padding = '='.repeat((4 - (base64.length % 4)) % 4);
+            const b64 = (base64 + padding).replace(/-/g, '+').replace(/_/g, '/');
+            const raw = atob(b64);
+            const out = new Uint8Array(raw.length);
+            for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+            return out;
+        };
+
+        const registerPush = async () => {
+            if (!('serviceWorker' in navigator) || !('PushManager' in window) || !vapidPublicKey) {
+                console.warn('[push] Web Push не поддерживается в этом браузере');
+                return;
+            }
+            try {
+                const reg = await navigator.serviceWorker.register('{{ asset('sw.js') }}');
+                if (Notification.permission === 'default') {
+                    await Notification.requestPermission();
+                }
+                if (Notification.permission !== 'granted') {
+                    console.warn('[push] нет разрешения на уведомления:', Notification.permission);
+                    return;
+                }
+                await navigator.serviceWorker.ready;
+                let sub = await reg.pushManager.getSubscription();
+                if (!sub) {
+                    sub = await reg.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: urlB64ToUint8Array(vapidPublicKey),
+                    });
+                }
+                const raw = sub.toJSON();
+                await fetch('{{ route('push.subscribe') }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },
+                    body: JSON.stringify({ endpoint: raw.endpoint, keys: raw.keys, content_encoding: 'aes128gcm' }),
+                });
+                console.log('[push] подписка на Web Push оформлена');
+            } catch (err) {
+                console.error('[push] ошибка регистрации Web Push:', err);
+            }
+        };
+        registerPush();
+    });
+    </script>
+    @endauth
 </body>
 </html>

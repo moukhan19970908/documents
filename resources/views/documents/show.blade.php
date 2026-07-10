@@ -84,7 +84,7 @@
     </div>
 
     {{-- ── Tabs ── --}}
-    <div x-data="{ tab: 'overview' }">
+    <div x-data="documentTabs({ chatId: {{ $chat?->id ?? 'null' }}, docId: {{ $document->id }}, currentUserId: {{ auth()->id() }} })">
         <div class="flex gap-0 border-b border-gray-200 mb-6 overflow-x-auto">
             @foreach([
                 ['key' => 'overview',  'label' => 'Обзор'],
@@ -95,10 +95,15 @@
                 ['key' => 'history',   'label' => 'История'],
                 ['key' => 'related',   'label' => 'Связанные документы'],
             ] as $t)
-            <button @click="tab = '{{ $t['key'] }}'"
+            <button @click="selectTab('{{ $t['key'] }}')"
                     :class="tab === '{{ $t['key'] }}' ? 'border-b-2 border-[#5B4FE8] text-[#5B4FE8] font-semibold' : 'text-gray-500 hover:text-gray-700'"
                     class="px-4 py-2.5 text-sm whitespace-nowrap transition-colors -mb-px">
                 {{ $t['label'] }}
+                @if($t['key'] === 'chat')
+                    <span x-show="newChat" x-cloak class="ml-1 inline-block w-2 h-2 rounded-full bg-red-500 align-middle" title="Новое сообщение"></span>
+                @elseif($t['key'] === 'comments')
+                    <span x-show="newComment" x-cloak class="ml-1 inline-block w-2 h-2 rounded-full bg-red-500 align-middle" title="Новый комментарий"></span>
+                @endif
             </button>
             @endforeach
         </div>
@@ -1033,6 +1038,38 @@
 
 <script>
 document.addEventListener('alpine:init', () => {
+    Alpine.data('documentTabs', ({ chatId, docId, currentUserId }) => ({
+        tab: 'overview',
+        newChat: false,
+        newComment: false,
+
+        init() {
+            if (!window.Echo) return;
+
+            // New chat messages → dot on the "Чат" tab (unless it's open).
+            if (chatId) {
+                window.Echo.private(`chat.${chatId}`)
+                    .listen('MessageSent', (e) => {
+                        if (e?.user?.id === currentUserId) return;
+                        if (this.tab !== 'chat') this.newChat = true;
+                    });
+            }
+
+            // New decision comments → dot on the "Комментарии" tab (unless open).
+            window.Echo.private(`document.${docId}`)
+                .listen('.CommentPosted', (e) => {
+                    if (e?.user?.id === currentUserId) return;
+                    if (this.tab !== 'comments') this.newComment = true;
+                });
+        },
+
+        selectTab(key) {
+            this.tab = key;
+            if (key === 'chat') this.newChat = false;
+            if (key === 'comments') this.newComment = false;
+        },
+    }));
+
     Alpine.data('approvalModal', () => ({
         open: false,
         search: '',
@@ -1121,6 +1158,7 @@ document.addEventListener('alpine:init', () => {
 </script>
 
 <style>
+[x-cloak] { display: none !important; }
 .docx-render section {
     background: #fff;
     box-shadow: 0 2px 8px rgba(0,0,0,0.12);

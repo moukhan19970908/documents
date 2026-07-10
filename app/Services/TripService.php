@@ -9,7 +9,33 @@ use Illuminate\Support\Facades\DB;
 
 class TripService
 {
-    public function __construct(private ApprovalService $approvalService) {}
+    public function __construct(
+        private ApprovalService $approvalService,
+        private NotificationService $notifications,
+    ) {}
+
+    /**
+     * Notify the approver responsible for the trip's current step.
+     */
+    private function notifyCurrentApprover(TripRequest $trip): void
+    {
+        if ($trip->status !== 'pending') {
+            return;
+        }
+        $trip->loadMissing('route.steps', 'user');
+        $step = $trip->route?->steps->firstWhere('step_order', $trip->current_step);
+        if (!$step) {
+            return;
+        }
+        $approver = $this->approvalService->findApprover($trip->user, $step);
+        if (!$approver) {
+            return;
+        }
+        $this->notifications->notify($approver, 'trip_approval', [
+            'title'   => $trip->city ?? ('Командировка #' . $trip->id),
+            'trip_id' => $trip->id,
+        ]);
+    }
 
     public function create(User $user, array $data, bool $submit = false): TripRequest
     {
@@ -29,7 +55,7 @@ class TripService
             ? $this->approvalService->findApprover($user, $firstStep)?->id
             : null;
 
-        return DB::transaction(function () use ($user, $data, $route, $total, $submit, $signatoryId) {
+        $trip = DB::transaction(function () use ($user, $data, $route, $total, $submit, $signatoryId) {
             $trip = TripRequest::create([
                 'user_id'              => $user->id,
                 'signatory_id'         => $signatoryId,
@@ -54,12 +80,19 @@ class TripService
 
             return $trip;
         });
+
+        if ($submit) {
+            $this->notifyCurrentApprover($trip);
+        }
+
+        return $trip;
     }
 
     public function submit(TripRequest $trip): void
     {
         $trip->update(['status' => 'pending', 'current_step' => 1]);
         $this->approvalService->log('trip', $trip->id, 1, $trip->user_id, 'submitted');
+        $this->notifyCurrentApprover($trip);
     }
 
     public function approve(TripRequest $trip, User $approver, ?string $comment = null): void
@@ -77,6 +110,11 @@ class TripService
                 $trip->update(['status' => 'pending']);
             }
         });
+
+        // Moved on to the next step — notify its approver.
+        if ($trip->fresh()?->status === 'pending') {
+            $this->notifyCurrentApprover($trip->fresh());
+        }
     }
 
     public function reject(TripRequest $trip, User $approver, string $comment): void

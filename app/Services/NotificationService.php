@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Events\UserNotification;
 use App\Jobs\SendApprovalNotification;
+use App\Jobs\SendWebPush;
 use App\Models\NotificationLog;
 use App\Models\User;
 
@@ -16,6 +18,8 @@ class NotificationService
             'deadline_soon'     => 'Срок согласования истекает',
             'document_approved' => 'Документ согласован',
             'delegated_to_you'  => 'Вам делегировано согласование',
+            'trip_approval'     => 'Новое согласование командировки',
+            'vacation_approval' => 'Новое согласование отпуска',
         ];
 
         $bodies = [
@@ -24,18 +28,53 @@ class NotificationService
             'deadline_soon'     => 'Срок согласования истекает через 2 часа: ' . ($data['title'] ?? ''),
             'document_approved' => 'Документ согласован: ' . ($data['title'] ?? ''),
             'delegated_to_you'  => 'Вам делегировано согласование: ' . ($data['title'] ?? ''),
+            'trip_approval'     => 'Заявка на командировку на согласование: ' . ($data['title'] ?? ''),
+            'vacation_approval' => 'Заявка на отпуск на согласование: ' . ($data['title'] ?? ''),
         ];
+
+        $title = $titles[$type] ?? $type;
+        $body  = $bodies[$type] ?? '';
 
         $notification = NotificationLog::create([
             'user_id' => $user->id,
             'type'    => $type,
-            'title'   => $titles[$type] ?? $type,
-            'body'    => $bodies[$type] ?? '',
+            'title'   => $title,
+            'body'    => $body,
             'data'    => $data,
             'channel' => 'push',
         ]);
 
         SendApprovalNotification::dispatch($notification, $user)->onQueue('notifications');
+
+        // In-page toast (open tab) + Web Push (works even when the site is closed).
+        $this->pushToBrowser($user->id, $type, $title, $body, $this->resolveUrl($type, $data));
+    }
+
+    /**
+     * Deliver a browser notification without persisting a log or sending email:
+     *  - broadcasts over websockets for any open tab (in-page toast);
+     *  - queues a Web Push so it also arrives when the site is closed.
+     * Used both by notify() and for high-frequency events like chat messages.
+     */
+    public function pushToBrowser(int $userId, string $type, string $title, string $body, ?string $url = null): void
+    {
+        event(new UserNotification($userId, $type, $title, $body, $url));
+
+        SendWebPush::dispatch($userId, [
+            'type'  => $type,
+            'title' => $title,
+            'body'  => $body,
+            'url'   => $url,
+        ])->onQueue('notifications');
+    }
+
+    private function resolveUrl(string $type, array $data): ?string
+    {
+        return match ($type) {
+            'trip_approval'     => isset($data['trip_id']) ? route('trips.show', $data['trip_id']) : null,
+            'vacation_approval' => isset($data['vacation_id']) ? route('vacations.show', $data['vacation_id']) : null,
+            default             => isset($data['document_id']) ? route('documents.show', $data['document_id']) : null,
+        };
     }
 
     public function notifyMany(iterable $users, string $type, array $data): void

@@ -8,9 +8,12 @@ use App\Models\ChatMessage;
 use App\Models\DocumentApproval;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class ChatService
 {
+    public function __construct(private NotificationService $notifications) {}
+
     public function createForProcess(DocumentApproval $approval): Chat
     {
         $existing = Chat::where('document_approval_id', $approval->id)->first();
@@ -57,6 +60,19 @@ class ChatService
         $message->setRelation('user', $sender);
 
         broadcast(new MessageSent($message))->toOthers();
+
+        // Notify every other participant (in-page toast + Web Push).
+        $url = $chat->document_id ? route('documents.show', $chat->document_id) : null;
+        $recipients = $chat->participants()->where('users.id', '!=', $sender->id)->pluck('users.id');
+        foreach ($recipients as $recipientId) {
+            $this->notifications->pushToBrowser(
+                (int) $recipientId,
+                'new_message',
+                'Новое сообщение',
+                $sender->name . ': ' . Str::limit($body, 80),
+                $url,
+            );
+        }
 
         return $message;
     }

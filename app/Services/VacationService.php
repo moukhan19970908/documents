@@ -9,7 +9,33 @@ use Illuminate\Support\Facades\DB;
 
 class VacationService
 {
-    public function __construct(private ApprovalService $approvalService) {}
+    public function __construct(
+        private ApprovalService $approvalService,
+        private NotificationService $notifications,
+    ) {}
+
+    /**
+     * Notify the approver responsible for the vacation's current step.
+     */
+    private function notifyCurrentApprover(VacationRequest $vacation): void
+    {
+        if ($vacation->status !== 'pending') {
+            return;
+        }
+        $vacation->loadMissing('route.steps', 'user');
+        $step = $vacation->route?->steps->firstWhere('step_order', $vacation->current_step);
+        if (!$step) {
+            return;
+        }
+        $approver = $this->approvalService->findApprover($vacation->user, $step);
+        if (!$approver) {
+            return;
+        }
+        $this->notifications->notify($approver, 'vacation_approval', [
+            'title'       => 'Отпуск #' . $vacation->id,
+            'vacation_id' => $vacation->id,
+        ]);
+    }
 
     public function create(User $user, array $data, bool $submit = false): VacationRequest
     {
@@ -22,7 +48,7 @@ class VacationService
             ? $this->approvalService->findApprover($user, $firstStep)?->id
             : null;
 
-        return DB::transaction(function () use ($user, $data, $route, $days, $submit, $signatoryId) {
+        $vacation = DB::transaction(function () use ($user, $data, $route, $days, $submit, $signatoryId) {
             $vacation = VacationRequest::create([
                 'user_id'       => $user->id,
                 'signatory_id'  => $signatoryId,
@@ -42,12 +68,19 @@ class VacationService
 
             return $vacation;
         });
+
+        if ($submit) {
+            $this->notifyCurrentApprover($vacation);
+        }
+
+        return $vacation;
     }
 
     public function submit(VacationRequest $vacation): void
     {
         $vacation->update(['status' => 'pending', 'current_step' => 1]);
         $this->approvalService->log('vacation', $vacation->id, 1, $vacation->user_id, 'submitted');
+        $this->notifyCurrentApprover($vacation);
     }
 
     public function approve(VacationRequest $vacation, User $approver, ?string $comment = null): void
@@ -64,6 +97,11 @@ class VacationService
                 $vacation->increment('current_step');
             }
         });
+
+        // Moved on to the next step — notify its approver.
+        if ($vacation->fresh()?->status === 'pending') {
+            $this->notifyCurrentApprover($vacation->fresh());
+        }
     }
 
     public function reject(VacationRequest $vacation, User $approver, string $comment): void

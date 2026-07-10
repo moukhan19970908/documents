@@ -96,6 +96,10 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
     Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.read-all');
 
+    // Web Push subscriptions
+    Route::post('/push/subscribe', [\App\Http\Controllers\PushController::class, 'subscribe'])->name('push.subscribe');
+    Route::post('/push/unsubscribe', [\App\Http\Controllers\PushController::class, 'unsubscribe'])->name('push.unsubscribe');
+
     // Employees org chart
     Route::get('/employees', [EmployeesController::class, 'index'])->name('employees.index');
 
