@@ -2,221 +2,162 @@
     <x-slot name="title">Дашборд — Vamin.ru</x-slot>
 
     {{-- Greeting --}}
-    <div class="flex flex-col md:flex-row md:items-start gap-6">
-        <div class="flex-1">
-            <h1 class="text-2xl font-bold text-gray-900">
-                @php
-                    $hour = now()->hour;
-                    $greeting = $hour < 12 ? 'Доброе утро' : ($hour < 18 ? 'Добрый день' : 'Добрый вечер');
-                @endphp
-                {{ $greeting }}, {{ auth()->user()->name }}.
-            </h1>
-            <p class="text-sm text-gray-500 mt-1">Статус ваших рабочих процессов.</p>
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">
+            Здравствуйте, {{ \Illuminate\Support\Str::before(auth()->user()->name, ' ') ?: auth()->user()->name }}
+        </h1>
+        <p class="text-sm text-gray-500 mt-1">{{ \Illuminate\Support\Str::ucfirst(now()->translatedFormat('l, j F')) }}</p>
+    </div>
 
-            {{-- Stats row --}}
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-                {{-- Pending --}}
-                <div class="bg-white rounded-xl border border-gray-200 p-5">
-                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest">Ожидают согласования</p>
-                    <div class="flex items-end gap-2 mt-3">
-                        <span class="text-4xl font-bold text-gray-900">{{ $stats['pending_count'] }}</span>
+    {{-- Stat cards --}}
+    @php
+        $avg = $stats['avg_approval_days'];
+        if ($avg === null) {
+            $avgLabel = '—';
+        } else {
+            $n     = (int) floor($avg);
+            $mod10 = $n % 10; $mod100 = $n % 100;
+            $word  = (floor($avg) != $avg || ($mod10 >= 2 && $mod10 <= 4 && !($mod100 >= 12 && $mod100 <= 14)))
+                        ? 'дня'
+                        : (($mod10 == 1 && $mod100 != 11) ? 'день' : 'дней');
+            $avgNum   = floor($avg) == $avg ? number_format($avg, 0) : number_format($avg, 1, ',', '');
+            $avgLabel = $avgNum . ' ' . $word;
+        }
+        $cards = [
+            ['value' => $stats['in_work_count'], 'label' => 'Документов в работе',      'bg' => 'bg-indigo-50',  'fg' => 'text-indigo-500', 'icon' => 'document'],
+            ['value' => $stats['pending_count'], 'label' => 'Ждут вашего действия',      'bg' => 'bg-violet-50',  'fg' => 'text-violet-500', 'icon' => 'tasks', 'link' => route('tasks', ['filter' => 'pending'])],
+            ['value' => $stats['overdue_count'], 'label' => 'Просрочено',               'bg' => 'bg-red-50',     'fg' => 'text-red-500',    'icon' => 'clock', 'danger' => $stats['overdue_count'] > 0],
+            ['value' => $avgLabel,               'label' => 'Среднее время согласования', 'bg' => 'bg-sky-50',    'fg' => 'text-sky-500',    'icon' => 'chart'],
+        ];
+    @endphp
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        @foreach($cards as $card)
+            <div class="bg-white rounded-xl border border-gray-200 p-5">
+                <div class="flex items-start justify-between">
+                    <div class="w-10 h-10 rounded-lg {{ $card['bg'] }} {{ $card['fg'] }} flex items-center justify-center">
+                        @switch($card['icon'])
+                            @case('document')
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                                @break
+                            @case('tasks')
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+                                @break
+                            @case('clock')
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                @break
+                            @case('chart')
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                                @break
+                        @endswitch
                     </div>
+                    @isset($card['link'])
+                        <a href="{{ $card['link'] }}" class="text-xs font-medium text-[#5B4FE8] hover:underline">Перейти</a>
+                    @endisset
                 </div>
+                <p class="text-3xl font-bold mt-4 {{ ($card['danger'] ?? false) ? 'text-red-600' : 'text-gray-900' }}">{{ $card['value'] }}</p>
+                <p class="text-sm text-gray-500 mt-1">{{ $card['label'] }}</p>
+            </div>
+        @endforeach
+    </div>
 
-                {{-- Processed --}}
-                <div class="bg-white rounded-xl border border-gray-200 p-5">
-                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest">Обработано за неделю</p>
-                    <div class="flex items-end gap-2 mt-3">
-                        <span class="text-4xl font-bold text-gray-900">{{ $stats['processed_week'] }}</span>
-                    </div>
-                </div>
+    {{-- Action required + status breakdown --}}
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
 
-                {{-- Overdue --}}
-                <div class="bg-white rounded-xl border border-gray-200 p-5">
-                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest">Просроченных задач</p>
-                    <div class="flex items-end gap-2 mt-3">
-                        <span class="text-4xl font-bold {{ $stats['overdue_count'] > 0 ? 'text-red-600' : 'text-gray-900' }}">{{ $stats['overdue_count'] }}</span>
-                    </div>
-                </div>
+        {{-- Требуют действия --}}
+        <div class="lg:col-span-2 bg-white rounded-xl border border-gray-200">
+            <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                <h2 class="text-sm font-semibold text-gray-900">Требуют действия</h2>
+                <a href="{{ route('tasks') }}" class="text-sm text-[#5B4FE8] hover:underline">Все задачи →</a>
             </div>
 
-            {{-- Action required table --}}
-            <div class="bg-white rounded-xl border border-gray-200 mt-6">
-                <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-                    <h2 class="text-sm font-semibold text-gray-900">Требуют действия</h2>
-                    <a href="{{ route('tasks') }}" class="text-sm text-[#5B4FE8] hover:underline">Смотреть все задачи</a>
-                </div>
-
-                @if($pendingApprovals->isEmpty())
-                    <div class="px-5 py-10 text-center text-sm text-gray-500">Нет задач, требующих действий.</div>
-                @else
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-sm">
-                            <thead>
-                                <tr class="text-xs text-gray-500 uppercase tracking-wider border-b border-gray-100 bg-gray-50">
-                                    <th class="text-left px-5 py-3 font-semibold">Документ</th>
-                                    <th class="text-left px-5 py-3 font-semibold">Тип</th>
-                                    <th class="text-left px-5 py-3 font-semibold">Инициатор</th>
-                                    <th class="text-left px-5 py-3 font-semibold">Ответственный</th>
-                                    <th class="text-left px-5 py-3 font-semibold">Статус</th>
-                                    <th class="text-left px-5 py-3 font-semibold">Обновлён</th>
-                                    <th class="text-left px-5 py-3 font-semibold">Действия</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-50">
-                                @foreach($pendingApprovals as $item)
-                                    @php
-                                        $doc = $item['document'];
-                                        $statusBadge = [
-                                            'draft'            => 'bg-gray-100 text-gray-600',
-                                            'in_review'        => 'bg-blue-100 text-blue-700',
-                                            'requires_changes' => 'bg-orange-100 text-orange-700',
-                                            'approved'         => 'bg-green-100 text-green-700',
-                                            'signed'           => 'bg-green-100 text-green-700',
-                                            'rejected'         => 'bg-red-100 text-red-700',
-                                            'archived'         => 'bg-gray-100 text-gray-500',
-                                        ][$doc->status] ?? 'bg-gray-100 text-gray-600';
-                                    @endphp
-                                    <tr class="hover:bg-gray-50 transition-colors">
-                                        <td class="px-5 py-3.5">
-                                            <a href="{{ route('documents.show', $doc) }}" class="font-medium text-gray-900 hover:text-[#5B4FE8]">
-                                                {{ $doc->title }}
-                                            </a>
-                                            <p class="text-xs text-gray-400 mt-0.5">ID: D-{{ $doc->id }}</p>
-                                        </td>
-                                        <td class="px-5 py-3.5 text-gray-600">{{ $doc->type?->name ?? '—' }}</td>
-                                        <td class="px-5 py-3.5">
-                                            <div class="flex items-center gap-2">
-                                                <img src="{{ $doc->initiator->avatar_url }}" class="w-6 h-6 rounded-full" alt="">
-                                                <span class="text-gray-700">{{ Str::limit($doc->initiator->name, 20) }}</span>
-                                            </div>
-                                        </td>
-                                        <td class="px-5 py-3.5">
-                                            @php
-                                                $approval    = $doc->activeApproval ?? $doc->latestApproval;
-                                                $activeStage = $approval?->stages->first();
-                                                $approvers   = $activeStage?->workflowStage?->approvers ?? collect();
-                                            @endphp
-                                            @if($approvers->isNotEmpty())
-                                                <div class="flex items-center gap-1.5">
-                                                    @foreach($approvers->take(2) as $ap)
-                                                        @if($ap->user)
-                                                            <div class="flex items-center gap-1.5">
-                                                                <img src="{{ $ap->user->avatar_url }}" class="w-6 h-6 rounded-full flex-shrink-0" alt="">
-                                                                <span class="text-gray-700 text-sm">{{ Str::limit($ap->user->name, 20) }}</span>
-                                                            </div>
-                                                        @endif
-                                                    @endforeach
-                                                    @if($approvers->count() > 2)
-                                                        <span class="text-xs text-gray-400">+{{ $approvers->count() - 2 }}</span>
-                                                    @endif
-                                                </div>
-                                            @else
-                                                <span class="text-gray-400 text-xs">—</span>
-                                            @endif
-                                        </td>
-                                        <td class="px-5 py-3.5">
-                                            <span class="inline-flex px-2 py-1 text-xs font-semibold rounded {{ $statusBadge }}">
-                                                {{ $doc->status_label }}
-                                            </span>
-                                            @php
-                                                $stages = $doc->activeApproval?->stages ?? collect();
-                                                if ($doc->status === 'draft') {
-                                                    $segments = collect([['color' => '#D1D5DB', 'label' => 'Черновик']]);
-                                                } elseif ($doc->status === 'rejected') {
-                                                    $segments = collect([['color' => '#EF4444', 'label' => 'Отклонено']]);
-                                                } else {
-                                                    $segments = collect([['color' => '#22C55E', 'label' => 'Инициатор: ' . $doc->initiator->name]]);
-                                                    foreach ($stages as $stage) {
-                                                        $stageApprovers = $stage->workflowStage?->approvers ?? collect();
-                                                        $decidedUserIds = $stage->decisions->pluck('user_id')->toArray();
-                                                        if ($stageApprovers->isEmpty()) {
-                                                            $color = match($stage->status) {
-                                                                'approved'    => '#22C55E',
-                                                                'rejected'    => '#EF4444',
-                                                                'in_progress' => '#D1D5DB',
-                                                                default       => '#D1D5DB',
-                                                            };
-                                                            $segments->push(['color' => $color, 'label' => $stage->workflowStage?->name ?? 'Стадия']);
-                                                        } else {
-                                                            foreach ($stageApprovers as $ap) {
-                                                                if ($stage->status === 'approved') {
-                                                                    $color = '#22C55E';
-                                                                    $label = 'Подписал: ' . ($ap->user?->name ?? '—');
-                                                                } elseif ($stage->status === 'rejected') {
-                                                                    $color = '#EF4444';
-                                                                    $label = 'Отклонил: ' . ($ap->user?->name ?? '—');
-                                                                } elseif ($stage->status === 'in_progress') {
-                                                                    $signed = in_array($ap->approver_id, $decidedUserIds);
-                                                                    $color  = $signed ? '#3B82F6' : '#D1D5DB';
-                                                                    $label  = ($signed ? 'Подписал: ' : 'На подписании у: ') . ($ap->user?->name ?? '—');
-                                                                } else {
-                                                                    $color = '#D1D5DB';
-                                                                    $label = 'Ожидает: ' . ($ap->user?->name ?? '—');
-                                                                }
-                                                                $segments->push(['color' => $color, 'label' => $label]);
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            @endphp
-                                            @if($segments->count() > 0)
-                                                <div class="flex gap-0.5 mt-1.5" style="width:120px">
-                                                    @foreach($segments as $seg)
-                                                        <div title="{{ $seg['label'] }}" style="flex:1; height:4px; background:{{ $seg['color'] }}; border-radius:2px; cursor:default"></div>
-                                                    @endforeach
-                                                </div>
-                                            @endif
-                                        </td>
-                                        <td class="px-5 py-3.5 text-gray-500 text-xs">{{ $doc->updated_at->format('d.m.Y') }}</td>
-                                        <td class="px-5 py-3.5">
-                                            <a href="{{ route('documents.show', $doc) }}" class="text-[#5B4FE8] text-xs font-medium hover:underline">Открыть</a>
-                                        </td>
-                                    </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
-                    </div>
-                @endif
-            </div>
-        </div>
-
-        {{-- Activity sidebar --}}
-        <div class="w-full md:w-72 shrink-0">
-            <div class="bg-white rounded-xl border border-gray-200">
-                <div class="px-5 py-4 border-b border-gray-100">
-                    <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-widest">Последняя активность</h2>
-                </div>
+            @if($pendingApprovals->isEmpty())
+                <div class="px-5 py-10 text-center text-sm text-gray-500">Нет задач, требующих действий.</div>
+            @else
                 <div class="divide-y divide-gray-50">
-                    @forelse($activity as $log)
-                        <div class="px-5 py-3.5 flex gap-3">
-                            <div class="w-7 h-7 rounded-full overflow-hidden shrink-0 mt-0.5">
-                                @if($log->user)
-                                    <img src="{{ $log->user->avatar_url }}" alt="{{ $log->user->name }}" class="w-full h-full object-cover">
-                                @else
-                                    <div class="w-full h-full bg-gray-200 flex items-center justify-center text-xs text-gray-500">S</div>
-                                @endif
+                    @foreach($pendingApprovals as $item)
+                        @php
+                            $doc       = $item['document'];
+                            $stageName = $item['stage']->workflowStage?->name ?? $doc->status_label;
+                            $accent = match(true) {
+                                str_contains(mb_strtolower($stageName), 'соглас')   => ['bg' => 'bg-blue-50',   'text' => 'text-blue-700',   'dot' => 'bg-blue-500'],
+                                str_contains(mb_strtolower($stageName), 'утвержд')  => ['bg' => 'bg-green-50',  'text' => 'text-green-700',  'dot' => 'bg-green-500'],
+                                str_contains(mb_strtolower($stageName), 'ознаком')  => ['bg' => 'bg-amber-50',  'text' => 'text-amber-700',  'dot' => 'bg-amber-500'],
+                                str_contains(mb_strtolower($stageName), 'приём') ||
+                                str_contains(mb_strtolower($stageName), 'прием')    => ['bg' => 'bg-violet-50', 'text' => 'text-violet-700', 'dot' => 'bg-violet-500'],
+                                default                                             => ['bg' => 'bg-indigo-50', 'text' => 'text-indigo-700', 'dot' => 'bg-indigo-500'],
+                            };
+                        @endphp
+                        <div class="flex items-center gap-4 px-5 py-3.5 hover:bg-gray-50 transition-colors">
+                            <div class="w-9 h-9 rounded-lg {{ $accent['bg'] }} flex items-center justify-center shrink-0">
+                                <span class="w-2 h-2 rounded-full {{ $accent['dot'] }}"></span>
                             </div>
                             <div class="flex-1 min-w-0">
-                                <p class="text-xs text-gray-700 leading-snug">
-                                    <span class="font-medium">{{ $log->user?->name ?? 'Система' }}</span>
-                                    — {{ $log->action }}
-                                </p>
-                                <p class="text-[10px] text-gray-400 mt-0.5">{{ $log->created_at->diffForHumans() }}</p>
+                                <a href="{{ route('documents.show', $doc) }}" class="font-medium text-gray-900 hover:text-[#5B4FE8] block truncate">{{ $doc->title }}</a>
+                                <p class="text-xs text-gray-400 mt-0.5">{{ $doc->type?->name ?? 'Документ' }} · D-{{ $doc->id }}</p>
                             </div>
+                            <span class="hidden sm:inline-flex px-2.5 py-1 text-xs font-medium rounded-full {{ $accent['bg'] }} {{ $accent['text'] }} whitespace-nowrap">{{ $stageName }}</span>
+                            <a href="{{ route('documents.show', $doc) }}" class="shrink-0 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors">Открыть</a>
                         </div>
-                    @empty
-                        <div class="px-5 py-6 text-center text-xs text-gray-400">Активности нет</div>
-                    @endforelse
+                    @endforeach
                 </div>
-                @if($activity->count() >= 10)
-                    <div class="px-5 py-3 border-t border-gray-100">
-                        <button class="text-xs text-[#5B4FE8] font-medium hover:underline w-full text-center uppercase tracking-wide">
-                            Загрузить больше активности
-                        </button>
-                    </div>
-                @endif
+            @endif
+        </div>
+
+        {{-- Документы по статусам --}}
+        <div class="bg-white rounded-xl border border-gray-200">
+            <div class="px-5 py-4 border-b border-gray-100">
+                <h2 class="text-sm font-semibold text-gray-900">Документы по статусам</h2>
             </div>
+            @php $maxStatus = max(1, collect($statusBreakdown)->max('count')); @endphp
+            <div class="px-5 py-4 space-y-4">
+                @foreach($statusBreakdown as $st)
+                    <div>
+                        <div class="flex items-center justify-between text-sm mb-1.5">
+                            <span class="text-gray-600">{{ $st['label'] }}</span>
+                            <span class="font-semibold text-gray-900">{{ $st['count'] }}</span>
+                        </div>
+                        <div class="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                            <div class="h-full rounded-full" style="width: {{ round($st['count'] / $maxStatus * 100) }}%; background: {{ $st['color'] }}"></div>
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+        </div>
+    </div>
+
+    {{-- Лента событий --}}
+    <div class="bg-white rounded-xl border border-gray-200 mt-6">
+        <div class="px-5 py-4 border-b border-gray-100">
+            <h2 class="text-sm font-semibold text-gray-900">Лента событий</h2>
+        </div>
+        <div class="divide-y divide-gray-50">
+            @forelse($activity as $log)
+                @php
+                    $action = mb_strtolower($log->action);
+                    $dot = match(true) {
+                        str_contains($action, 'отказал') || str_contains($action, 'отклонил') => 'bg-red-500',
+                        str_contains($action, 'утвердил') || str_contains($action, 'согласовал') => str_contains($action, 'согласовал') ? 'bg-blue-500' : 'bg-green-500',
+                        str_contains($action, 'доработк')                                     => 'bg-violet-500',
+                        str_contains($action, 'ознаком')                                      => 'bg-amber-500',
+                        default                                                               => 'bg-gray-400',
+                    };
+                    $when = $log->created_at->isToday()
+                        ? $log->created_at->format('H:i')
+                        : ($log->created_at->isYesterday()
+                            ? 'вчера, ' . $log->created_at->format('H:i')
+                            : $log->created_at->format('d.m, H:i'));
+                @endphp
+                <div class="flex items-center gap-3 px-5 py-3">
+                    <span class="w-2 h-2 rounded-full shrink-0 {{ $dot }}"></span>
+                    <p class="flex-1 min-w-0 text-sm text-gray-700 truncate">
+                        <span class="font-medium text-gray-900">{{ $log->user?->name ?? 'Система' }}</span>
+                        {{ $log->action }}
+                    </p>
+                    <span class="text-xs text-gray-400 shrink-0">{{ $when }}</span>
+                </div>
+            @empty
+                <div class="px-5 py-8 text-center text-sm text-gray-400">Активности нет</div>
+            @endforelse
         </div>
     </div>
 </x-app-layout>

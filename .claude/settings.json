@@ -22,7 +22,15 @@
       "Bash(composer require *)",
       "Bash(php -r 'require '\\\\''vendor/autoload.php'\\\\''; $k = Minishlink\\\\WebPush\\\\VAPID::createVapidKeys\\(\\); echo '\\\\''PUB='\\\\''.$k['\\\\''publicKey'\\\\''].PHP_EOL; echo '\\\\''PRIV='\\\\''.$k['\\\\''privateKey'\\\\''].PHP_EOL;')",
       "Bash(export OPENSSL_CONF=\"C:/xampp/php/extras/ssl/openssl.cnf\")",
-      "Bash(php -r 'require '\\\\''vendor/autoload.php'\\\\''; $k = Minishlink\\\\WebPush\\\\VAPID::createVapidKeys\\(\\); echo '\\\\''VAPID_PUBLIC_KEY='\\\\''.$k['\\\\''publicKey'\\\\''].PHP_EOL; echo '\\\\''VAPID_PRIVATE_KEY='\\\\''.$k['\\\\''privateKey'\\\\''].PHP_EOL;')"
+      "Bash(php -r 'require '\\\\''vendor/autoload.php'\\\\''; $k = Minishlink\\\\WebPush\\\\VAPID::createVapidKeys\\(\\); echo '\\\\''VAPID_PUBLIC_KEY='\\\\''.$k['\\\\''publicKey'\\\\''].PHP_EOL; echo '\\\\''VAPID_PRIVATE_KEY='\\\\''.$k['\\\\''privateKey'\\\\''].PHP_EOL;')",
+      "Bash(npm run *)",
+      "Bash(php -l app/Http/Controllers/DashboardController.php)",
+      "Bash(php -l app/Http/Controllers/ChatController.php)",
+      "Bash(php -l app/Models/Chat.php)",
+      "Bash(awk 'NR>=349 && NR<=524' resources/views/chats/index.blade.php)",
+      "Bash(php -l app/Models/ChatMessage.php)",
+      "Bash(php -l app/Services/ChatService.php)",
+      "Bash(php -l app/Events/MessageSent.php)"
     ],
     "additionalDirectories": [
       "C:\\xampp\\php"

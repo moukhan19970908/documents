@@ -359,30 +359,108 @@ class DocumentController extends Controller
             abort(403, 'Нет доступа к задачам.');
         }
 
-        $filter = $request->get('filter', 'all');
+        // 'mine' shows only the user's own tasks; 'all' honours their wider access.
+        $canSeeAll = $access !== 'own';
+        $scope     = ($canSeeAll && $request->get('scope') === 'all') ? 'all' : 'mine';
 
-        $query = Task::with(['document.type', 'document.initiator', 'assignee'])
-            ->orderByDesc('created_at');
+        // Pending approval tasks (согласование / ознакомление / приёмка).
+        $taskQuery = Task::with([
+                'document.type',
+                'document.initiator',
+                'assignee',
+                'stage.workflowStage',
+                'document.activeApproval.stages.workflowStage',
+            ])
+            ->where('status', 'pending');
 
-        if ($access === 'own') {
-            $query->where('assignee_id', $user->id);
+        if ($scope === 'mine') {
+            $taskQuery->where('assignee_id', $user->id);
         } elseif ($access === 'department' && $user->department_id) {
-            $query->whereHas('assignee', fn($q) => $q->where('department_id', $user->department_id));
+            $taskQuery->whereHas('assignee', fn($q) => $q->where('department_id', $user->department_id));
         }
-        // 'full' — no filter, all tasks are visible
+        // access 'full' + scope 'all' — no restriction, every task is visible
 
-        if ($filter === 'pending') {
-            $query->where('status', 'pending');
-        } elseif ($filter === 'overdue') {
-            $query->where('status', 'pending')
-                  ->where('deadline_at', '<', now());
-        } elseif ($filter === 'completed') {
-            $query->whereIn('status', ['completed', 'cancelled']);
+        // Documents sent back for revision — the initiator must rework them.
+        // These carry no local Task (the approval task is cancelled on revision),
+        // so we surface the document itself as a "Доработать" item.
+        $revisionQuery = Document::with(['type', 'initiator', 'latestApproval.stages.workflowStage'])
+            ->where('status', 'requires_changes');
+
+        if ($scope === 'mine') {
+            $revisionQuery->where('initiator_id', $user->id);
+        } elseif ($access === 'department' && $user->department_id) {
+            $deptIds = Department::getDescendantIds($user->department_id);
+            $revisionQuery->whereHas('initiator', fn($q) => $q->whereIn('department_id', $deptIds));
         }
 
-        $tasks = $query->paginate(20)->withQueryString();
+        // Normalise both sources into a single card list for the view.
+        $items = collect();
 
-        return view('tasks.index', compact('tasks', 'filter'));
+        foreach ($taskQuery->get() as $task) {
+            $doc = $task->document;
+            $items->push([
+                'kind'        => $this->deriveTaskKind($task->stage?->workflowStage?->name, $doc->type?->name),
+                'title'       => $doc->title,
+                'document'    => $doc,
+                'stage_label' => $this->stagePosition($doc->activeApproval, $task->document_approval_stage_id),
+                'initiator'   => $doc->initiator,
+                'assignee'    => $task->assignee,
+                'deadline'    => $task->deadline_at,
+                'is_overdue'  => $task->isOverdue(),
+            ]);
+        }
+
+        foreach ($revisionQuery->get() as $doc) {
+            $items->push([
+                'kind'        => 'dorabotka',
+                'title'       => $doc->title,
+                'document'    => $doc,
+                'stage_label' => null,
+                'initiator'   => $doc->initiator,
+                'assignee'    => $doc->initiator,
+                'deadline'    => $doc->deadline_at,
+                'is_overdue'  => $doc->deadline_at && now()->gt($doc->deadline_at),
+            ]);
+        }
+
+        // Overdue first, then soonest deadline (no deadline last).
+        $items = $items
+            ->sortBy(fn($i) => [$i['is_overdue'] ? 0 : 1, optional($i['deadline'])->timestamp ?? PHP_INT_MAX])
+            ->values();
+
+        return view('tasks.index', compact('items', 'scope', 'canSeeAll'));
+    }
+
+    /**
+     * Derive the business action-kind of a task from its (freeform) stage name,
+     * falling back to the document type. The app has no stored "phase" field.
+     */
+    private function deriveTaskKind(?string $stageName, ?string $typeName): string
+    {
+        $n = mb_strtolower($stageName ?? '');
+        $t = mb_strtolower($typeName ?? '');
+
+        return match (true) {
+            str_contains($n, 'ознаком')                                                     => 'oznak',
+            str_contains($n, 'приём') || str_contains($n, 'прием') || str_contains($n, 'исполн') => 'priem',
+            str_contains($n, 'соглас') || str_contains($n, 'одобр') || str_contains($n, 'утвержд') => 'soglas',
+            str_contains($t, 'приказ')                                                      => 'oznak',
+            str_contains($t, 'поручен') || str_contains($t, 'задани')                       => 'priem',
+            default                                                                         => 'soglas',
+        };
+    }
+
+    /** "этап X из Y" for a task's stage within its approval, or null. */
+    private function stagePosition($approval, ?int $stageId): ?string
+    {
+        if (!$approval || !$stageId) {
+            return null;
+        }
+        $ordered = $approval->stages->sortBy(fn($s) => $s->workflowStage?->sort_order ?? 0)->values();
+        $total   = $ordered->count();
+        $pos     = $ordered->search(fn($s) => $s->id === $stageId);
+
+        return ($total && $pos !== false) ? 'этап ' . ($pos + 1) . ' из ' . $total : null;
     }
 
     public function approvalSheet(Document $document)

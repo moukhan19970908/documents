@@ -30,4 +30,9 @@ class Chat extends Model
     {
         return $this->belongsToMany(User::class, 'chat_participants');
     }
+
+    public function favoritedBy(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'chat_favorites')->withTimestamps();
+    }
 }

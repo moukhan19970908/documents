@@ -3,10 +3,16 @@
 namespace App\Http\Controllers;
 
 use App\Models\Chat;
+use App\Models\ChatMessage;
+use App\Models\Document;
+use App\Models\DocumentType;
 use App\Models\User;
 use App\Services\ChatService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class ChatController extends Controller
 {
@@ -22,7 +28,11 @@ class ChatController extends Controller
             return redirect()->route('chats.show', $first);
         }
 
-        return view('chats.index', ['chats' => $chats, 'activeChat' => null]);
+        return view('chats.index', [
+            'chats'         => $chats,
+            'activeChat'    => null,
+            'documentTypes' => DocumentType::orderBy('name')->get(['id', 'name']),
+        ]);
     }
 
     public function show(Chat $chat)
@@ -52,9 +62,10 @@ class ChatController extends Controller
         ]);
 
         return view('chats.index', [
-            'chats'        => $chats,
-            'activeChat'   => $chat,
+            'chats'         => $chats,
+            'activeChat'    => $chat,
             'firstUnreadId' => $firstUnreadId,
+            'documentTypes' => DocumentType::orderBy('name')->get(['id', 'name']),
         ]);
     }
 
@@ -79,12 +90,93 @@ class ChatController extends Controller
         $this->authorize('sendMessage', $chat);
 
         $request->validate([
-            'body' => ['required', 'string', 'max:5000'],
+            'body'               => ['nullable', 'string', 'max:5000'],
+            'file'               => ['nullable', 'file', 'max:51200'],
+            'attach_to_document' => ['nullable', 'boolean'],
         ]);
 
-        $message = $this->chatService->sendMessage($chat, auth()->user(), $request->input('body'));
+        $body     = trim((string) $request->input('body', ''));
+        $uploaded = $request->file('file');
+
+        if ($body === '' && !$uploaded) {
+            return response()->json(['message' => 'Сообщение не может быть пустым.'], 422);
+        }
+
+        $attachment = null;
+        if ($uploaded) {
+            $path = $uploaded->store("chats/{$chat->id}/attachments", 's3');
+            if ($path === false) {
+                return response()->json(['message' => 'Не удалось загрузить файл.'], 500);
+            }
+
+            $attachment = [
+                'file_path' => $path,
+                'file_name' => $uploaded->getClientOriginalName(),
+                'file_size' => $uploaded->getSize(),
+                'mime_type' => $uploaded->getMimeType(),
+            ];
+
+            // Optionally push a copy into the document's related files.
+            if ($request->boolean('attach_to_document') && $chat->document_id) {
+                $relPath = $uploaded->store("documents/{$chat->document_id}/related", 's3');
+                if ($relPath !== false) {
+                    Document::find($chat->document_id)?->relatedFiles()->create([
+                        'uploaded_by' => auth()->id(),
+                        'file_path'   => $relPath,
+                        'file_name'   => $uploaded->getClientOriginalName(),
+                        'file_size'   => $uploaded->getSize(),
+                        'mime_type'   => $uploaded->getMimeType(),
+                        'description' => 'Прикреплён из чата',
+                    ]);
+                }
+            }
+        }
+
+        $message = $this->chatService->sendMessage($chat, auth()->user(), $body, $attachment);
 
         return response()->json($this->serializeMessage($message, auth()->id()), 201);
+    }
+
+    public function downloadAttachment(Chat $chat, ChatMessage $message)
+    {
+        $this->authorize('view', $chat);
+        abort_if($message->chat_id !== $chat->id || !$message->file_path, 404);
+
+        $disk = Storage::disk('s3');
+        try {
+            if (!$disk->exists($message->file_path)) {
+                abort(404);
+            }
+        } catch (HttpException $e) {
+            throw $e;
+        } catch (\Throwable) {
+            abort(404);
+        }
+
+        return $disk->download($message->file_path, $message->file_name);
+    }
+
+    public function previewAttachment(Chat $chat, ChatMessage $message)
+    {
+        $this->authorize('view', $chat);
+        abort_if($message->chat_id !== $chat->id || !$message->file_path, 404);
+
+        $disk = Storage::disk('s3');
+        try {
+            if (!$disk->exists($message->file_path)) {
+                abort(404);
+            }
+
+            return response($disk->get($message->file_path), 200, [
+                'Content-Type'        => $message->mime_type,
+                'Content-Disposition' => 'inline; filename="' . rawurlencode($message->file_name) . '"',
+                'Content-Length'      => $disk->size($message->file_path),
+            ]);
+        } catch (HttpException $e) {
+            throw $e;
+        } catch (\Throwable) {
+            abort(404);
+        }
     }
 
     public function markRead(Chat $chat)
@@ -96,18 +188,36 @@ class ChatController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    public function toggleFavorite(Chat $chat)
+    {
+        $this->authorize('view', $chat);
+
+        $changes    = $chat->favoritedBy()->toggle(auth()->id());
+        $favorited  = ! empty($changes['attached']);
+
+        return response()->json(['favorited' => $favorited]);
+    }
+
     // ─── helpers ──────────────────────────────────────────────────────────────
 
     private function chatList(User $user): Collection
     {
+        $favoriteIds = DB::table('chat_favorites')->where('user_id', $user->id)->pluck('chat_id')->all();
+
         return Chat::whereHas('participants', fn($q) => $q->where('user_id', $user->id))
             ->with([
-                'document:id,title,status',
+                'document:id,title,status,initiator_id,document_type_id',
+                'document.type:id,name',
+                'document.initiator:id,name,department_id',
+                'document.initiator.department:id,name',
                 'messages' => fn($q) => $q->latest()->limit(1)->with('user:id,name'),
             ])
             ->latest()
             ->get()
-            ->each(fn($c) => $c->unread_count = $this->chatService->unreadCount($c, $user));
+            ->each(function ($c) use ($user, $favoriteIds) {
+                $c->unread_count = $this->chatService->unreadCount($c, $user);
+                $c->is_favorite  = in_array($c->id, $favoriteIds, true);
+            });
     }
 
     private function serializeMessage(\App\Models\ChatMessage $message, int $currentUserId): array
@@ -122,6 +232,7 @@ class ChatController extends Controller
             'created_at'   => $message->created_at->toISOString(),
             'user'         => ['id' => $message->user->id, 'name' => $message->user->name],
             'read_by_count' => $readByCount,
+            'attachment'   => $message->attachment,
         ];
     }
 }

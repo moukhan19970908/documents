@@ -79,6 +79,9 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
     Route::get('chats/{chat}/messages', [ChatController::class, 'messages'])->name('chats.messages');
     Route::post('chats/{chat}/messages', [ChatController::class, 'store'])->name('chats.messages.store');
     Route::post('chats/{chat}/read', [ChatController::class, 'markRead'])->name('chats.read');
+    Route::post('chats/{chat}/favorite', [ChatController::class, 'toggleFavorite'])->name('chats.favorite');
+    Route::get('chats/{chat}/attachments/{message}/download', [ChatController::class, 'downloadAttachment'])->name('chats.attachment.download');
+    Route::get('chats/{chat}/attachments/{message}/preview', [ChatController::class, 'previewAttachment'])->name('chats.attachment.preview');
 
     // Archive
     Route::get('/archive', [ArchiveController::class, 'index'])->name('archive.index');

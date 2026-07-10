@@ -29,6 +29,7 @@ class MessageSent implements ShouldBroadcast
                 'id'   => $this->message->user->id,
                 'name' => $this->message->user->name,
             ],
+            'attachment' => $this->message->attachment,
         ];
     }
 }

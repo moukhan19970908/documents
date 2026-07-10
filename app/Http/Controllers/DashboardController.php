@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
+use App\Models\Document;
+use App\Models\DocumentApproval;
 use App\Models\DocumentApprovalDecision;
 use App\Models\DocumentApprovalStage;
 
@@ -37,6 +39,14 @@ class DashboardController extends Controller
                 'status'     => $stage->status,
             ]);
 
+        // Average approval time (started → completed) across finished approvals, in days.
+        $completedApprovals = DocumentApproval::whereNotNull('started_at')
+            ->whereNotNull('completed_at')
+            ->get(['started_at', 'completed_at']);
+        $avgApprovalDays = $completedApprovals->isEmpty()
+            ? null
+            : round($completedApprovals->avg(fn($a) => $a->started_at->diffInHours($a->completed_at)) / 24, 1);
+
         $stats = [
             'pending_count'  => $pendingApprovals->count(),
             'processed_week' => DocumentApprovalDecision::where('user_id', $user->id)
@@ -48,6 +58,19 @@ class DashboardController extends Controller
                 )
                 ->where('deadline_at', '<', now())
                 ->count(),
+            // Documents still moving through a process (not finalized/archived).
+            'in_work_count'    => Document::whereNotIn('status', ['signed', 'archived', 'rejected'])->count(),
+            'avg_approval_days' => $avgApprovalDays,
+        ];
+
+        // Documents grouped by status for the "Документы по статусам" panel.
+        $statusCounts = Document::selectRaw('status, COUNT(*) as c')->groupBy('status')->pluck('c', 'status');
+        $statusBreakdown = [
+            ['label' => 'На согласовании',    'count' => (int) $statusCounts->get('in_review', 0),                                         'color' => '#3B82F6'],
+            ['label' => 'Утверждён',          'count' => (int) $statusCounts->get('approved', 0) + (int) $statusCounts->get('signed', 0), 'color' => '#22C55E'],
+            ['label' => 'Требует изменений',  'count' => (int) $statusCounts->get('requires_changes', 0),                                  'color' => '#F97316'],
+            ['label' => 'Отклонён / просрочен', 'count' => (int) $statusCounts->get('rejected', 0),                                        'color' => '#EF4444'],
+            ['label' => 'Черновики',          'count' => (int) $statusCounts->get('draft', 0),                                            'color' => '#8B5CF6'],
         ];
 
         $approvalKeywords = ['начал процесс', 'согласовал', 'отказал', 'отправил на доработку', 'делегировал'];
@@ -61,7 +84,7 @@ class DashboardController extends Controller
             ->limit(10)
             ->get();
 
-        return view('dashboard.index', compact('pendingApprovals', 'stats', 'activity'));
+        return view('dashboard.index', compact('pendingApprovals', 'stats', 'activity', 'statusBreakdown'));
     }
 
     public function myTasks()

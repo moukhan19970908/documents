@@ -50,11 +50,15 @@ class ChatService
         }
     }
 
-    public function sendMessage(Chat $chat, User $sender, string $body): ChatMessage
+    public function sendMessage(Chat $chat, User $sender, string $body, ?array $attachment = null): ChatMessage
     {
         $message = $chat->messages()->create([
-            'user_id' => $sender->id,
-            'body'    => $body,
+            'user_id'   => $sender->id,
+            'body'      => $body,
+            'file_path' => $attachment['file_path'] ?? null,
+            'file_name' => $attachment['file_name'] ?? null,
+            'file_size' => $attachment['file_size'] ?? null,
+            'mime_type' => $attachment['mime_type'] ?? null,
         ]);
 
         $message->setRelation('user', $sender);
@@ -62,14 +66,15 @@ class ChatService
         broadcast(new MessageSent($message))->toOthers();
 
         // Notify every other participant (in-page toast + Web Push).
-        $url = $chat->document_id ? route('documents.show', $chat->document_id) : null;
+        $url     = $chat->document_id ? route('documents.show', $chat->document_id) : null;
+        $preview = $body !== '' ? $body : '📎 ' . ($attachment['file_name'] ?? 'файл');
         $recipients = $chat->participants()->where('users.id', '!=', $sender->id)->pluck('users.id');
         foreach ($recipients as $recipientId) {
             $this->notifications->pushToBrowser(
                 (int) $recipientId,
                 'new_message',
                 'Новое сообщение',
-                $sender->name . ': ' . Str::limit($body, 80),
+                $sender->name . ': ' . Str::limit($preview, 80),
                 $url,
             );
         }
