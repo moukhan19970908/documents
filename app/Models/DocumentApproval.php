@@ -12,12 +12,13 @@ class DocumentApproval extends Model
     use HasFactory;
 
     protected $fillable = [
-        'document_id', 'workflow_id', 'started_at', 'completed_at', 'status',
+        'document_id', 'workflow_id', 'parameter_values', 'started_at', 'completed_at', 'status',
     ];
 
     protected $casts = [
-        'started_at'   => 'datetime',
-        'completed_at' => 'datetime',
+        'parameter_values' => 'array',
+        'started_at'       => 'datetime',
+        'completed_at'     => 'datetime',
     ];
 
     public function document(): BelongsTo

@@ -14,6 +14,8 @@ use App\Models\User;
 use App\Models\Department;
 use App\Services\AuditService;
 use App\Services\ApprovalEngineService;
+use App\Services\DocumentNamingService;
+use App\Services\DocumentNumberService;
 use App\Services\DocumentVersionService;
 use App\Services\PdfGeneratorService;
 use Illuminate\Http\Request;
@@ -158,7 +160,94 @@ class DocumentController extends Controller
             return redirect()->route('documents.index');
         }
 
-        $workflows = Workflow::where('is_active', true)
+        $workflows = $this->availableWorkflows($user);
+
+        // The classifier drives the form: type → subtype → scenario.
+        $documentTypes = DocumentType::where('is_active', true)
+            ->with(['fields', 'numerator', 'subtypes' => fn ($q) => $q->where('is_active', true)
+                ->with(['fields', 'numerator', 'workflows.parameters', 'workflows.stages'])])
+            ->orderBy('name')
+            ->get()
+            ->filter(fn (DocumentType $type) => $type->isAvailableFor($user))
+            ->values();
+
+        return view('documents.create', compact('workflows', 'documentTypes'));
+    }
+
+    public function store(StoreDocumentRequest $request, DocumentNamingService $namingService, DocumentNumberService $numberService)
+    {
+        // Merge custom_fields into data
+        $data = array_merge($request->data ?? [], $request->custom_fields ?? []);
+
+        // External participants can only run an ad-hoc custom scenario — never a
+        // predefined workflow or document type.
+        $isExternal = auth()->user()->isExternal();
+
+        $document = DB::transaction(function () use ($request, $data, $isExternal, $namingService) {
+            $document = Document::create([
+                'title'               => $request->title,
+                'workflow_id'         => $isExternal ? null : ($request->workflow_id ?: null),
+                'document_type_id'    => $isExternal ? null : ($request->document_type_id ?: null),
+                'document_subtype_id' => $isExternal ? null : ($request->document_subtype_id ?: null),
+                'initiator_id'        => auth()->id(),
+                'status'              => 'draft',
+                'data'                => $data,
+                'deadline_at'         => $request->deadline_at ?: null,
+            ]);
+
+            // The name is a projection of the fields — the draft one still carries the ___ stubs.
+            if ($name = $namingService->forDocument($document)) {
+                $document->update(['title' => $name]);
+            }
+
+            if ($request->hasFile('file')) {
+                $this->versionService->storeFile($document, $request->file('file'));
+            }
+
+            return $document;
+        });
+
+        $this->auditService->log('document_created', $document, null, $document->toArray());
+
+        $this->registerManually($document, $request->manual_number, $numberService);
+
+        // Auto-start approval from the selected workflow
+        if ($document->workflow_id) {
+            $workflow = Workflow::with('stages.approvers')->find($document->workflow_id);
+            if ($workflow) {
+                // Answers to the launch parameters decide which stages join this document's route.
+                $this->approvalEngine->startApproval($document, $workflow, $request->input('parameters', []));
+                $this->auditService->log(auth()->user()->name . ' начал процесс «' . $document->title . '»', $document);
+            }
+        } elseif ($request->filled('approvers') && is_array($request->approvers)) {
+            // Legacy ad-hoc fallback
+            $this->approvalEngine->startAdHocApproval($document, $request->approvers);
+            $this->auditService->log(auth()->user()->name . ' начал процесс «' . $document->title . '»', $document);
+        }
+
+        return redirect()->route('documents.show', $document)
+            ->with('success', 'Документ создан.');
+    }
+
+    /** Back-dated paper registration: the number is taken as typed and the counter stays put. */
+    private function registerManually(Document $document, ?string $number, DocumentNumberService $numberService): void
+    {
+        if (blank($number)) {
+            return;
+        }
+
+        $numerator = $numberService->numeratorFor($document);
+
+        if (!$numerator || !$numerator->allowsManualFor(auth()->user())) {
+            return;
+        }
+
+        $numberService->register($document, $numerator, auth()->user(), $number);
+    }
+
+    private function availableWorkflows(User $user)
+    {
+        return Workflow::where('is_active', true)
             ->with(['stages.approvers.user'])
             ->orderBy('name')
             ->get()
@@ -178,54 +267,6 @@ class DocumentController extends Controller
                 return true;
             })
             ->values();
-
-        return view('documents.create', compact('workflows'));
-    }
-
-    public function store(StoreDocumentRequest $request)
-    {
-        // Merge custom_fields into data
-        $data = array_merge($request->data ?? [], $request->custom_fields ?? []);
-
-        // External participants can only run an ad-hoc custom scenario — never a
-        // predefined workflow or document type.
-        $isExternal = auth()->user()->isExternal();
-
-        $document = DB::transaction(function () use ($request, $data, $isExternal) {
-            $document = Document::create([
-                'title'            => $request->title,
-                'workflow_id'      => $isExternal ? null : ($request->workflow_id ?: null),
-                'document_type_id' => $isExternal ? null : ($request->document_type_id ?: null),
-                'initiator_id'     => auth()->id(),
-                'status'           => 'draft',
-                'data'             => $data,
-                'deadline_at'      => $request->deadline_at ?: null,
-            ]);
-
-            if ($request->hasFile('file')) {
-                $this->versionService->storeFile($document, $request->file('file'));
-            }
-
-            return $document;
-        });
-
-        $this->auditService->log('document_created', $document, null, $document->toArray());
-
-        // Auto-start approval from the selected workflow
-        if ($document->workflow_id) {
-            $workflow = Workflow::with('stages.approvers')->find($document->workflow_id);
-            if ($workflow) {
-                $this->approvalEngine->startApproval($document, $workflow);
-                $this->auditService->log(auth()->user()->name . ' начал процесс «' . $document->title . '»', $document);
-            }
-        } elseif ($request->filled('approvers') && is_array($request->approvers)) {
-            // Legacy ad-hoc fallback
-            $this->approvalEngine->startAdHocApproval($document, $request->approvers);
-            $this->auditService->log(auth()->user()->name . ' начал процесс «' . $document->title . '»', $document);
-        }
-
-        return redirect()->route('documents.show', $document)
-            ->with('success', 'Документ создан.');
     }
 
     public function show(Document $document)

@@ -123,6 +123,38 @@
                     </div>
                 </div>
 
+                @if(auth()->user()->role === 'admin')
+                {{-- Администрирование (collapsible group) --}}
+                @php
+                    $adminItems = [
+                        ['label' => 'Конструктор процессов', 'route' => 'admin.scenarios', 'url' => route('admin.scenarios.index')],
+                        ['label' => 'Классификаторы и типы', 'route' => 'admin.document-types', 'url' => route('admin.document-types.index')],
+                        ['label' => 'Роли и доступы', 'url' => '#'],
+                        ['label' => 'Шаблоны бланков', 'url' => '#'],
+                        ['label' => 'Оргструктура', 'url' => '#'],
+                    ];
+                @endphp
+                @php $adminOpen = request()->routeIs('admin.document-types.*') || request()->routeIs('admin.scenarios.*'); @endphp
+                <div x-data="{ open: @json($adminOpen) }">
+                    <button @click="open = !open"
+                            class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors">
+                        @include('partials.nav-icon', ['icon' => 'admin', 'active' => false])
+                        Администрирование
+                        <svg :class="open ? 'rotate-90' : ''" class="ml-auto w-3.5 h-3.5 transition-transform" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+                    </button>
+                    <div x-show="open" class="mt-0.5 space-y-0.5">
+                        @foreach($adminItems as $adm)
+                            @php $admActive = isset($adm['route']) && request()->routeIs($adm['route'].'.*'); @endphp
+                            <a href="{{ $adm['url'] }}"
+                               class="flex items-center pl-11 pr-3 py-2 rounded-lg text-sm font-medium transition-colors
+                                      {{ $admActive ? 'bg-[#5B4FE8] text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
+                                {{ $adm['label'] }}
+                            </a>
+                        @endforeach
+                    </div>
+                </div>
+                @endif
+
                 {{-- Main items below «Процессы» --}}
                 @php
                     $lowerNavItems = [
@@ -214,28 +246,6 @@
                     </a>
                 @endif
                 @endunless
-
-                {{-- Admin --}}
-                @if(auth()->user()->role === 'admin')
-                    <div class="pt-3 pb-1">
-                        <p class="px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Администрирование</p>
-                    </div>
-                    <a href="{{ route('admin.access-control.index') }}"
-                       class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {{ request()->routeIs('admin.access-control.*') ? 'bg-[#5B4FE8] text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3l7 4v5c0 4.97-2.91 9.52-7 11-4.09-1.48-7-6.03-7-11V7l7-4zm0 6v4m0 4h.01"/></svg>
-                        Доступы
-                    </a>
-                    <a href="{{ route('admin.approval-routes.index') }}"
-                       class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {{ request()->routeIs('admin.approval-routes.*') ? 'bg-[#5B4FE8] text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h8m-8 6h16"/></svg>
-                        Маршруты
-                    </a>
-                    <a href="{{ route('admin.external-participants.index') }}"
-                       class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {{ request()->routeIs('admin.external-participants.*') ? 'bg-[#5B4FE8] text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-3a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/></svg>
-                        Внешние участники
-                    </a>
-                @endif
             </nav>
 
             {{-- Bottom links --}}

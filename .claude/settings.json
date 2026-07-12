@@ -30,7 +30,27 @@
       "Bash(awk 'NR>=349 && NR<=524' resources/views/chats/index.blade.php)",
       "Bash(php -l app/Models/ChatMessage.php)",
       "Bash(php -l app/Services/ChatService.php)",
-      "Bash(php -l app/Events/MessageSent.php)"
+      "Bash(php -l app/Events/MessageSent.php)",
+      "Read(//c/xampp/mysql/data/**)",
+      "Read(//c/xampp/mysql//**)",
+      "Bash(tail -60 /c/xampp/mysql/data/mysql_error.log)",
+      "PowerShell(Get-Process -Name mysqld,mariadbd -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 3306 -ErrorAction SilentlyContinue)",
+      "PowerShell(\"--- Port 3306 ---\")",
+      "Bash(tail -25 /c/xampp/mysql/data/mysql_error.log)",
+      "PowerShell(php artisan view:cache)",
+      "PowerShell(php artisan migrate --force)",
+      "PowerShell(php artisan route:list --name=admin.document 2>&1)",
+      "PowerShell(php verify_classifier.php)",
+      "Bash(php verify_race.php cleanup)",
+      "PowerShell(php artisan route:list --name=admin.document-types)",
+      "PowerShell(php verify_types.php)",
+      "PowerShell(php verify_scenarios.php)",
+      "PowerShell(php verify_v2.php)",
+      "PowerShell(php verify_step.php)",
+      "PowerShell(php verify_create_page.php)",
+      "PowerShell(php verify_options.php)",
+      "PowerShell(php verify_list.php)"
     ],
     "additionalDirectories": [
       "C:\\xampp\\php"

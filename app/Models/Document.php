@@ -13,18 +13,35 @@ class Document extends Model
     use HasFactory;
 
     protected $fillable = [
-        'title', 'document_type_id', 'workflow_id', 'initiator_id',
+        'title', 'number', 'registered_at', 'document_type_id', 'document_subtype_id',
+        'workflow_id', 'initiator_id',
         'current_stage_id', 'status', 'data', 'bitrix24_task_id', 'deadline_at',
     ];
 
     protected $casts = [
-        'data'        => 'array',
-        'deadline_at' => 'datetime',
+        'data'          => 'array',
+        'deadline_at'   => 'datetime',
+        'registered_at' => 'datetime',
     ];
 
     public function type(): BelongsTo
     {
         return $this->belongsTo(DocumentType::class, 'document_type_id');
+    }
+
+    public function subtype(): BelongsTo
+    {
+        return $this->belongsTo(DocumentSubtype::class, 'document_subtype_id');
+    }
+
+    public function registration(): HasOne
+    {
+        return $this->hasOne(DocumentRegistration::class);
+    }
+
+    public function isRegistered(): bool
+    {
+        return $this->number !== null;
     }
 
     public function workflow(): BelongsTo

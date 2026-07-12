@@ -15,15 +15,32 @@ class Workflow extends Model
     protected $fillable = [
         'name', 'description', 'document_type_id', 'created_by', 'is_system', 'is_active',
         'approval_type', 'allowed_departments', 'allowed_users', 'process_fields',
+        'process_type', 'icon', 'owner_id', 'status',
+        'engine_version', 'is_version', 'parent_workflow_id', 'version_label', 'published_at',
     ];
 
     protected $casts = [
         'is_system'           => 'boolean',
         'is_active'           => 'boolean',
+        'is_version'          => 'boolean',
+        'published_at'        => 'datetime',
         'allowed_departments' => 'array',
         'allowed_users'       => 'array',
         'process_fields'      => 'array',
     ];
+
+    /** Process type decides which blocks the route builder offers. */
+    public const PROCESS_TYPES = [
+        'document_flow'    => 'Документооборот',
+        'orders'           => 'Приказы',
+        'assignments'      => 'Поручения',
+        'procedures'       => 'Процедуры',
+        'checks'           => 'Проверки',
+        'requests'         => 'Заявки',
+        'credit_committee' => 'Кредитный комитет',
+    ];
+
+    public const ICONS = ['document', 'chat', 'briefcase', 'shield', 'bank'];
 
     public function documentType(): BelongsTo
     {
@@ -33,6 +50,49 @@ class Workflow extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function owner(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'owner_id');
+    }
+
+    /** Launch parameters — the questions whose answers shape the route. */
+    public function parameters(): HasMany
+    {
+        return $this->hasMany(WorkflowParameter::class)->orderBy('sort_order');
+    }
+
+    /** Subtypes of the classifier this scenario serves. */
+    public function subtypes(): BelongsToMany
+    {
+        return $this->belongsToMany(DocumentSubtype::class, 'document_subtype_workflow');
+    }
+
+    public function isDraft(): bool
+    {
+        return $this->status === 'draft';
+    }
+
+    /** v2 scenarios run from immutable published copies, so editing never touches live processes. */
+    public function isV2(): bool
+    {
+        return (int) $this->engine_version === 2;
+    }
+
+    public function versions(): HasMany
+    {
+        return $this->hasMany(Workflow::class, 'parent_workflow_id')->orderByDesc('id');
+    }
+
+    public function publishedVersion(): ?Workflow
+    {
+        return $this->versions()->whereNotNull('published_at')->first();
+    }
+
+    public function template(): BelongsTo
+    {
+        return $this->belongsTo(Workflow::class, 'parent_workflow_id');
     }
 
     public function stages(): HasMany

@@ -17,6 +17,7 @@ use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\DepartmentController;
 use App\Http\Controllers\Admin\AccessControlController;
 use App\Http\Controllers\Admin\DocumentTypeController;
+use App\Http\Controllers\Admin\ScenarioController;
 use App\Http\Controllers\Admin\WorkflowFolderController;
 use App\Http\Controllers\Admin\ApprovalRouteController;
 use App\Http\Controllers\Admin\ExternalParticipantController;
@@ -119,7 +120,13 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
         Route::resource('external-participants', ExternalParticipantController::class)
             ->only(['index', 'create', 'store', 'destroy']);
         Route::resource('departments', DepartmentController::class);
-        Route::resource('document-types', DocumentTypeController::class);
+        Route::resource('scenarios', ScenarioController::class)->except(['show']);
+        Route::put('scenarios/{scenario}/route', [ScenarioController::class, 'updateRoute'])->name('scenarios.route');
+        Route::post('scenarios/{scenario}/publish', [ScenarioController::class, 'publish'])->name('scenarios.publish');
+        Route::resource('document-types', DocumentTypeController::class)->except(['show']);
+        Route::post('document-types/{document_type}/duplicate', [DocumentTypeController::class, 'duplicate'])->name('document-types.duplicate');
+        Route::patch('document-types/{document_type}/toggle', [DocumentTypeController::class, 'toggle'])->name('document-types.toggle');
+        Route::patch('document-types/{document_type}/counters/{counter}', [DocumentTypeController::class, 'updateCounter'])->name('document-types.counters.update');
         Route::resource('workflow-folders', WorkflowFolderController::class);
         Route::resource('approval-routes', ApprovalRouteController::class);
         Route::patch('approval-routes/{approval_route}/toggle', [ApprovalRouteController::class, 'toggle'])->name('approval-routes.toggle');

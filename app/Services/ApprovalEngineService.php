@@ -26,6 +26,8 @@ class ApprovalEngineService
         private AuditService $auditService,
         private ChatService $chatService,
         private Bitrix24Service $bitrix24,
+        private DocumentNumberService $numberService,
+        private DocumentNamingService $namingService,
     ) {}
 
     public function startAdHocApproval(Document $doc, array $approverIds): DocumentApproval
@@ -58,19 +60,41 @@ class ApprovalEngineService
         });
     }
 
-    public function startApproval(Document $doc, Workflow $workflow): DocumentApproval    {
-        return DB::transaction(function () use ($doc, $workflow) {
+    /**
+     * @param array $parameterValues answers to the scenario's launch parameters (v2 only) —
+     *                               they decide which stages join the route and are frozen here.
+     */
+    public function startApproval(Document $doc, Workflow $workflow, array $parameterValues = []): DocumentApproval    {
+        // v2 runs off an immutable published version, so editing the scenario never rewrites a
+        // route that is already in flight. v1 keeps running off its live stages, as before.
+        $definition = $workflow->isV2() && !$workflow->is_version
+            ? $this->publishedVersionOrFail($workflow)
+            : $workflow;
+
+        return DB::transaction(function () use ($doc, $definition, $parameterValues) {
+            // Registration happens here — the launch is the moment a draft becomes a numbered
+            // document. Idempotent, so a resubmit keeps the original number.
+            $this->registerDocument($doc, 'on_launch');
+
             $approval = DocumentApproval::create([
-                'document_id' => $doc->id,
-                'workflow_id' => $workflow->id,
-                'started_at'  => now(),
-                'status'      => 'in_progress',
+                'document_id'      => $doc->id,
+                'workflow_id'      => $definition->id,
+                'parameter_values' => $parameterValues ?: null,
+                'started_at'       => now(),
+                'status'           => 'in_progress',
             ]);
 
-            foreach ($workflow->stages as $stage) {
-                $deadline = $stage->deadline_hours
-                    ? now()->addHours($stage->deadline_hours)
-                    : null;
+            foreach ($definition->stages as $stage) {
+                // A stage with an unmet condition simply never enters this document's route.
+                if ($definition->isV2() && !$stage->passesCondition($parameterValues)) {
+                    continue;
+                }
+
+                $deadline = match (true) {
+                    (bool) $stage->sla_days       => now()->addWeekdays($stage->sla_days),
+                    (bool) $stage->deadline_hours => now()->addHours($stage->deadline_hours),
+                    default                       => null,
+                };
 
                 DocumentApprovalStage::create([
                     'document_approval_id' => $approval->id,
@@ -84,12 +108,26 @@ class ApprovalEngineService
 
             $this->activateNextStage($approval);
 
-            $this->auditService->log('approval_started', $doc, null, ['workflow_id' => $workflow->id]);
+            $this->auditService->log('approval_started', $doc, null, [
+                'workflow_id'      => $definition->id,
+                'parameter_values' => $parameterValues,
+            ]);
 
             $this->chatService->createForProcess($approval);
 
             return $approval;
         });
+    }
+
+    private function publishedVersionOrFail(Workflow $workflow): Workflow
+    {
+        $version = $workflow->publishedVersion();
+
+        if (!$version) {
+            throw new \RuntimeException("Сценарий «{$workflow->name}» не опубликован — запускать нечего.");
+        }
+
+        return $version->load('stages.approvers');
     }
 
     public function processDecision(
@@ -167,6 +205,13 @@ class ApprovalEngineService
         User $user,
         ?string $comment
     ): void {
+        // v2 stages may choose to send the document back for revision instead of killing it.
+        // v1 stages default to 'reject', so their behaviour is unchanged.
+        if ($stage->workflowStage->on_reject === 'return_initiator') {
+            $this->handleRequestChanges($stage, $approval, $document, $user, $comment);
+            return;
+        }
+
         $stage->update(['status' => 'rejected', 'completed_at' => now()]);
         $this->cancelTasksForStage($stage);
         $approval->update(['status' => 'rejected', 'completed_at' => now()]);
@@ -333,6 +378,13 @@ class ApprovalEngineService
                 'document_id' => $document->id,
             ]);
         }
+
+        // A non-blocking stage (ознакомление) hands out its tasks but does not hold the route:
+        // the document moves on immediately, participants read it in their own time.
+        if (!$stage->workflowStage->is_blocking) {
+            $stage->update(['status' => 'approved', 'completed_at' => now()]);
+            $this->moveToNextStage($approval);
+        }
     }
 
     private function completeTasksForStage(DocumentApprovalStage $stage): void
@@ -369,6 +421,8 @@ class ApprovalEngineService
         $document = $approval->document;
         $document->update(['status' => 'approved']);
 
+        $this->registerDocument($document, 'on_approval');
+
         $this->notificationService->notify($document->initiator, 'document_approved', [
             'title'       => $document->title,
             'document_id' => $document->id,
@@ -377,5 +431,24 @@ class ApprovalEngineService
         event(new DocumentApproved($document));
 
         $this->auditService->log('document_approved', $document);
+    }
+
+    /**
+     * Assigns a number if the type's numerator fires at this moment, then rebuilds the name so
+     * the ___ / __.__.____ stubs of the draft are replaced by the real number and date.
+     */
+    private function registerDocument(Document $document, string $moment): void
+    {
+        $number = $this->numberService->registerIfDue($document, $moment, auth()->user());
+
+        if (!$number) {
+            return;
+        }
+
+        $name = $this->namingService->forDocument($document->refresh());
+
+        if ($name) {
+            $document->update(['title' => $name]);
+        }
     }
 }
