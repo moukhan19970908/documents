@@ -14,7 +14,7 @@ class CheckRole
             return redirect('/login');
         }
 
-        if (!in_array($request->user()->role, $roles)) {
+        if (!$request->user()->hasAnyRole($roles)) {
             abort(403, 'Недостаточно прав доступа.');
         }
 

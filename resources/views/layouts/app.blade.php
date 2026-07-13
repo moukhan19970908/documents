@@ -123,18 +123,18 @@
                     </div>
                 </div>
 
-                @if(auth()->user()->role === 'admin')
+                @if(auth()->user()->isAdmin())
                 {{-- Администрирование (collapsible group) --}}
                 @php
                     $adminItems = [
                         ['label' => 'Конструктор процессов', 'route' => 'admin.scenarios', 'url' => route('admin.scenarios.index')],
                         ['label' => 'Классификаторы и типы', 'route' => 'admin.document-types', 'url' => route('admin.document-types.index')],
-                        ['label' => 'Роли и доступы', 'url' => '#'],
-                        ['label' => 'Шаблоны бланков', 'url' => '#'],
+                        ['label' => 'Роли и доступы', 'route' => 'admin.roles', 'url' => route('admin.roles.index')],
+                        ['label' => 'Шаблоны бланков', 'route' => 'admin.blank-templates', 'url' => route('admin.blank-templates.index')],
                         ['label' => 'Оргструктура', 'url' => '#'],
                     ];
                 @endphp
-                @php $adminOpen = request()->routeIs('admin.document-types.*') || request()->routeIs('admin.scenarios.*'); @endphp
+                @php $adminOpen = request()->routeIs('admin.document-types.*') || request()->routeIs('admin.scenarios.*') || request()->routeIs('admin.roles.*'); @endphp
                 <div x-data="{ open: @json($adminOpen) }">
                     <button @click="open = !open"
                             class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors">

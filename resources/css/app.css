@@ -9,3 +9,177 @@
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
 }
+
+[x-cloak] { display: none !important; }
+
+/* ─── Бланк ───────────────────────────────────────────────────────────────
+   Один и тот же вид и в редакторе админа, и при просмотре готового документа:
+   лист A4 с полями. Поэтому класс общий, а не только для редактора. */
+.blank-sheet {
+    width: 210mm;
+    min-height: 297mm;
+    padding: 20mm;
+    margin: 0 auto;
+    background: #fff;
+    color: #111827;
+    font-family: 'Times New Roman', serif;
+    font-size: 12pt;
+    line-height: 1.5;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.1), 0 8px 24px rgb(0 0 0 / 0.06);
+}
+
+.blank-sheet p { margin: 0 0 0.5em; }
+.blank-sheet h1 { font-size: 18pt; font-weight: 700; margin: 0 0 0.5em; }
+.blank-sheet h2 { font-size: 15pt; font-weight: 700; margin: 0 0 0.5em; }
+.blank-sheet h3 { font-size: 13pt; font-weight: 700; margin: 0 0 0.5em; }
+.blank-sheet ul { list-style: disc; padding-left: 1.5em; margin: 0 0 0.5em; }
+.blank-sheet ol { list-style: decimal; padding-left: 1.5em; margin: 0 0 0.5em; }
+.blank-sheet blockquote { border-left: 3px solid #d1d5db; padding-left: 1em; color: #4b5563; }
+.blank-sheet a { color: #2563eb; text-decoration: underline; }
+.blank-sheet img { max-width: 100%; height: auto; }
+.blank-sheet hr { border: 0; border-top: 1px solid #d1d5db; margin: 1em 0; }
+
+.blank-sheet table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 0 0 0.75em;
+    table-layout: fixed;
+    overflow: hidden;
+}
+.blank-sheet th,
+.blank-sheet td {
+    border: 1px solid #9ca3af;
+    padding: 6px 8px;
+    vertical-align: top;
+    position: relative;
+}
+.blank-sheet th { background: #f3f4f6; font-weight: 700; text-align: left; }
+
+/* Таблица-раскладка (шапка бланка): в документе рамок нет вовсе, а в редакторе оставляем
+   бледный пунктир — иначе админ не видит, где кончается ячейка. */
+.blank-sheet table.table-borderless th,
+.blank-sheet table.table-borderless td { border: none; }
+.blank-sheet table.table-borderless th { background: transparent; font-weight: inherit; }
+
+.blank-editing table.table-borderless th,
+.blank-editing table.table-borderless td { border: 1px dashed #e5e7eb; }
+
+/* Подсветка выделенных ячеек и «ручка» изменения ширины столбца — их рисует ProseMirror. */
+.blank-sheet .selectedCell:after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgb(91 79 232 / 0.12);
+    pointer-events: none;
+}
+.blank-sheet .column-resize-handle {
+    position: absolute;
+    right: -2px;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: #5b4fe8;
+    pointer-events: none;
+}
+
+/* Картинка в редакторе: рамка выделения и уголки для растягивания.
+   В готовом документе обёртки нет — там остаётся обычный <img> с inline-стилем. */
+.blank-sheet .img-wrap {
+    position: relative;
+    display: table;
+    margin: 0.5em 0;
+    line-height: 0;
+}
+.blank-sheet .img-wrap img { display: block; max-width: 100%; }
+
+/* Выравнивание: в редакторе класс висит на обёртке, в сохранённом документе — на самой
+   картинке. Обёртка уже display: table, картинке блочность нужно задать. */
+.blank-sheet .img-wrap.img-align-center { margin-left: auto; margin-right: auto; }
+.blank-sheet .img-wrap.img-align-right  { margin-left: auto; margin-right: 0; }
+
+.blank-sheet img.img-align-left   { display: block; margin-left: 0; margin-right: auto; }
+.blank-sheet img.img-align-center { display: block; margin-left: auto; margin-right: auto; }
+.blank-sheet img.img-align-right  { display: block; margin-left: auto; margin-right: 0; }
+
+/* Обтекание: картинка уходит к краю, текст идёт сбоку от неё — шапка бланка без таблицы. */
+.blank-sheet .img-wrap.img-float-left,
+.blank-sheet img.img-float-left  { float: left;  margin: 0 1.2em 0.5em 0; }
+.blank-sheet .img-wrap.img-float-right,
+.blank-sheet img.img-float-right { float: right; margin: 0 0 0.5em 1.2em; }
+
+/* Обтекание заканчивается на разделителе, таблице или разрыве страницы — иначе следующие
+   абзацы продолжали бы жаться сбоку от высокой картинки. */
+.blank-sheet hr,
+.blank-sheet table,
+.blank-sheet .page-break { clear: both; }
+
+.blank-sheet .img-wrap:hover { outline: 1px dashed #a5b4fc; }
+.blank-sheet .img-selected { outline: 2px solid #5b4fe8; }
+
+.blank-sheet .img-handle {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background: #fff;
+    border: 2px solid #5b4fe8;
+    border-radius: 2px;
+    opacity: 0;
+    transition: opacity 0.1s;
+}
+.blank-sheet .img-wrap:hover .img-handle,
+.blank-sheet .img-selected .img-handle { opacity: 1; }
+
+.blank-sheet .img-handle-nw { top: -6px; left: -6px;  cursor: nwse-resize; }
+.blank-sheet .img-handle-ne { top: -6px; right: -6px; cursor: nesw-resize; }
+.blank-sheet .img-handle-sw { bottom: -6px; left: -6px;  cursor: nesw-resize; }
+.blank-sheet .img-handle-se { bottom: -6px; right: -6px; cursor: nwse-resize; }
+
+@media print {
+    .blank-sheet .img-wrap { outline: none; }
+    .blank-sheet .img-handle { display: none; }
+}
+
+/* Токен виден как плашка, но в HTML это обычный «{номер}» — его подставит бэкенд. */
+.doc-token {
+    background: #ede9fe;
+    color: #5b21b6;
+    border-radius: 4px;
+    padding: 0 4px;
+    font-family: ui-monospace, monospace;
+    font-size: 0.9em;
+    white-space: nowrap;
+}
+
+/* В готовом документе на месте токена уже стоит значение — плашка ему не нужна. */
+.blank-sheet:not(.blank-editing) .doc-token {
+    background: transparent;
+    color: inherit;
+    padding: 0;
+    font-family: inherit;
+    font-size: inherit;
+}
+
+.page-break {
+    height: 0;
+    border-top: 2px dashed #c4b5fd;
+    margin: 1.5em 0;
+    position: relative;
+}
+.page-break:after {
+    content: 'разрыв страницы';
+    position: absolute;
+    top: -0.7em;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #fff;
+    padding: 0 8px;
+    font-size: 9pt;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    color: #a78bfa;
+}
+
+@media print {
+    .blank-sheet { width: auto; min-height: 0; padding: 0; box-shadow: none; margin: 0; }
+    .page-break { break-after: page; border: 0; margin: 0; height: 0; }
+    .page-break:after { content: none; }
+}

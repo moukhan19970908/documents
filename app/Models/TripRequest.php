@@ -88,7 +88,7 @@ class TripRequest extends Model
 
     public function scopeVisibleBy(Builder $query, User $user): Builder
     {
-        if ($user->isAdmin() || $user->role === 'director' || ($user->role_level ?? 1) >= 5) {
+        if ($user->hasAnyRole(['admin', 'director']) || ($user->role_level ?? 1) >= 5) {
             return $query;
         }
 

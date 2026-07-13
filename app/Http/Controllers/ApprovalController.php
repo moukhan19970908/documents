@@ -123,6 +123,33 @@ class ApprovalController extends Controller
         return back()->with('success', 'Документ отправлен на доработку.');
     }
 
+    /**
+     * Решения новых видов звеньев: заключение, ознакомление, приём.
+     * Набор кнопок задаётся видом звена — чужое действие сюда не пройдёт.
+     */
+    public function decide(ApproveDocumentRequest $request, Document $document, string $action)
+    {
+        $this->authorize('approve', $document);
+
+        $stage = $document->activeApproval?->activeStage();
+
+        if (!$stage) {
+            return back()->with('error', 'Нет активного этапа.');
+        }
+
+        if (!in_array($action, $stage->workflowStage->actions(), true)) {
+            return back()->with('error', 'Это действие недоступно на текущем звене.');
+        }
+
+        $this->engine->processDecision($stage, auth()->user(), $action, $request->comment);
+
+        $label = \App\Models\WorkflowStage::ACTION_LABELS[$action] ?? $action;
+
+        $this->audit->log(auth()->user()->name . ' — «' . $label . '» по документу «' . $document->title . '»', $document);
+
+        return back()->with('success', 'Решение сохранено: ' . mb_strtolower($label) . '.');
+    }
+
     public function processApprove(ApproveDocumentRequest $request, Document $document)
     {
         $this->authorize('approve', $document);

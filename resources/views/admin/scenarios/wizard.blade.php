@@ -27,12 +27,23 @@
         $selectedTypeId = old('document_type_id', $scenario?->subtypes->first()?->document_type_id ?? $scenario?->document_type_id);
         $selectedSubtypes = old('subtypes', $scenario?->subtypes->pluck('id')->all() ?? []);
 
+        $blanksData = $blankTemplates->map(fn ($b) => [
+            'id'                  => $b->id,
+            'name'                => $b->name,
+            'document_type_id'    => $b->document_type_id,
+            'document_subtype_id' => $b->document_subtype_id,
+            'subtype_name'        => $b->subtype?->name,
+        ])->values();
+
+        $selectedBlanks = old('blank_template_ids', $scenario?->blankTemplates->pluck('id')->all() ?? []);
+
         $wizardSteps = ['basic', 'classifier', 'parameters', 'route'];
 
         // После ошибки валидации открываем тот шаг, на котором ошибка, — иначе сообщение
         // остаётся на скрытой вкладке и выглядит как беспричинный откат на первый шаг.
         $stepOfField = function (string $field) {
             if (str_starts_with($field, 'parameters')) return 'parameters';
+            if (str_starts_with($field, 'blank_template_ids')) return 'classifier';
             if (in_array($field, ['document_type_id', 'subtypes'], true)) return 'classifier';
             return 'basic';
         };
@@ -248,6 +259,49 @@
                     <a href="{{ route('admin.document-types.index') }}" class="inline-block text-sm text-[#5B4FE8] font-medium mt-4 hover:underline">Настроить в классификаторе →</a>
                 </div>
 
+                {{-- Шаблоны бланков: сотрудник заполнит документ по бланку вместо загрузки готового файла --}}
+                <div class="bg-white rounded-xl border border-gray-200 p-6">
+                    <p class="text-sm font-semibold text-gray-800">Шаблоны бланков</p>
+                    <p class="text-xs text-gray-400 mb-4">
+                        Выбранные бланки сотрудник сможет заполнить прямо в системе. Если не выбрать ни одного — документ приносят готовым файлом, как раньше.
+                    </p>
+
+                    <div x-show="blanks().length > 0" class="grid grid-cols-4 gap-3">
+                        <template x-for="blank in blanks()" :key="blank.id">
+                            <button type="button" @click="toggleBlank(blank.id)"
+                                    :class="blankIds.includes(blank.id) ? 'border-[#5B4FE8] ring-1 ring-[#5B4FE8]' : 'border-gray-200 hover:border-gray-300'"
+                                    class="relative border rounded-xl p-3 text-left">
+                                <span x-show="blankIds.includes(blank.id)"
+                                      class="absolute top-2 right-2 w-4 h-4 rounded-full bg-[#5B4FE8] text-white text-[10px] flex items-center justify-center">✓</span>
+
+                                <span class="block h-16 rounded-lg bg-gray-50 border border-gray-100 mb-2"></span>
+                                <span class="block text-xs font-medium text-gray-700 truncate" x-text="blank.name"></span>
+                                <span class="block text-[11px] text-gray-400 truncate" x-text="blank.subtype_name || 'весь тип'"></span>
+                            </button>
+                        </template>
+                    </div>
+
+                    <p x-show="!typeId" class="text-xs text-gray-400">Сначала выберите тип документа.</p>
+                    <p x-show="typeId && blanks().length === 0" class="text-xs text-gray-400">
+                        У выбранного типа нет активных бланков.
+                        <a href="{{ route('admin.blank-templates.create') }}" class="text-[#5B4FE8] font-medium hover:underline">Создать бланк →</a>
+                    </p>
+
+                    <template x-for="id in blankIds" :key="id">
+                        <input type="hidden" name="blank_template_ids[]" :value="id">
+                    </template>
+
+                    {{-- Чекбокса нет, пока нет бланков: без них файл — единственный способ принести документ --}}
+                    <template x-if="blankIds.length > 0">
+                        <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer mt-4">
+                            <input type="hidden" name="allow_file_upload" value="0">
+                            <input type="checkbox" name="allow_file_upload" value="1" x-model="allowFileUpload"
+                                   class="rounded border-gray-300 text-[#5B4FE8] focus:ring-[#5B4FE8]">
+                            Разрешить загрузку готового файла вместо бланка
+                        </label>
+                    </template>
+                </div>
+
                 <div class="flex items-center justify-between">
                     <button type="button" @click="step = 'basic'" class="px-6 py-2.5 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-50">← Назад</button>
                     <button type="button" @click="step = 'parameters'" class="px-6 py-2.5 bg-[#5B4FE8] text-white rounded-lg text-sm font-medium hover:bg-indigo-700">
@@ -373,6 +427,10 @@
             typeId: @json($selectedTypeId ? (int) $selectedTypeId : null),
             subtypeIds: @json(array_map('intval', $selectedSubtypes)),
 
+            allBlanks: @json($blanksData),
+            blankIds: @json(array_map('intval', $selectedBlanks)),
+            allowFileUpload: @json((bool) old('allow_file_upload', $scenario->allow_file_upload ?? true)),
+
             parameters: @json($parametersData).map((p, i) => ({ ...p, uid: 'p' + i })),
 
             /**
@@ -394,9 +452,24 @@
                 return subtype ? subtype.name : '—';
             },
 
-            /** Switching the type drops subtypes of the previous one — they belong to it. */
+            /** Switching the type drops subtypes of the previous one — they belong to it. Бланки тоже: они принадлежат типу. */
             onTypeChange() {
                 this.subtypeIds = [];
+                this.blankIds = [];
+            },
+
+            /** Бланк типа предлагается всегда; бланк подтипа — только если этот подтип в сценарии. */
+            blanks() {
+                return this.allBlanks.filter(blank => blank.document_type_id === this.typeId
+                    && (!blank.document_subtype_id
+                        || this.subtypeIds.length === 0
+                        || this.subtypeIds.includes(blank.document_subtype_id)));
+            },
+
+            toggleBlank(id) {
+                this.blankIds = this.blankIds.includes(id)
+                    ? this.blankIds.filter(blankId => blankId !== id)
+                    : [...this.blankIds, id];
             },
 
             namePreview() {

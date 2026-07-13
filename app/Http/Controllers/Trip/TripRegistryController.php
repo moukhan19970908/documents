@@ -21,7 +21,7 @@ class TripRegistryController extends Controller
         $user       = auth()->user();
         $registries = Registry::where('type', 'trip')
             ->where(function ($q) use ($user) {
-                if (!$user->isAdmin() && $user->role !== 'director') {
+                if (!$user->hasAnyRole(['admin', 'director'])) {
                     $q->where('created_by', $user->id);
                 }
             })

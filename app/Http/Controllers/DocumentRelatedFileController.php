@@ -89,7 +89,7 @@ class DocumentRelatedFileController extends Controller
         $this->authorize('view', $document);
 
         $user = auth()->user();
-        if ($file->uploaded_by !== $user->id && $user->role !== 'admin') {
+        if ($file->uploaded_by !== $user->id && !$user->isAdmin()) {
             abort(403);
         }
 

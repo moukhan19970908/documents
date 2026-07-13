@@ -15,13 +15,14 @@ class Workflow extends Model
     protected $fillable = [
         'name', 'description', 'document_type_id', 'created_by', 'is_system', 'is_active',
         'approval_type', 'allowed_departments', 'allowed_users', 'process_fields',
-        'process_type', 'icon', 'owner_id', 'status',
+        'process_type', 'icon', 'owner_id', 'status', 'allow_file_upload',
         'engine_version', 'is_version', 'parent_workflow_id', 'version_label', 'published_at',
     ];
 
     protected $casts = [
         'is_system'           => 'boolean',
         'is_active'           => 'boolean',
+        'allow_file_upload'   => 'boolean',
         'is_version'          => 'boolean',
         'published_at'        => 'datetime',
         'allowed_departments' => 'array',
@@ -103,5 +104,17 @@ class Workflow extends Model
     public function folders(): BelongsToMany
     {
         return $this->belongsToMany(WorkflowFolder::class, 'workflow_folder_workflow');
+    }
+
+    /** Бланки, которые сценарий предлагает заполнить вместо готового файла. */
+    public function blankTemplates(): BelongsToMany
+    {
+        return $this->belongsToMany(BlankTemplate::class, 'blank_template_workflow');
+    }
+
+    /** Сценарию без бланков заполнять нечего — файл остаётся единственным способом принести документ. */
+    public function allowsFileUpload(): bool
+    {
+        return $this->blankTemplates->isEmpty() || $this->allow_file_upload;
     }
 }

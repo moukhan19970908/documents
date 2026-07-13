@@ -148,7 +148,7 @@ class ApprovalService
                 $manager = $manager->manager;
             }
             // Admins / directors see all
-            return $approver->isAdmin() || $approver->role === 'director';
+            return $approver->hasAnyRole(['admin', 'director']);
         }
         return false;
     }

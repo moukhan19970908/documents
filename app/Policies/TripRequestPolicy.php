@@ -9,7 +9,7 @@ class TripRequestPolicy
 {
     public function view(User $user, TripRequest $trip): bool
     {
-        if ($user->isAdmin() || $user->role === 'director') {
+        if ($user->hasAnyRole(['admin', 'director'])) {
             return true;
         }
         if ($trip->user_id === $user->id) {

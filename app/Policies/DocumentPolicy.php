@@ -54,12 +54,12 @@ class DocumentPolicy
 
     public function create(User $user): bool
     {
-        return in_array($user->role, ['admin', 'director', 'linear', 'external']);
+        return $user->hasAnyRole(['admin', 'director', 'linear', 'external']);
     }
 
     public function update(User $user, Document $document): bool
     {
-        if ($user->role === 'admin') {
+        if ($user->isAdmin()) {
             return true;
         }
         return $document->initiator_id === $user->id
@@ -68,7 +68,7 @@ class DocumentPolicy
 
     public function delete(User $user, Document $document): bool
     {
-        return $user->role === 'admin'
+        return $user->isAdmin()
             || ($document->initiator_id === $user->id && $document->status === 'draft');
     }
 
@@ -78,7 +78,7 @@ class DocumentPolicy
             return false;
         }
 
-        return $user->role === 'admin'
+        return $user->isAdmin()
             || ($document->initiator_id === $user->id && $document->status === 'in_review');
     }
 

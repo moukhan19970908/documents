@@ -13,9 +13,11 @@ use App\Http\Controllers\ArchiveController;
 use App\Http\Controllers\WorkflowController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\EmployeesController;
+use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\DepartmentController;
 use App\Http\Controllers\Admin\AccessControlController;
+use App\Http\Controllers\Admin\BlankTemplateController;
 use App\Http\Controllers\Admin\DocumentTypeController;
 use App\Http\Controllers\Admin\ScenarioController;
 use App\Http\Controllers\Admin\WorkflowFolderController;
@@ -51,6 +53,7 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
 
     // Documents
     Route::resource('documents', DocumentController::class);
+    Route::put('documents/{document}/blank', [DocumentController::class, 'updateBlank'])->name('documents.blank.update');
     Route::post('documents/{document}/start-approval', [ApprovalController::class, 'start'])->name('documents.start-approval');
     Route::post('documents/{document}/approve', [ApprovalController::class, 'approve'])->name('documents.approve');
     Route::post('documents/{document}/reject', [ApprovalController::class, 'reject'])->name('documents.reject');
@@ -60,6 +63,9 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
     Route::post('documents/{document}/process-approve', [ApprovalController::class, 'processApprove'])->name('documents.process-approve');
     Route::post('documents/{document}/process-reject', [ApprovalController::class, 'processReject'])->name('documents.process-reject');
     Route::post('documents/{document}/cancel-approval', [ApprovalController::class, 'cancelApproval'])->name('documents.cancel-approval');
+    Route::post('documents/{document}/decide/{action}', [ApprovalController::class, 'decide'])
+        ->whereIn('action', ['opinion_yes', 'opinion_no', 'acknowledge', 'accept', 'execute'])
+        ->name('documents.decide');
     Route::get('documents/{document}/approval-sheet', [ApprovalController::class, 'approvalSheet'])->name('documents.approval-sheet');
     Route::post('documents/{document}/notes', [DocumentController::class, 'storeNote'])->name('documents.notes.store');
 
@@ -116,6 +122,8 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
         Route::post('access-control/departments/{department}/tasks-access', [AccessControlController::class, 'updateDeptTasksAccess'])->name('access-control.depts.tasks-access');
         Route::post('access-control/users/{user}/archive-access', [AccessControlController::class, 'updateUserArchiveAccess'])->name('access-control.users.archive-access');
         Route::post('access-control/departments/{department}/archive-access', [AccessControlController::class, 'updateDeptArchiveAccess'])->name('access-control.depts.archive-access');
+        Route::resource('roles', RoleController::class)->except(['show']);
+        Route::post('roles/{role}/duplicate', [RoleController::class, 'duplicate'])->name('roles.duplicate');
         Route::resource('users', UserController::class);
         Route::resource('external-participants', ExternalParticipantController::class)
             ->only(['index', 'create', 'store', 'destroy']);
@@ -127,6 +135,8 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
         Route::post('document-types/{document_type}/duplicate', [DocumentTypeController::class, 'duplicate'])->name('document-types.duplicate');
         Route::patch('document-types/{document_type}/toggle', [DocumentTypeController::class, 'toggle'])->name('document-types.toggle');
         Route::patch('document-types/{document_type}/counters/{counter}', [DocumentTypeController::class, 'updateCounter'])->name('document-types.counters.update');
+        Route::resource('blank-templates', BlankTemplateController::class)->except(['show']);
+        Route::patch('blank-templates/{blank_template}/toggle', [BlankTemplateController::class, 'toggle'])->name('blank-templates.toggle');
         Route::resource('workflow-folders', WorkflowFolderController::class);
         Route::resource('approval-routes', ApprovalRouteController::class);
         Route::patch('approval-routes/{approval_route}/toggle', [ApprovalRouteController::class, 'toggle'])->name('approval-routes.toggle');

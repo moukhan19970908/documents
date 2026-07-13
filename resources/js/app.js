@@ -1,6 +1,7 @@
 import Alpine from 'alpinejs';
 import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
+import { blankEditor } from './blank-editor';
 
 window.Pusher = Pusher;
 window.Echo = new Echo({
@@ -14,5 +15,6 @@ window.Echo = new Echo({
 });
 
 window.Alpine = Alpine;
+Alpine.data('blankEditor', blankEditor);
 Alpine.start();
 

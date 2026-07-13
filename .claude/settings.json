@@ -50,10 +50,43 @@
       "PowerShell(php verify_step.php)",
       "PowerShell(php verify_create_page.php)",
       "PowerShell(php verify_options.php)",
-      "PowerShell(php verify_list.php)"
+      "PowerShell(php verify_list.php)",
+      "PowerShell(php verify_palette.php)",
+      "PowerShell(php verify_kinds.php)",
+      "PowerShell(php verify_kinds.php 2>&1)",
+      "Bash(git diff *)",
+      "Bash(echo '=== HEAD blade: is_blocking occurrences ===' *)",
+      "Read(//c/xampp/htdocs/documents/**)",
+      "Bash(npm install *)",
+      "Bash(grep -n \"DocumentTypeController\\\\|^use App\\\\\\\\\\\\\\\\Http\\\\\\\\\\\\\\\\Controllers\\\\\\\\\\\\\\\\Admin\" routes/web.php)",
+      "Bash(sed -i \"s#'../../../../../../xampp/htdocs/documents/resources/js/blank-editor.js'#'./resources/js/blank-editor.js'#\" roundtrip.mjs)",
+      "Bash(node roundtrip.mjs)",
+      "Bash(sed -i '/globalThis.navigator/d' roundtrip.mjs)",
+      "Bash(node roundtrip2.mjs --emit)",
+      "Read(//tmp/**)",
+      "Bash(sed 's/base64,[A-Za-z0-9+/=]*/base64,…/')",
+      "Bash(php -r ' *)",
+      "Bash(node roundtrip2.mjs --check)",
+      "Bash(npm uninstall *)",
+      "Bash(python -)",
+      "PowerShell(npm run build 2>&1)",
+      "PowerShell(php artisan route:list --path=blank)",
+      "PowerShell(php artisan tinker \"C:\\\\Users\\\\user\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--xampp-htdocs-documents\\\\de889043-9696-4256-8e39-84d48d53e47f\\\\scratchpad\\\\probe.php\")",
+      "PowerShell($env:DB_CONNECTION = 'mysql'; $env:DB_DATABASE = 'documents'; $env:DB_USERNAME = 'root'; $env:DB_PASSWORD = ''; php artisan test --filter=BlankFlowTest 2>&1 | Select-Object -Last 40)",
+      "Bash(DB_CONNECTION=mysql DB_DATABASE=documents DB_USERNAME=root DB_PASSWORD= php artisan test --filter=\"test_scenario_without_blanks_still_takes_a_plain_file\")",
+      "Bash(DB_CONNECTION=mysql DB_DATABASE=documents DB_USERNAME=root DB_PASSWORD= APP_URL=http://localhost php artisan test --filter=BlankFlowTest)",
+      "Bash(DB_CONNECTION=mysql DB_DATABASE=documents DB_USERNAME=root DB_PASSWORD= APP_URL=http://localhost php artisan test --filter=test_scenario_without_blanks_still_takes_a_plain_file)",
+      "Bash(grep -E \"^\\\\s+\\\\[?[0-9]+\\\\s|app\\\\\\\\\\\\\\\\|Exception|Unable\")",
+      "Bash(php -m)",
+      "Bash(rm -f /tmp/rj2.txt)",
+      "Bash(curl -s -c /tmp/rj2.txt __TRACKED_VAR__/login -o /tmp/loginpage.html -w 'GET /login: %{http_code}\\\\n')",
+      "Bash(grep -o -E '<input[^>]{0,200}>' /tmp/loginpage.html | sed 's/class=\"[^\"]*\"//' | head -5)",
+      "Bash(grep -o -E '\\(name|type\\)=\"[^\"]*\"' /tmp/loginpage.html | sort | uniq -c | sort -rn | head -12; echo '--- form:'; grep -o -E '<form[^>]*>' /tmp/loginpage.html)",
+      "Bash(rm -f /tmp/rj*.txt /tmp/loginpage.html /tmp/roles.html /tmp/out.html)"
     ],
     "additionalDirectories": [
-      "C:\\xampp\\php"
+      "C:\\xampp\\php",
+      "\\tmp"
     ]
   }
 }

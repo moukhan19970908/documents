@@ -68,6 +68,27 @@ class DocumentNamingService
     }
 
     /**
+     * Тело документа, заполненного по бланку. Токены подставляются при показе, а не при
+     * заполнении: номер и дата появляются у документа позже, при регистрации. Скобочные
+     * сегменты и схлопывание пробелов — правила маски названия, к тексту они не применяются.
+     * Незнакомый токен остаётся как есть — это опечатка автора бланка, а не пустое значение.
+     */
+    public function fillBlank(Document $document): ?string
+    {
+        if (blank($document->body_html)) {
+            return null;
+        }
+
+        $context = $this->contextFor($document);
+
+        return preg_replace_callback('/\{([^{}]+)\}/u', function ($m) use ($context) {
+            $key = $this->normalizeKey($m[1]);
+
+            return array_key_exists($key, $context) ? (string) $context[$key] : $m[0];
+        }, $document->body_html);
+    }
+
+    /**
      * Values for every token the mask may reference. Empty values collapse their segment.
      * `$draft` keeps the ___ / __.__.____ stubs for an unregistered document.
      */

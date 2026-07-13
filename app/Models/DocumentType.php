@@ -80,7 +80,7 @@ class DocumentType extends Model
             return false;
         }
 
-        if (!empty($this->allowed_roles) && !in_array($user->role, $this->allowed_roles)) {
+        if (!empty($this->allowed_roles) && !$user->hasAnyRole($this->allowed_roles)) {
             return false;
         }
 

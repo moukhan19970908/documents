@@ -84,10 +84,20 @@ class ApprovalEngineService
                 'status'           => 'in_progress',
             ]);
 
+            $usedBranchGroups = [];
+
             foreach ($definition->stages as $stage) {
                 // A stage with an unmet condition simply never enters this document's route.
                 if ($definition->isV2() && !$stage->passesCondition($parameterValues)) {
                     continue;
+                }
+
+                // Развилка: из всех подходящих веток одной группы срабатывает первая.
+                if ($stage->branch_group) {
+                    if (in_array($stage->branch_group, $usedBranchGroups, true)) {
+                        continue;
+                    }
+                    $usedBranchGroups[] = $stage->branch_group;
                 }
 
                 $deadline = match (true) {
@@ -156,6 +166,10 @@ class ApprovalEngineService
                 'request_changes'            => $this->handleRequestChanges($stage, $approval, $document, $user, $comment),
                 'delegate'                   => $this->handleDelegate($stage, $document, $delegatedTo),
                 'process_approve', 'process_reject' => $this->handleProcessDecision($stage, $approval),
+                // Заключение и ознакомление фиксируются, но судьбу документа не решают.
+                'opinion_yes', 'opinion_no', 'acknowledge' => $this->handleAdvisory($stage, $approval),
+                'accept'                     => $this->handleAccept($stage),
+                'execute'                    => $this->handleExecute($stage, $approval),
             };
 
             $this->auditService->log("decision_{$action}", $document, null, [
@@ -196,6 +210,42 @@ class ApprovalEngineService
             event(new ApprovalStageChanged($stage));
             $this->moveToNextStage($approval);
         }
+    }
+
+    /**
+     * Заключения и ознакомление: решение остаётся в истории, но не отклоняет документ.
+     * Звено закрывается, когда высказались все участники, и маршрут идёт дальше в любом случае.
+     */
+    private function handleAdvisory(DocumentApprovalStage $stage, DocumentApproval $approval): void
+    {
+        $participants = $stage->workflowStage->approvers()->pluck('approver_id');
+        $responded = $stage->decisions()->pluck('user_id');
+
+        $everyoneResponded = $participants->diff($responded)->isEmpty();
+
+        if (!$everyoneResponded && $stage->workflowStage->policy !== 'any') {
+            return;
+        }
+
+        $stage->update(['status' => 'approved', 'completed_at' => now()]);
+        $this->completeTasksForStage($stage);
+        event(new ApprovalStageChanged($stage));
+        $this->moveToNextStage($approval);
+    }
+
+    /** Приём в два шага: сначала «принять к исполнению», и только потом «исполнено». */
+    private function handleAccept(DocumentApprovalStage $stage): void
+    {
+        $stage->update(['status' => 'accepted']);
+        event(new ApprovalStageChanged($stage));
+    }
+
+    private function handleExecute(DocumentApprovalStage $stage, DocumentApproval $approval): void
+    {
+        $stage->update(['status' => 'approved', 'completed_at' => now()]);
+        $this->completeTasksForStage($stage);
+        event(new ApprovalStageChanged($stage));
+        $this->moveToNextStage($approval);
     }
 
     private function handleReject(
@@ -381,7 +431,9 @@ class ApprovalEngineService
 
         // A non-blocking stage (ознакомление) hands out its tasks but does not hold the route:
         // the document moves on immediately, participants read it in their own time.
-        if (!$stage->workflowStage->is_blocking) {
+        // Только совещательное звено вправе так поступить: согласование, утверждение и приём
+        // ждут решения даже если флаг в данных говорит обратное.
+        if (!$stage->workflowStage->is_blocking && $stage->workflowStage->isAdvisory()) {
             $stage->update(['status' => 'approved', 'completed_at' => now()]);
             $this->moveToNextStage($approval);
         }

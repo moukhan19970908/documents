@@ -19,17 +19,17 @@ class WorkflowPolicy
 
     public function create(User $user): bool
     {
-        return in_array($user->role, ['admin', 'director']);
+        return $user->hasAnyRole(['admin', 'director']);
     }
 
     public function update(User $user, Workflow $workflow): bool
     {
-        return $user->role === 'admin'
+        return $user->isAdmin()
             || ($workflow->created_by === $user->id && !$workflow->is_system);
     }
 
     public function delete(User $user, Workflow $workflow): bool
     {
-        return $user->role === 'admin' && !$workflow->is_system;
+        return $user->isAdmin() && !$workflow->is_system;
     }
 }

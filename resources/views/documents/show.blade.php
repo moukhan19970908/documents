@@ -45,9 +45,29 @@
         }
         $alreadyDecided = $activeStage?->decisions
             ->contains('user_id', auth()->id()) ?? false;
+
+        // Вид звена решает, какие кнопки видит участник.
+        $stageKind = $activeStage?->workflowStage?->kind() ?? 'approval';
+        $stageActions = $activeStage?->workflowStage?->actions() ?? [];
+
+        // Приём идёт в два шага: принявший к исполнению всё ещё должен нажать «Исполнено».
+        $myAccept = $activeStage?->decisions
+            ->where('action', 'accept')
+            ->firstWhere('user_id', auth()->id());
+
+        if ($stageKind === 'intake') {
+            $stageActions = $myAccept ? ['execute'] : ['accept'];
+            $alreadyDecided = $activeStage?->decisions
+                ->whereIn('action', ['execute'])
+                ->contains('user_id', auth()->id()) ?? false;
+        }
+
         $canApprove = $myApproverEntry !== null && !$alreadyDecided;
         $isProcessParticipant = $myApproverEntry instanceof \App\Models\WorkflowStageApprover
             && ($myApproverEntry->participant_type ?? 'signatory') === 'process';
+
+        // Старые (v1) звенья кнопок нового вида не знают — там прежний набор.
+        $isClassicStage = in_array($stageKind, ['approval', 'approve'], true);
     @endphp
 
     {{-- ── Top bar ── --}}
@@ -172,6 +192,51 @@
 
                 {{-- Center: Document viewer --}}
                 <div class="flex-1 min-w-0">
+                    @if($document->blank_template_id)
+                        {{-- Документ заполняется по бланку: тело живёт в системе, а не в файле --}}
+                        <div x-data="{ editing: false }">
+                            <div x-show="!editing" class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                                <div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 bg-gray-50">
+                                    <p class="text-xs font-medium text-gray-600 truncate">
+                                        Бланк: {{ $document->blank?->name ?? '—' }}
+                                    </p>
+                                    @can('update', $document)
+                                        <button type="button" @click="editing = true"
+                                                class="text-xs text-[#5B4FE8] hover:underline font-medium shrink-0 ml-3">
+                                            Заполнить бланк
+                                        </button>
+                                    @endcan
+                                </div>
+
+                                <div class="bg-gray-100 p-8 overflow-x-auto">
+                                    <div class="blank-sheet">{!! $blankBody !!}</div>
+                                </div>
+                            </div>
+
+                            @can('update', $document)
+                                <form x-show="editing" x-cloak method="POST"
+                                      action="{{ route('documents.blank.update', $document) }}">
+                                    @csrf
+                                    @method('PUT')
+
+                                    @include('partials.blank-editor', [
+                                        'content'   => $document->body_html,
+                                        'inputName' => 'body_html',
+                                    ])
+
+                                    <div class="mt-3 flex items-center gap-3">
+                                        <button type="submit" class="px-4 py-2 text-sm bg-[#5B4FE8] text-white rounded-lg font-medium hover:bg-indigo-700">
+                                            Сохранить бланк
+                                        </button>
+                                        <button type="button" @click="editing = false"
+                                                class="px-4 py-2 text-sm border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50">
+                                            Отмена
+                                        </button>
+                                    </div>
+                                </form>
+                            @endcan
+                        </div>
+                    @else
                     <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
                         <div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 bg-gray-50">
                             <p class="text-xs font-medium text-gray-600 truncate">
@@ -248,6 +313,7 @@
                             </button>
                         </form>
                     @endcan
+                    @endif
                 </div>
 
                 {{-- Right: Ваш шаг / Actions --}}
@@ -427,13 +493,42 @@
                                         Не одобрить
                                     </button>
                                 </form>
+                            @elseif(!$isClassicStage)
+                                {{-- Заключение, ознакомление, приём: набор кнопок задаёт вид звена --}}
+                                @php
+                                    $kindHints = [
+                                        'opinion' => ['Заключение', 'Решение фиксируется в истории, но маршрут не останавливает'],
+                                        'ack'     => ['Ознакомление', 'Подтвердите, что ознакомились с документом'],
+                                        'intake'  => ['Приём к исполнению', $myAccept ? 'Документ принят — отметьте исполнение' : 'Примите документ к исполнению'],
+                                    ];
+                                    $actionColors = [
+                                        'opinion_yes' => '#22c55e', 'opinion_no' => '#ef4444',
+                                        'acknowledge' => '#5B4FE8', 'accept' => '#5B4FE8', 'execute' => '#22c55e',
+                                    ];
+                                @endphp
+
+                                <div class="mb-3 px-3 py-2 bg-indigo-50 border border-indigo-100 rounded-lg">
+                                    <p class="text-xs text-indigo-600 font-medium">{{ $kindHints[$stageKind][0] ?? 'Ваше решение' }}</p>
+                                    <p class="text-xs text-indigo-400 mt-0.5">{{ $kindHints[$stageKind][1] ?? '' }}</p>
+                                </div>
+
+                                @foreach($stageActions as $action)
+                                    <form action="{{ route('documents.decide', ['document' => $document, 'action' => $action]) }}" method="POST" class="mb-2">
+                                        @csrf
+                                        <input type="hidden" name="comment" :value="comment">
+                                        <button type="submit" class="w-full text-white py-2.5 rounded-lg text-sm font-semibold transition-colors"
+                                                style="background:{{ $actionColors[$action] ?? '#5B4FE8' }}">
+                                            {{ \App\Models\WorkflowStage::ACTION_LABELS[$action] }}
+                                        </button>
+                                    </form>
+                                @endforeach
                             @else
-                                {{-- Signatory: full approval actions --}}
+                                {{-- Согласование и утверждение --}}
                                 <form action="{{ route('documents.approve', $document) }}" method="POST" class="mb-2">
                                     @csrf
                                     <input type="hidden" name="comment" :value="comment">
                                     <button type="submit" class="w-full text-white py-2.5 rounded-lg text-sm font-semibold transition-colors" style="background:#22c55e">
-                                        Согласовать
+                                        {{ $stageKind === 'approve' ? 'Утвердить' : 'Согласовать' }}
                                     </button>
                                 </form>
 
@@ -455,23 +550,26 @@
                                     <p x-show="changesError" class="text-xs text-red-500 mt-1 text-center">Укажите комментарий для доработки</p>
                                 </form>
 
-                                <button @click="delegateOpen = !delegateOpen"
-                                        class="w-full text-white py-2.5 rounded-lg text-sm font-semibold transition-colors mb-3" style="background:#3b82f6">
-                                    Делегировать
-                                </button>
-
-                                <form x-show="delegateOpen" action="{{ route('documents.delegate', $document) }}" method="POST" class="mb-3 space-y-2" style="display:none">
-                                    @csrf
-                                    <select name="delegated_to" required class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
-                                        <option value="">— Выберите пользователя —</option>
-                                        @foreach(\App\Models\User::where('id', '!=', auth()->id())->where('is_active', true)->orderBy('name')->get() as $u)
-                                            <option value="{{ $u->id }}">{{ $u->name }}</option>
-                                        @endforeach
-                                    </select>
-                                    <button type="submit" class="w-full border border-gray-200 text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
-                                        Подтвердить делегирование
+                                {{-- Делегирование доступно на согласовании, но не на утверждении --}}
+                                @if(in_array('delegate', $stageActions, true) || $stageActions === [])
+                                    <button @click="delegateOpen = !delegateOpen"
+                                            class="w-full text-white py-2.5 rounded-lg text-sm font-semibold transition-colors mb-3" style="background:#3b82f6">
+                                        Делегировать
                                     </button>
-                                </form>
+
+                                    <form x-show="delegateOpen" action="{{ route('documents.delegate', $document) }}" method="POST" class="mb-3 space-y-2" style="display:none">
+                                        @csrf
+                                        <select name="delegated_to" required class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                                            <option value="">— Выберите пользователя —</option>
+                                            @foreach(\App\Models\User::where('id', '!=', auth()->id())->where('is_active', true)->orderBy('name')->get() as $u)
+                                                <option value="{{ $u->id }}">{{ $u->name }}</option>
+                                            @endforeach
+                                        </select>
+                                        <button type="submit" class="w-full border border-gray-200 text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
+                                            Подтвердить делегирование
+                                        </button>
+                                    </form>
+                                @endif
                             @endif
 
                             <textarea x-model="comment" rows="3"
@@ -502,13 +600,37 @@
         <div x-show="tab === 'approval'">
             @if($approval)
                 @php
+                    // Как решение участника выглядит на схеме. Приём идёт в два шага: «принято
+                    // к исполнению» ещё держит звено, закрывает его только «исполнено».
+                    $statusOf = fn ($action) => match ($action) {
+                        'approve', 'execute', 'acknowledge' => 'approved',
+                        'reject'                            => 'rejected',
+                        'accept'                            => 'waiting',
+                        'process_approve', 'opinion_yes'    => 'process_approved',
+                        'process_reject', 'opinion_no'      => 'process_rejected',
+                        'delegate'                          => 'delegated',
+                        default                             => 'pending',
+                    };
+                    $labelOf = fn ($decision) => match ($decision->action) {
+                        'approve'                        => $decision->decided_at?->format('d.m.Y'),
+                        'execute'                        => 'Исполнено',
+                        'accept'                         => 'Принято к исполнению',
+                        'acknowledge'                    => 'Ознакомлен',
+                        'reject'                         => 'Отклонено',
+                        'process_approve', 'opinion_yes' => 'Одобрено',
+                        'process_reject', 'opinion_no'   => 'Не одобрено',
+                        'delegate'                       => 'Делегировано',
+                        default                          => '',
+                    };
+
                     // Build list of stage-groups for rendering
                     // Each group = ['stage' => ..., 'approvers' => [...], 'type' => sequential|parallel]
                     $stageGroups = [];
                     foreach ($approval->stages->sortBy(fn($s) => $s->workflowStage?->sort_order ?? 0) as $stage) {
                         $approverNodes = collect();
                         foreach ($stage->workflowStage?->approvers ?? [] as $ap) {
-                            $decision = $stage->decisions->where('user_id', $ap->approver_id)->sortByDesc('decided_at')->first();
+                            // Последнее слово за последним решением: «исполнено» перекрывает «принято».
+                            $decision = $stage->decisions->where('user_id', $ap->approver_id)->sortByDesc('id')->first();
                             if ($decision) {
                                 if ($decision->action === 'delegate') {
                                     // Original approver node — delegated
@@ -519,18 +641,10 @@
                                         'isMe'   => $ap->approver_id === auth()->id(),
                                     ]);
                                     // Delegatee node
-                                    $delegateeDecision = $stage->decisions->where('user_id', $decision->delegated_to)->sortByDesc('decided_at')->first();
+                                    $delegateeDecision = $stage->decisions->where('user_id', $decision->delegated_to)->sortByDesc('id')->first();
                                     if ($delegateeDecision) {
-                                        $dtStatus = match($delegateeDecision->action) {
-                                            'approve' => 'approved',
-                                            'reject'  => 'rejected',
-                                            default   => 'delegated',
-                                        };
-                                        $dtLabel = match($delegateeDecision->action) {
-                                            'approve' => $delegateeDecision->decided_at?->format('d.m.Y'),
-                                            'reject'  => 'Отклонено',
-                                            default   => 'Делегировано',
-                                        };
+                                        $dtStatus = $statusOf($delegateeDecision->action);
+                                        $dtLabel  = $labelOf($delegateeDecision);
                                     } else {
                                         $dtStatus = $stage->status === 'in_progress' ? 'waiting' : 'pending';
                                         $dtLabel  = $stage->deadline_at ? 'до ' . $stage->deadline_at->format('d.m.Y') : 'Ожидает';
@@ -543,24 +657,10 @@
                                         'isDelegatee' => true,
                                     ]);
                                 } else {
-                                    $status = match($decision->action) {
-                                        'approve'         => 'approved',
-                                        'reject'          => 'rejected',
-                                        'process_approve' => 'process_approved',
-                                        'process_reject'  => 'process_rejected',
-                                        default           => 'delegated',
-                                    };
-                                    $label = match($decision->action) {
-                                        'approve'         => $decision->decided_at?->format('d.m.Y'),
-                                        'reject'          => 'Отклонено',
-                                        'process_approve' => 'Одобрено',
-                                        'process_reject'  => 'Не одобрено',
-                                        default           => 'Делегировано',
-                                    };
                                     $approverNodes->push([
                                         'user'   => $ap->user,
-                                        'status' => $status,
-                                        'label'  => $label,
+                                        'status' => $statusOf($decision->action),
+                                        'label'  => $labelOf($decision),
                                         'isMe'   => $ap->approver_id === auth()->id(),
                                     ]);
                                 }
@@ -951,7 +1051,7 @@
                                 @endif
                                 <a href="{{ route('documents.related-files.download', [$document, $rf]) }}"
                                    class="text-xs text-[#5B4FE8] hover:underline font-medium">Скачать</a>
-                                @if(auth()->id() === $rf->uploaded_by || auth()->user()->role === 'admin')
+                                @if(auth()->id() === $rf->uploaded_by || auth()->user()->isAdmin())
                                     <form action="{{ route('documents.related-files.destroy', [$document, $rf]) }}" method="POST"
                                           onsubmit="return confirm('Удалить файл?')">
                                         @csrf

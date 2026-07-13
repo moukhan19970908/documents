@@ -14,7 +14,7 @@ class Document extends Model
 
     protected $fillable = [
         'title', 'number', 'registered_at', 'document_type_id', 'document_subtype_id',
-        'workflow_id', 'initiator_id',
+        'workflow_id', 'initiator_id', 'blank_template_id', 'body_html',
         'current_stage_id', 'status', 'data', 'bitrix24_task_id', 'deadline_at',
     ];
 
@@ -37,6 +37,12 @@ class Document extends Model
     public function registration(): HasOne
     {
         return $this->hasOne(DocumentRegistration::class);
+    }
+
+    /** Бланк, по которому заполнено тело документа. */
+    public function blank(): BelongsTo
+    {
+        return $this->belongsTo(BlankTemplate::class, 'blank_template_id');
     }
 
     public function isRegistered(): bool

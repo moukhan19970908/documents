@@ -28,14 +28,34 @@
                            class="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
                 </div>
                 @endif
+                @php
+                    $primaryRole = old('role', $user->role ?? 'linear');
+                    $extraRoles = collect(old('roles', isset($user) ? $user->roles->pluck('id')->all() : []))
+                        ->map(fn ($id) => (int) $id)->all();
+                @endphp
                 <div>
-                    <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Роль *</label>
+                    <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Основная роль *</label>
                     <select name="role" required class="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
-                        <option value="linear"   {{ old('role', $user->role ?? '') === 'linear'   ? 'selected' : '' }}>Линейный сотрудник</option>
-                        <option value="director" {{ old('role', $user->role ?? '') === 'director' ? 'selected' : '' }}>Руководитель</option>
-                        <option value="archiver" {{ old('role', $user->role ?? '') === 'archiver' ? 'selected' : '' }}>Архивариус</option>
-                        <option value="admin"    {{ old('role', $user->role ?? '') === 'admin'    ? 'selected' : '' }}>Администратор</option>
+                        @foreach($roles as $role)
+                            <option value="{{ $role->code }}" {{ $primaryRole === $role->code ? 'selected' : '' }}>{{ $role->name }}</option>
+                        @endforeach
                     </select>
+                    @error('role')<p class="text-xs text-red-500 mt-1">{{ $message }}</p>@enderror
+                </div>
+                <div>
+                    <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Дополнительные роли</label>
+                    <div class="border border-gray-100 rounded-lg divide-y divide-gray-100 max-h-56 overflow-y-auto">
+                        @foreach($roles as $role)
+                            <label class="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 cursor-pointer">
+                                <input type="checkbox" name="roles[]" value="{{ $role->id }}" class="rounded"
+                                       {{ in_array($role->id, $extraRoles, true) ? 'checked' : '' }}>
+                                <span class="text-sm text-gray-700">{{ $role->name }}</span>
+                                <span class="text-xs text-gray-400 font-mono">{{ $role->code }}</span>
+                            </label>
+                        @endforeach
+                    </div>
+                    <p class="text-xs text-gray-400 mt-1">Права ролей суммируются: пользователь получает доступ по любой из своих ролей.</p>
+                    @error('roles')<p class="text-xs text-red-500 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
                     <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Отдел</label>

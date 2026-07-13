@@ -74,7 +74,7 @@
                     @if($folderTree->isEmpty())
                         <p class="text-sm text-gray-400">
                             Папки не созданы.
-                            @if(auth()->user()->role === 'admin')
+                            @if(auth()->user()->isAdmin())
                                 <a href="{{ route('admin.workflow-folders.create') }}" class="text-[#6C5CE7] hover:underline">Создать папки</a>
                             @endif
                         </p>

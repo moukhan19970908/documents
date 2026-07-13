@@ -30,6 +30,12 @@
                 'workflows'     => $s->workflows->map(fn($w) => [
                     'id'         => $w->id,
                     'name'       => $w->name,
+                    'allow_file' => $w->allowsFileUpload(),
+                    'blanks'     => $w->blankTemplates->map(fn($b) => [
+                        'id'          => $b->id,
+                        'name'        => $b->name,
+                        'description' => $b->description,
+                    ])->values(),
                     'parameters' => $w->parameters->map(fn($p) => [
                         'key'         => $p->key,
                         'label'       => $p->label,
@@ -56,7 +62,16 @@
             ])->values(),
         ]);
 
-        $fallbackWorkflows = $workflows->map(fn($w) => ['id' => $w->id, 'name' => $w->name])->values();
+        $fallbackWorkflows = $workflows->map(fn($w) => [
+            'id'         => $w->id,
+            'name'       => $w->name,
+            'allow_file' => $w->allowsFileUpload(),
+            'blanks'     => $w->blankTemplates->map(fn($b) => [
+                'id'          => $b->id,
+                'name'        => $b->name,
+                'description' => $b->description,
+            ])->values(),
+        ])->values();
         $referenceOptions = [
             'department' => \App\Models\Department::orderBy('name')->pluck('name'),
             'user'       => \App\Models\User::where('is_active', true)->orderBy('name')->pluck('name'),
@@ -102,7 +117,7 @@
                 {{-- Сценарий: один — подставляется молча, несколько — выбор --}}
                 <div x-show="scenarios().length > 1">
                     <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Сценарий *</label>
-                    <select name="workflow_id" x-model.number="workflowId"
+                    <select name="workflow_id" x-model.number="workflowId" @change="resetSource()"
                             class="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#6C5CE7]">
                         <option value="">— Выберите сценарий —</option>
                         <template x-for="wf in scenarios()" :key="wf.id">
@@ -285,12 +300,50 @@
                     <p class="text-xs text-gray-400 mt-1">Необязательно</p>
                 </div>
 
-                {{-- Файл документа --}}
-                <div>
-                    <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Файл документа</label>
-                    <input type="file" name="file"
-                           class="w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-[#6C5CE7] file:text-white file:text-sm file:font-medium hover:file:bg-indigo-700">
-                    <p class="text-xs text-gray-400 mt-1">Максимальный размер файла: 50 МБ</p>
+                {{-- Тело документа: бланк системы или готовый файл --}}
+                <div class="border-t border-gray-100 pt-5">
+                    <p class="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-3">Документ</p>
+
+                    {{-- Способ выбираем, только если сценарий предлагает бланки --}}
+                    <div x-show="blanks().length > 0" class="space-y-3">
+                        <div class="flex gap-2">
+                            <button type="button" @click="source = 'blank'"
+                                    :class="source === 'blank' ? 'border-[#6C5CE7] text-[#6C5CE7] bg-[#6C5CE7]/5' : 'border-gray-200 text-gray-600 hover:bg-gray-50'"
+                                    class="text-sm font-medium border rounded-lg px-4 py-2">Заполнить бланк</button>
+                            <button type="button" x-show="allowsFile()" @click="source = 'file'"
+                                    :class="source === 'file' ? 'border-[#6C5CE7] text-[#6C5CE7] bg-[#6C5CE7]/5' : 'border-gray-200 text-gray-600 hover:bg-gray-50'"
+                                    class="text-sm font-medium border rounded-lg px-4 py-2">Загрузить готовый файл</button>
+                        </div>
+
+                        <div x-show="source === 'blank'" class="space-y-3">
+                            <div class="grid grid-cols-3 gap-3">
+                                <template x-for="blank in blanks()" :key="blank.id">
+                                    <button type="button" @click="blankId = blank.id"
+                                            :class="blankId === blank.id ? 'border-[#6C5CE7] ring-1 ring-[#6C5CE7]' : 'border-gray-200 hover:border-gray-300'"
+                                            class="relative border rounded-xl p-3 text-left">
+                                        <span x-show="blankId === blank.id"
+                                              class="absolute top-2 right-2 w-4 h-4 rounded-full bg-[#6C5CE7] text-white text-[10px] flex items-center justify-center">✓</span>
+                                        <span class="block h-14 rounded-lg bg-gray-50 border border-gray-100 mb-2"></span>
+                                        <span class="block text-xs font-medium text-gray-700 truncate" x-text="blank.name"></span>
+                                        <span class="block text-[11px] text-gray-400 truncate" x-text="blank.description || ''"></span>
+                                    </button>
+                                </template>
+                            </div>
+                            <p class="text-xs text-gray-400">Бланк откроется для заполнения на странице документа сразу после создания.</p>
+                        </div>
+                    </div>
+
+                    {{-- Сценарий без бланков — документ приносят готовым файлом --}}
+                    <div x-show="blanks().length === 0 || source === 'file'" class="mt-3">
+                        <input type="file" name="file"
+                               class="w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-[#6C5CE7] file:text-white file:text-sm file:font-medium hover:file:bg-indigo-700">
+                        <p class="text-xs text-gray-400 mt-1">Максимальный размер файла: 50 МБ</p>
+                    </div>
+
+                    <input type="hidden" name="blank_template_id" :value="source === 'blank' ? blankId : ''">
+
+                    @error('blank_template_id')<p class="text-xs text-red-500 mt-1">{{ $message }}</p>@enderror
+                    @error('file')<p class="text-xs text-red-500 mt-1">{{ $message }}</p>@enderror
                 </div>
             </div>
 
@@ -320,8 +373,30 @@
             title: @json(old('title', '')),
             manualTitle: false,
 
+            source: 'file',
+            blankId: @json(old('blank_template_id', '')),
+
             init() {
                 this.$watch('values', () => this.syncTitle(), { deep: true });
+
+                // После ошибки валидации возвращаем выбранный бланк, а не сбрасываем способ.
+                this.blankId ? (this.source = 'blank') : this.resetSource();
+            },
+
+            blanks() {
+                return this.currentWorkflow()?.blanks ?? [];
+            },
+
+            allowsFile() {
+                return this.currentWorkflow()?.allow_file ?? true;
+            },
+
+            /** Есть бланки — заполнение по бланку и есть способ по умолчанию; единственный бланк выбираем сразу. */
+            resetSource() {
+                const blanks = this.blanks();
+
+                this.source  = blanks.length > 0 ? 'blank' : 'file';
+                this.blankId = blanks.length === 1 ? blanks[0].id : '';
             },
 
             currentWorkflow() {
@@ -403,6 +478,7 @@
                 this.workflowId = '';
                 this.values = {};
                 this.answers = {};
+                this.resetSource();
                 this.syncTitle();
             },
 
@@ -410,6 +486,7 @@
                 const scenarios = this.scenarios();
                 this.workflowId = scenarios.length === 1 ? scenarios[0].id : '';
                 this.answers = {};
+                this.resetSource();
                 this.syncTitle();
             },
 

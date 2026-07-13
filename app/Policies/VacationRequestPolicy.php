@@ -9,7 +9,7 @@ class VacationRequestPolicy
 {
     public function view(User $user, VacationRequest $vacation): bool
     {
-        if ($user->isAdmin() || $user->role === 'director') {
+        if ($user->hasAnyRole(['admin', 'director'])) {
             return true;
         }
         if ($vacation->user_id === $user->id) {

@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Models\Workflow;
 use App\Models\WorkflowStage;
 use App\Models\WorkflowStageApprover;
+use App\Models\WorkflowStageBranch;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -22,7 +23,7 @@ class ScenarioPublisher
 
     public function publish(Workflow $scenario): Workflow
     {
-        $scenario->load(['stages.approvers', 'parameters']);
+        $scenario->load(['stages.approvers', 'stages.branches', 'parameters']);
 
         $this->assertPublishable($scenario);
 
@@ -36,23 +37,27 @@ class ScenarioPublisher
             $version->status         = 'published';
             $version->save();
 
-            foreach ($scenario->stages as $stage) {
-                $copy = $stage->replicate();
-                $copy->workflow_id = $version->id;
-                // «Любой из группы» completes on a single approve — that is exactly what the engine
-                // does with a sequential stage; «все» is its parallel stage.
-                $copy->stage_type = $stage->policy === 'any' ? 'sequential' : 'parallel';
-                $copy->save();
+            $order = 0;
 
-                foreach ($this->resolveApprovers($stage) as $userId) {
-                    WorkflowStageApprover::create([
-                        'workflow_stage_id' => $copy->id,
-                        'approver_type'     => 'user',
-                        'approver_id'       => $userId,
-                        'is_required'       => true,
-                        'participant_type'  => 'signatory',
-                    ]);
+            foreach ($scenario->stages as $stage) {
+                // Развилка — не звено, а контейнер: каждая ветка становится условным звеном
+                // одной группы, и движок выберет первую подходящую по ответам сотрудника.
+                if ($stage->kind() === 'branch') {
+                    foreach ($stage->branches as $branch) {
+                        $this->copyStage($version, $stage, $order++, [
+                            'name'               => $branch->name ?: $stage->name,
+                            'phase'              => 'approval',
+                            'policy'             => $branch->policy,
+                            'condition_key'      => $branch->condition_key,
+                            'condition_operator' => $branch->condition_operator,
+                            'condition_value'    => $branch->condition_value,
+                            'branch_group'       => 'branch-' . $stage->id,
+                        ], $this->resolveBranchApprovers($branch));
+                    }
+                    continue;
                 }
+
+                $this->copyStage($version, $stage, $order++, [], $this->resolveApprovers($stage));
             }
 
             $scenario->update([
@@ -72,6 +77,33 @@ class ScenarioPublisher
         return $version;
     }
 
+    /** @param int[] $approverIds */
+    private function copyStage(Workflow $version, WorkflowStage $stage, int $order, array $overrides, array $approverIds): void
+    {
+        $copy = $stage->replicate();
+        $copy->workflow_id = $version->id;
+        $copy->sort_order  = $order;
+
+        foreach ($overrides as $field => $value) {
+            $copy->{$field} = $value;
+        }
+
+        // «Любой из группы» завершается одним решением — это ровно sequential-этап движка;
+        // «все участники» — его parallel-этап.
+        $copy->stage_type = ($overrides['policy'] ?? $stage->policy) === 'any' ? 'sequential' : 'parallel';
+        $copy->save();
+
+        foreach ($approverIds as $userId) {
+            WorkflowStageApprover::create([
+                'workflow_stage_id' => $copy->id,
+                'approver_type'     => 'user',
+                'approver_id'       => $userId,
+                'is_required'       => true,
+                'participant_type'  => 'signatory',
+            ]);
+        }
+    }
+
     /** Conditions must point at a parameter that exists and at a value it can actually take. */
     private function assertPublishable(Workflow $scenario): void
     {
@@ -84,28 +116,30 @@ class ScenarioPublisher
         $parameters = $scenario->parameters->keyBy('key');
 
         foreach ($scenario->stages as $stage) {
-            if (!$stage->condition_key) {
+            if ($stage->kind() === 'branch') {
+                if ($stage->branches->isEmpty()) {
+                    throw ValidationException::withMessages([
+                        'stages' => "Развилка «{$stage->name}»: не задано ни одной ветки.",
+                    ]);
+                }
+
+                foreach ($stage->branches as $branch) {
+                    $this->assertCondition($parameters, $branch->condition_key, $branch->condition_operator,
+                        $branch->condition_value, "Развилка «{$stage->name}», ветка «{$branch->name}»");
+
+                    if (empty($this->resolveBranchApprovers($branch))) {
+                        throw ValidationException::withMessages([
+                            'stages' => "Развилка «{$stage->name}», ветка «{$branch->name}»: не назначен ни один согласующий.",
+                        ]);
+                    }
+                }
+
                 continue;
             }
 
-            $parameter = $parameters->get($stage->condition_key);
+            $this->assertCondition($parameters, $stage->condition_key, $stage->condition_operator,
+                $stage->condition_value, "Звено «{$stage->name}»");
 
-            if (!$parameter) {
-                throw ValidationException::withMessages([
-                    'stages' => "Звено «{$stage->name}»: условие ссылается на параметр «{$stage->condition_key}», которого нет.",
-                ]);
-            }
-
-            $options = $parameter->options ?? [];
-
-            if ($options && $stage->condition_operator === '=' && !in_array($stage->condition_value, $options, true)) {
-                throw ValidationException::withMessages([
-                    'stages' => "Звено «{$stage->name}»: у параметра «{$parameter->label}» нет варианта «{$stage->condition_value}».",
-                ]);
-            }
-        }
-
-        foreach ($scenario->stages as $stage) {
             if (empty($this->resolveApprovers($stage))) {
                 throw ValidationException::withMessages([
                     'stages' => "Звено «{$stage->name}»: не назначен ни один исполнитель.",
@@ -114,22 +148,64 @@ class ScenarioPublisher
         }
     }
 
+    private function assertCondition($parameters, ?string $key, ?string $operator, ?string $value, string $where): void
+    {
+        if (!$key) {
+            return;
+        }
+
+        $parameter = $parameters->get($key);
+
+        if (!$parameter) {
+            throw ValidationException::withMessages([
+                'stages' => "{$where}: условие ссылается на параметр «{$key}», которого нет.",
+            ]);
+        }
+
+        $options = $parameter->options ?? [];
+
+        if ($options && $operator === '=' && !in_array($value, $options, true)) {
+            throw ValidationException::withMessages([
+                'stages' => "{$where}: у параметра «{$parameter->label}» нет варианта «{$value}».",
+            ]);
+        }
+    }
+
     /** @return int[] user ids */
     private function resolveApprovers(WorkflowStage $stage): array
     {
-        if ($stage->resolver === 'group') {
-            if (!$stage->group_department_id && !$stage->group_role) {
-                return [];   // an unbound group would resolve to the whole company
-            }
+        $departmentIds = $stage->group_department_ids
+            ?: array_filter([$stage->group_department_id]);
 
-            return User::where('is_active', true)
-                ->when($stage->group_department_id, fn ($q) => $q->where('department_id', $stage->group_department_id))
-                ->when($stage->group_role, fn ($q) => $q->where('role', $stage->group_role))
-                ->pluck('id')
-                ->all();
-        }
+        // Параллельная группа: конкретные участники и целые отделы складываются.
+        // Роль сужает только отделы — сам по себе список людей уже конкретен.
+        $fromGroup = ($departmentIds || $stage->group_role)
+            ? $this->usersOf($departmentIds, $stage->resolver === 'group' ? $stage->group_role : null)
+            : [];
 
-        return $stage->approvers->pluck('approver_id')->all();
+        return array_values(array_unique(array_merge(
+            $stage->approvers->pluck('approver_id')->all(),
+            $fromGroup,
+        )));
+    }
+
+    /** @return int[] user ids */
+    private function resolveBranchApprovers(WorkflowStageBranch $branch): array
+    {
+        return array_values(array_unique(array_merge(
+            $branch->approver_ids ?? [],
+            $branch->department_ids ? $this->usersOf($branch->department_ids, null) : [],
+        )));
+    }
+
+    /** @return int[] user ids */
+    private function usersOf(array $departmentIds, ?string $role): array
+    {
+        return User::where('is_active', true)
+            ->when($departmentIds, fn ($q) => $q->whereIn('department_id', $departmentIds))
+            ->when($role, fn ($q) => $q->where('role', $role))
+            ->pluck('id')
+            ->all();
     }
 
     private function nextVersionLabel(Workflow $scenario): string

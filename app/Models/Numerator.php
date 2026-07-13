@@ -26,6 +26,6 @@ class Numerator extends Model
     public function allowsManualFor(User $user): bool
     {
         return $this->allow_manual
-            && (empty($this->manual_roles) || in_array($user->role, $this->manual_roles, true));
+            && (empty($this->manual_roles) || $user->hasAnyRole($this->manual_roles));
     }
 }

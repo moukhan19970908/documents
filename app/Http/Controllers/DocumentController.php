@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreDocumentRequest;
+use App\Models\BlankTemplate;
 use App\Models\Chat;
 use App\Models\Document;
 use App\Models\DocumentApproval;
@@ -21,6 +22,7 @@ use App\Services\PdfGeneratorService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Mews\Purifier\Facades\Purifier;
 
 class DocumentController extends Controller
 {
@@ -125,7 +127,7 @@ class DocumentController extends Controller
             ->with('department')
             ->orderBy('name');
 
-        if ($user->role === 'linear' && $user->department_id) {
+        if ($user->hasRole('linear') && !$user->hasAnyRole(['admin', 'director']) && $user->department_id) {
             $deptHeadId = $user->department?->head_user_id;
             $approversQuery->where(function ($q) use ($user, $deptHeadId) {
                 $q->where('department_id', $user->department_id);
@@ -165,7 +167,7 @@ class DocumentController extends Controller
         // The classifier drives the form: type → subtype → scenario.
         $documentTypes = DocumentType::where('is_active', true)
             ->with(['fields', 'numerator', 'subtypes' => fn ($q) => $q->where('is_active', true)
-                ->with(['fields', 'numerator', 'workflows.parameters', 'workflows.stages'])])
+                ->with(['fields', 'numerator', 'workflows.parameters', 'workflows.stages', 'workflows.blankTemplates'])])
             ->orderBy('name')
             ->get()
             ->filter(fn (DocumentType $type) => $type->isAvailableFor($user))
@@ -184,11 +186,18 @@ class DocumentController extends Controller
         $isExternal = auth()->user()->isExternal();
 
         $document = DB::transaction(function () use ($request, $data, $isExternal, $namingService) {
+            // Бланк даёт заготовку тела; токены в ней остаются — их подставит показ документа.
+            $blank = $isExternal || !$request->blank_template_id
+                ? null
+                : BlankTemplate::find($request->blank_template_id);
+
             $document = Document::create([
                 'title'               => $request->title,
                 'workflow_id'         => $isExternal ? null : ($request->workflow_id ?: null),
                 'document_type_id'    => $isExternal ? null : ($request->document_type_id ?: null),
                 'document_subtype_id' => $isExternal ? null : ($request->document_subtype_id ?: null),
+                'blank_template_id'   => $blank?->id,
+                'body_html'           => $blank?->content,
                 'initiator_id'        => auth()->id(),
                 'status'              => 'draft',
                 'data'                => $data,
@@ -248,7 +257,7 @@ class DocumentController extends Controller
     private function availableWorkflows(User $user)
     {
         return Workflow::where('is_active', true)
-            ->with(['stages.approvers.user'])
+            ->with(['stages.approvers.user', 'blankTemplates'])
             ->orderBy('name')
             ->get()
             ->filter(function ($workflow) use ($user) {
@@ -269,13 +278,14 @@ class DocumentController extends Controller
             ->values();
     }
 
-    public function show(Document $document)
+    public function show(Document $document, DocumentNamingService $namingService)
     {
         $this->authorize('view', $document);
 
         $document->load([
             'type.fields',
             'workflow',
+            'blank',
             'initiator.department',
             'files',
             'activeApproval.workflow.stages.approvers.user',
@@ -301,7 +311,7 @@ class DocumentController extends Controller
             ->with('department')
             ->orderBy('name');
 
-        if ($user->role === 'linear' && $user->department_id) {
+        if ($user->hasRole('linear') && !$user->hasAnyRole(['admin', 'director']) && $user->department_id) {
             $deptHeadId = $user->department?->head_user_id;
             $approversQuery->where(function ($q) use ($user, $deptHeadId) {
                 $q->where('department_id', $user->department_id);
@@ -319,7 +329,31 @@ class DocumentController extends Controller
             ->latest()
             ->first();
 
-        return view('documents.show', compact('document', 'approvers', 'chat'));
+        // Токены бланка подставляются при показе: номер и дата приходят к документу
+        // позже, при регистрации, — в сохранённом теле они так и остаются токенами.
+        $blankBody = $namingService->fillBlank($document);
+
+        return view('documents.show', compact('document', 'approvers', 'chat', 'blankBody'));
+    }
+
+    /** Тело документа, заполняемого по бланку. Токены в нём остаются — их подставит показ. */
+    public function updateBlank(Request $request, Document $document)
+    {
+        $this->authorize('update', $document);
+
+        abort_if($document->blank_template_id === null, 404);
+
+        $validated = $request->validate(['body_html' => ['nullable', 'string']]);
+
+        $document->update([
+            'body_html' => filled($validated['body_html'] ?? null)
+                ? Purifier::clean($validated['body_html'], 'blank')
+                : null,
+        ]);
+
+        $this->auditService->log('document_blank_updated', $document);
+
+        return redirect()->route('documents.show', $document)->with('success', 'Бланк сохранён.');
     }
 
     public function storeNote(Request $request, Document $document)

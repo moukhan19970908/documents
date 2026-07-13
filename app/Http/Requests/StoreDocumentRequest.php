@@ -29,6 +29,7 @@ class StoreDocumentRequest extends FormRequest
             'parameters'          => ['nullable', 'array'],
             'parameters.*'        => ['nullable', 'string', 'max:255'],
             'deadline_at'         => ['nullable', 'date'],
+            'blank_template_id'   => ['nullable', 'exists:blank_templates,id'],
             'file'                => ['nullable', 'file', 'max:51200'], // 50MB
             'approvers'           => ['nullable', 'array'],
             'approvers.*'         => ['integer', 'exists:users,id'],
@@ -83,6 +84,37 @@ class StoreDocumentRequest extends FormRequest
                         $validator->errors()->add("parameters.{$parameter->key}", "Параметр «{$parameter->label}» обязателен.");
                     }
                 }
+            },
+
+            // Способ принести документ задан сценарием: его бланки и разрешение на загрузку файла.
+            function (Validator $validator) {
+                $workflow = $this->workflow_id ? Workflow::with('blankTemplates')->find($this->workflow_id) : null;
+
+                if (!$workflow || $workflow->blankTemplates->isEmpty()) {
+                    return;
+                }
+
+                $blankId = $this->blank_template_id;
+
+                if ($blankId) {
+                    if (!$workflow->blankTemplates->contains('id', (int) $blankId)) {
+                        $validator->errors()->add('blank_template_id', 'Этот бланк не предусмотрен выбранным сценарием.');
+                    }
+
+                    return;
+                }
+
+                if ($this->hasFile('file')) {
+                    if (!$workflow->allow_file_upload) {
+                        $validator->errors()->add('file', 'В этом сценарии документ заполняется по бланку — загрузка файла запрещена.');
+                    }
+
+                    return;
+                }
+
+                $validator->errors()->add('blank_template_id', $workflow->allow_file_upload
+                    ? 'Выберите бланк или загрузите готовый файл.'
+                    : 'Выберите бланк — этот сценарий не принимает готовый файл.');
             },
         ];
     }

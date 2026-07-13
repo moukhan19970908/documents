@@ -38,10 +38,14 @@ class DocumentApproval extends Model
 
     public function activeStage()
     {
+        // «accepted» — звено приёма, уже принятое к исполнению: оно всё ещё активно,
+        // исполнитель должен нажать «Исполнено».
+        $active = ['in_progress', 'accepted'];
+
         // Use loaded collection if available to avoid extra query
         if ($this->relationLoaded('stages')) {
-            return $this->stages->firstWhere('status', 'in_progress');
+            return $this->stages->whereIn('status', $active)->first();
         }
-        return $this->stages()->where('status', 'in_progress')->first();
+        return $this->stages()->whereIn('status', $active)->first();
     }
 }

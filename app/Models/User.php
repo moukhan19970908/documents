@@ -5,6 +5,7 @@ namespace App\Models;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -44,6 +45,40 @@ class User extends Authenticatable
         return $this->belongsTo(Department::class);
     }
 
+    /** Additional roles beyond the primary one stored in users.role. */
+    public function roles(): BelongsToMany
+    {
+        return $this->belongsToMany(Role::class);
+    }
+
+    /**
+     * Every role code this user holds: the primary role (users.role) plus
+     * every role attached through the role_user pivot.
+     *
+     * @return array<int, string>
+     */
+    public function roleCodes(): array
+    {
+        $codes = $this->roles->pluck('code')->all();
+
+        if ($this->role) {
+            $codes[] = $this->role;
+        }
+
+        return array_values(array_unique($codes));
+    }
+
+    public function hasRole(string $code): bool
+    {
+        return in_array($code, $this->roleCodes(), true);
+    }
+
+    /** @param array<int, string> $codes */
+    public function hasAnyRole(array $codes): bool
+    {
+        return (bool) array_intersect($codes, $this->roleCodes());
+    }
+
     public function documents(): HasMany
     {
         return $this->hasMany(Document::class, 'initiator_id');
@@ -71,12 +106,12 @@ class User extends Authenticatable
 
     public function isAdmin(): bool
     {
-        return $this->role === 'admin';
+        return $this->hasRole('admin');
     }
 
     public function isExternal(): bool
     {
-        return $this->role === 'external';
+        return $this->hasRole('external');
     }
 
     /**
@@ -181,7 +216,7 @@ class User extends Authenticatable
 
     public function isManager(): bool
     {
-        return ($this->role_level ?? 1) >= 2 || in_array($this->role, ['admin', 'director']);
+        return ($this->role_level ?? 1) >= 2 || $this->hasAnyRole(['admin', 'director']);
     }
 
     /**
@@ -199,7 +234,7 @@ class User extends Authenticatable
 
     public function isAccounting(): bool
     {
-        return $this->role === 'archiver'; // mapping archiver → accounting role
+        return $this->hasRole('archiver'); // mapping archiver → accounting role
     }
 
     public function manager(): BelongsTo

@@ -154,7 +154,7 @@
             {{-- Approval actions --}}
             @if($trip->status === 'pending')
                 @php
-                    $canApproveTrip = auth()->user()->role !== 'linear'
+                    $canApproveTrip = (!auth()->user()->hasRole('linear') || auth()->user()->isManager())
                         && $trip->route
                         && $trip->route->steps->where('step_order', $trip->current_step)->first()?->approverUser?->id === auth()->id();
                 @endphp
