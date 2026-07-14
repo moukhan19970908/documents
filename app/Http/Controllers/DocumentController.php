@@ -22,7 +22,7 @@ use App\Services\PdfGeneratorService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use Mews\Purifier\Facades\Purifier;
+use App\Services\BlankSanitizer;
 
 class DocumentController extends Controller
 {
@@ -31,6 +31,7 @@ class DocumentController extends Controller
         private DocumentVersionService $versionService,
         private PdfGeneratorService $pdfService,
         private ApprovalEngineService $approvalEngine,
+        private BlankSanitizer $blankSanitizer,
     ) {}
 
     public function index(Request $request)
@@ -196,7 +197,7 @@ class DocumentController extends Controller
             // Тело: то, что инициатор набрал в редакторе на шаге «Документ»; если он его
             // не трогал — заготовка бланка как есть.
             $body = $blank
-                ? ($request->filled('body_html') ? Purifier::clean($request->input('body_html'), 'blank') : $blank->content)
+                ? ($request->filled('body_html') ? $this->blankSanitizer->clean($request->input('body_html')) : $blank->content)
                 : null;
 
             $document = Document::create([
@@ -368,7 +369,7 @@ class DocumentController extends Controller
 
         $document->update([
             'body_html' => filled($validated['body_html'] ?? null)
-                ? Purifier::clean($validated['body_html'], 'blank')
+                ? $this->blankSanitizer->clean($validated['body_html'])
                 : null,
         ]);
 
