@@ -63,13 +63,21 @@ class ApprovalEngineService
     /**
      * @param array $parameterValues answers to the scenario's launch parameters (v2 only) —
      *                               they decide which stages join the route and are frozen here.
+     * @param array $adhoc           участники, добавленные инициатором при запуске:
+     *                               ['ack' => [id, ...], 'intake' => [id, ...]]
      */
-    public function startApproval(Document $doc, Workflow $workflow, array $parameterValues = []): DocumentApproval    {
+    public function startApproval(Document $doc, Workflow $workflow, array $parameterValues = [], array $adhoc = []): DocumentApproval    {
         // v2 runs off an immutable published version, so editing the scenario never rewrites a
         // route that is already in flight. v1 keeps running off its live stages, as before.
         $definition = $workflow->isV2() && !$workflow->is_version
             ? $this->publishedVersionOrFail($workflow)
             : $workflow;
+
+        // Добавленные участники ознакомления и приёма — свойство этого документа, а не сценария.
+        // Поэтому маршрут форкается в копию, которую видит только он: общая версия не меняется.
+        if ($this->hasAdhoc($adhoc)) {
+            $definition = $this->forkForDocument($definition, $doc, $adhoc);
+        }
 
         return DB::transaction(function () use ($doc, $definition, $parameterValues) {
             // Registration happens here — the launch is the moment a draft becomes a numbered
@@ -126,6 +134,88 @@ class ApprovalEngineService
             $this->chatService->createForProcess($approval);
 
             return $approval;
+        });
+    }
+
+    /** @param array<string, int[]> $adhoc */
+    private function hasAdhoc(array $adhoc): bool
+    {
+        return (bool) array_filter(array_map('array_filter', array_values($adhoc)));
+    }
+
+    /**
+     * Копия маршрута под один документ: те же звенья и те же исполнители, плюс участники,
+     * которых инициатор добавил в фазы ознакомления и приёма. Копия помечена как версия и
+     * неактивна, поэтому не попадает ни в один список сценариев.
+     *
+     * @param array<string, int[]> $adhoc
+     */
+    private function forkForDocument(Workflow $definition, Document $doc, array $adhoc): Workflow
+    {
+        $definition->loadMissing('stages.approvers');
+
+        return DB::transaction(function () use ($definition, $doc, $adhoc) {
+            // Родитель форка — сама версия, а не сценарий, и published_at пуст: иначе форк
+            // попал бы в цепочку версий сценария и publishedVersion() отдавал бы его
+            // следующим документам как «последнюю публикацию».
+            $fork = $definition->replicate(['published_at']);
+            $fork->is_version         = true;
+            $fork->is_active          = false;
+            $fork->parent_workflow_id = $definition->id;
+            $fork->version_label      = 'документ #' . $doc->id;
+            $fork->published_at       = null;
+            $fork->save();
+
+            $order = 0;
+
+            foreach ($definition->stages as $stage) {
+                $copy = $stage->replicate();
+                $copy->workflow_id = $fork->id;
+                $copy->sort_order  = $order++;
+                $copy->save();
+
+                foreach ($stage->approvers as $approver) {
+                    $approverCopy = $approver->replicate();
+                    $approverCopy->workflow_stage_id = $copy->id;
+                    $approverCopy->save();
+                }
+            }
+
+            foreach (['ack', 'intake'] as $phase) {
+                $userIds = array_filter($adhoc[$phase] ?? []);
+
+                if (!$userIds) {
+                    continue;
+                }
+
+                // Есть такое звено в сценарии — дописываем людей в него; нет — заводим звено
+                // только для этого документа.
+                $stage = $fork->stages()->where('phase', $phase)->orderBy('sort_order')->first()
+                    ?? WorkflowStage::create([
+                        'workflow_id' => $fork->id,
+                        'name'        => $phase === 'ack' ? 'Ознакомление' : 'Приём',
+                        'phase'       => $phase,
+                        'stage_type'  => 'parallel',
+                        'policy'      => 'all',
+                        'resolver'    => 'user',
+                        'is_blocking' => false,
+                        'sort_order'  => $order++,
+                    ]);
+
+                $existing = $stage->approvers()->pluck('approver_id')->all();
+
+                foreach (array_diff($userIds, $existing) as $userId) {
+                    WorkflowStageApprover::create([
+                        'workflow_stage_id' => $stage->id,
+                        'approver_type'     => 'user',
+                        'approver_id'       => $userId,
+                        'is_required'       => true,
+                        'participant_type'  => 'signatory',
+                    ]);
+                }
+            }
+
+            return $fork->load('stages.approvers');
         });
     }
 

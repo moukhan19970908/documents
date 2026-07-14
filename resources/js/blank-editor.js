@@ -334,6 +334,12 @@ export function blankEditor({ content = '' } = {}) {
             editor?.chain().focus()[command](...args).run();
         },
 
+        /** Подменить тело целиком — при выборе другого бланка на шаге «Документ». */
+        setContent(html) {
+            editor?.commands.setContent(html || '<p></p>', false);
+            this.html = editor?.getHTML() ?? '';
+        },
+
         isActive(name, attrs = {}) {
             this.tick; // читаем счётчик — иначе Alpine не пересчитает класс кнопки
             return editor?.isActive(name, attrs) ?? false;

@@ -82,7 +82,11 @@
       "Bash(curl -s -c /tmp/rj2.txt __TRACKED_VAR__/login -o /tmp/loginpage.html -w 'GET /login: %{http_code}\\\\n')",
       "Bash(grep -o -E '<input[^>]{0,200}>' /tmp/loginpage.html | sed 's/class=\"[^\"]*\"//' | head -5)",
       "Bash(grep -o -E '\\(name|type\\)=\"[^\"]*\"' /tmp/loginpage.html | sort | uniq -c | sort -rn | head -12; echo '--- form:'; grep -o -E '<form[^>]*>' /tmp/loginpage.html)",
-      "Bash(rm -f /tmp/rj*.txt /tmp/loginpage.html /tmp/roles.html /tmp/out.html)"
+      "Bash(rm -f /tmp/rj*.txt /tmp/loginpage.html /tmp/roles.html /tmp/out.html)",
+      "Bash(sed 's/^/чекбоксов: /')",
+      "Bash(npx --no-install playwright --version)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(J=/tmp/c.txt; rm -f $J; B=http://127.0.0.1:8321 *)"
     ],
     "additionalDirectories": [
       "C:\\xampp\\php",

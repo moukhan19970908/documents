@@ -122,6 +122,10 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
         Route::post('access-control/departments/{department}/tasks-access', [AccessControlController::class, 'updateDeptTasksAccess'])->name('access-control.depts.tasks-access');
         Route::post('access-control/users/{user}/archive-access', [AccessControlController::class, 'updateUserArchiveAccess'])->name('access-control.users.archive-access');
         Route::post('access-control/departments/{department}/archive-access', [AccessControlController::class, 'updateDeptArchiveAccess'])->name('access-control.depts.archive-access');
+        Route::get('roles/matrix', [RoleController::class, 'matrix'])->name('roles.matrix');
+        Route::get('roles/watchers', [RoleController::class, 'watchers'])->name('roles.watchers');
+        Route::get('roles/personal', [RoleController::class, 'personal'])->name('roles.personal');
+        Route::get('roles/directions', [RoleController::class, 'directions'])->name('roles.directions');
         Route::resource('roles', RoleController::class)->except(['show']);
         Route::post('roles/{role}/duplicate', [RoleController::class, 'duplicate'])->name('roles.duplicate');
         Route::resource('users', UserController::class);

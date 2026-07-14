@@ -30,6 +30,13 @@ class StoreDocumentRequest extends FormRequest
             'parameters.*'        => ['nullable', 'string', 'max:255'],
             'deadline_at'         => ['nullable', 'date'],
             'blank_template_id'   => ['nullable', 'exists:blank_templates,id'],
+            'body_html'           => ['nullable', 'string'],
+            'action'              => ['nullable', 'in:draft,launch'],
+            'adhoc'               => ['nullable', 'array:ack,intake'],
+            'adhoc.ack'           => ['nullable', 'array'],
+            'adhoc.ack.*'         => ['integer', 'exists:users,id'],
+            'adhoc.intake'        => ['nullable', 'array'],
+            'adhoc.intake.*'      => ['integer', 'exists:users,id'],
             'file'                => ['nullable', 'file', 'max:51200'], // 50MB
             'approvers'           => ['nullable', 'array'],
             'approvers.*'         => ['integer', 'exists:users,id'],

@@ -165,9 +165,11 @@ class DocumentController extends Controller
         $workflows = $this->availableWorkflows($user);
 
         // The classifier drives the form: type → subtype → scenario.
+        // Звенья с исполнителями — визард показывает маршрут по фазам ещё до запуска.
         $documentTypes = DocumentType::where('is_active', true)
             ->with(['fields', 'numerator', 'subtypes' => fn ($q) => $q->where('is_active', true)
-                ->with(['fields', 'numerator', 'workflows.parameters', 'workflows.stages', 'workflows.blankTemplates'])])
+                ->with(['fields', 'numerator', 'workflows.parameters', 'workflows.blankTemplates',
+                        'workflows.stages' => fn ($s) => $s->orderBy('sort_order')->with('approvers.user')])])
             ->orderBy('name')
             ->get()
             ->filter(fn (DocumentType $type) => $type->isAvailableFor($user))
@@ -191,13 +193,19 @@ class DocumentController extends Controller
                 ? null
                 : BlankTemplate::find($request->blank_template_id);
 
+            // Тело: то, что инициатор набрал в редакторе на шаге «Документ»; если он его
+            // не трогал — заготовка бланка как есть.
+            $body = $blank
+                ? ($request->filled('body_html') ? Purifier::clean($request->input('body_html'), 'blank') : $blank->content)
+                : null;
+
             $document = Document::create([
                 'title'               => $request->title,
                 'workflow_id'         => $isExternal ? null : ($request->workflow_id ?: null),
                 'document_type_id'    => $isExternal ? null : ($request->document_type_id ?: null),
                 'document_subtype_id' => $isExternal ? null : ($request->document_subtype_id ?: null),
                 'blank_template_id'   => $blank?->id,
-                'body_html'           => $blank?->content,
+                'body_html'           => $body,
                 'initiator_id'        => auth()->id(),
                 'status'              => 'draft',
                 'data'                => $data,
@@ -220,12 +228,25 @@ class DocumentController extends Controller
 
         $this->registerManually($document, $request->manual_number, $numberService);
 
+        // Шаг «Запуск» даёт выбор: сохранить черновиком или сразу отправить по маршруту.
+        // Черновик остаётся без номера и без маршрута — запустить его можно со страницы документа.
+        if ($request->input('action') === 'draft') {
+            return redirect()->route('documents.show', $document)
+                ->with('success', 'Черновик сохранён. Запустить согласование можно на этой странице.');
+        }
+
         // Auto-start approval from the selected workflow
         if ($document->workflow_id) {
             $workflow = Workflow::with('stages.approvers')->find($document->workflow_id);
             if ($workflow) {
-                // Answers to the launch parameters decide which stages join this document's route.
-                $this->approvalEngine->startApproval($document, $workflow, $request->input('parameters', []));
+                // Answers to the launch parameters decide which stages join this document's route;
+                // adhoc — участники ознакомления и приёма, добавленные инициатором при запуске.
+                $this->approvalEngine->startApproval(
+                    $document,
+                    $workflow,
+                    $request->input('parameters', []),
+                    $request->input('adhoc', []),
+                );
                 $this->auditService->log(auth()->user()->name . ' начал процесс «' . $document->title . '»', $document);
             }
         } elseif ($request->filled('approvers') && is_array($request->approvers)) {

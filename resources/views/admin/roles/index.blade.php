@@ -7,11 +7,14 @@
             : (in_array($n % 10, [2, 3, 4]) && !in_array($n % 100, [12, 13, 14]) ? 'пользователя' : 'пользователей');
     @endphp
 
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">Роли и доступы</h1>
+    </div>
+
+    @include('admin.roles.partials.tabs')
+
     <div class="mb-6 flex items-center justify-between">
-        <div>
-            <h1 class="text-2xl font-bold text-gray-900">Роли и доступы</h1>
-            <p class="text-sm text-gray-500 mt-1">Роль задаёт права пользователя. Один пользователь может иметь несколько ролей.</p>
-        </div>
+        <p class="text-sm text-gray-500">Роль задаёт права пользователя. Один пользователь может иметь несколько ролей.</p>
         <a href="{{ route('admin.roles.create') }}" class="flex items-center gap-2 bg-[#5B4FE8] text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
             Новая роль

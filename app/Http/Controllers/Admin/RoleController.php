@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Department;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\AuditService;
@@ -24,6 +25,61 @@ class RoleController extends Controller
         ]);
 
         return view('admin.roles.index', compact('roles', 'holders'));
+    }
+
+    public function matrix()
+    {
+        $roles = Role::orderByDesc('level')->orderBy('name')->get();
+        $groups = config('permissions');
+
+        return view('admin.roles.matrix', compact('roles', 'groups'));
+    }
+
+    public function watchers()
+    {
+        $users = User::where('is_active', true)->orderBy('name')->get();
+
+        // Верстка: правил наблюдения в БД пока нет, показываем пары реальных
+        // пользователей как заглушку, чтобы было видно раскладку строк.
+        $rules = $users->take(3)->values()->map(fn (User $watcher, int $i) => [
+            'watcher' => $watcher,
+            'target'  => $users->skip(3 + $i)->first() ?? $users->last(),
+            'scope'   => 'наблюдает за всеми документами, где участвует',
+        ]);
+
+        return view('admin.roles.watchers', compact('rules', 'users'));
+    }
+
+    public function personal()
+    {
+        $users = User::where('is_active', true)->orderBy('name')->get();
+
+        $permissions = collect(config('permissions'))
+            ->flatMap(fn (array $group) => $group['items'])
+            ->map(fn (array $item) => ['key' => $item['key'], 'label' => $item['label']]);
+
+        // Верстка: персональных прав в БД пока нет — строки собраны как заглушка.
+        $grants = collect([
+            ['scope' => 'Отдел дистрибуции',      'permission' => 'Формировать реестры заявок', 'until' => '31.12.2026'],
+            ['scope' => 'Направление «Продажи»',  'permission' => 'Видеть все приказы',         'until' => null],
+            ['scope' => 'Ключевые клиенты',       'permission' => 'Инициировать проверки',      'until' => '01.10.2026'],
+        ])->map(fn (array $grant, int $i) => $grant + [
+            'user'      => $users->skip($i)->first(),
+            'granted_by' => $users->skip(4 + $i)->first() ?? $users->last(),
+        ]);
+
+        return view('admin.roles.personal', compact('grants', 'users', 'permissions'));
+    }
+
+    public function directions()
+    {
+        $directions = Department::whereNull('parent_id')
+            ->with('head')
+            ->withCount('children')
+            ->orderBy('name')
+            ->get();
+
+        return view('admin.roles.directions', compact('directions'));
     }
 
     public function create()

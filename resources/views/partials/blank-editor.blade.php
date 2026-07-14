@@ -16,7 +16,9 @@
     $sep = '<div class="w-px h-5 bg-gray-200 mx-1 shrink-0"></div>';
 @endphp
 
-<div x-data="blankEditor({ content: @js($content) })" class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+<div x-data="blankEditor({ content: @js($content) })"
+     @set-blank-content.window="setContent($event.detail.html)"
+     class="bg-white rounded-xl border border-gray-200 overflow-hidden">
     <input type="hidden" name="{{ $inputName }}" :value="html">
 
     {{-- Панель инструментов --}}
