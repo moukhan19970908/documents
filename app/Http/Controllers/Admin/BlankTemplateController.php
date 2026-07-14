@@ -6,17 +6,16 @@ use App\Http\Controllers\Controller;
 use App\Models\BlankTemplate;
 use App\Models\DocumentType;
 use App\Services\AuditService;
-use App\Services\BlankSanitizer;
 use App\Services\DocumentNamingService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Mews\Purifier\Facades\Purifier;
 
 class BlankTemplateController extends Controller
 {
     public function __construct(
         private AuditService $auditService,
         private DocumentNamingService $namingService,
-        private BlankSanitizer $blankSanitizer,
     ) {}
 
     public function index()
@@ -92,7 +91,7 @@ class BlankTemplateController extends Controller
 
         // Редактор отдаёт HTML — в базу он попадает только через белый список тегов.
         $validated['content']   = filled($validated['content'] ?? null)
-            ? $this->blankSanitizer->clean($validated['content'])
+            ? Purifier::clean($validated['content'], 'blank')
             : null;
         $validated['is_active'] = (bool) ($validated['is_active'] ?? false);
 
