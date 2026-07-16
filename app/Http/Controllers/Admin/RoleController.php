@@ -4,10 +4,13 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Department;
+use App\Models\DocumentWatcher;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\AuditService;
+use App\Support\Permissions;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class RoleController extends Controller
@@ -32,22 +35,102 @@ class RoleController extends Controller
         $roles = Role::orderByDesc('level')->orderBy('name')->get();
         $groups = config('permissions');
 
-        return view('admin.roles.matrix', compact('roles', 'groups'));
+        // Состояние галочек берём из БД: permission => [role_id, ...].
+        $granted = DB::table('role_permissions')
+            ->get(['permission', 'role_id'])
+            ->groupBy('permission')
+            ->map(fn ($rows) => $rows->pluck('role_id')->all())
+            ->all();
+
+        return view('admin.roles.matrix', compact('roles', 'groups', 'granted'));
+    }
+
+    public function updateMatrix(Request $request)
+    {
+        $submitted = $request->input('permissions', []);
+        $keys = Permissions::allKeys();
+
+        DB::transaction(function () use ($keys, $submitted) {
+            DB::table('role_permissions')->whereIn('permission', $keys)->delete();
+
+            $rows = [];
+            foreach ($keys as $key) {
+                foreach ($submitted[$key] ?? [] as $roleId) {
+                    $rows[] = ['role_id' => (int) $roleId, 'permission' => $key];
+                }
+            }
+
+            foreach (array_chunk($rows, 500) as $chunk) {
+                DB::table('role_permissions')->insert($chunk);
+            }
+        });
+
+        Permissions::clearCache();
+        $this->auditService->log('roles_matrix_updated');
+
+        return redirect()->route('admin.roles.matrix')->with('success', 'Матрица прав сохранена.');
     }
 
     public function watchers()
     {
         $users = User::where('is_active', true)->orderBy('name')->get();
 
-        // Верстка: правил наблюдения в БД пока нет, показываем пары реальных
-        // пользователей как заглушку, чтобы было видно раскладку строк.
-        $rules = $users->take(3)->values()->map(fn (User $watcher, int $i) => [
-            'watcher' => $watcher,
-            'target'  => $users->skip(3 + $i)->first() ?? $users->last(),
-            'scope'   => 'наблюдает за всеми документами, где участвует',
-        ]);
+        $rules = DocumentWatcher::with(['watcher', 'target'])
+            ->orderByDesc('id')
+            ->get();
 
         return view('admin.roles.watchers', compact('rules', 'users'));
+    }
+
+    public function storeWatcher(Request $request)
+    {
+        $data = $this->validateWatcher($request);
+
+        DocumentWatcher::updateOrCreate(
+            ['watcher_id' => $data['watcher_id'], 'target_id' => $data['target_id']],
+            ['scope' => $data['scope']]
+        );
+
+        $this->auditService->log('watcher_created');
+
+        return redirect()->route('admin.roles.watchers')->with('success', 'Правило наблюдения сохранено.');
+    }
+
+    public function updateWatcher(Request $request, DocumentWatcher $watcher)
+    {
+        $data = $this->validateWatcher($request, $watcher);
+
+        // Не даём столкнуться с уникальным ключом (watcher_id, target_id).
+        DocumentWatcher::where('watcher_id', $data['watcher_id'])
+            ->where('target_id', $data['target_id'])
+            ->where('id', '!=', $watcher->id)
+            ->delete();
+
+        $watcher->update($data);
+
+        $this->auditService->log('watcher_updated');
+
+        return redirect()->route('admin.roles.watchers')->with('success', 'Правило наблюдения обновлено.');
+    }
+
+    public function destroyWatcher(DocumentWatcher $watcher)
+    {
+        $watcher->delete();
+
+        $this->auditService->log('watcher_deleted');
+
+        return redirect()->route('admin.roles.watchers')->with('success', 'Правило наблюдения удалено.');
+    }
+
+    private function validateWatcher(Request $request, ?DocumentWatcher $watcher = null): array
+    {
+        return $request->validate([
+            'watcher_id' => ['required', 'integer', 'exists:users,id', 'different:target_id'],
+            'target_id'  => ['required', 'integer', 'exists:users,id'],
+            'scope'      => ['required', Rule::in(array_keys(DocumentWatcher::SCOPES))],
+        ], [
+            'watcher_id.different' => 'Наблюдатель и наблюдаемый должны быть разными пользователями.',
+        ]);
     }
 
     public function personal()
@@ -74,12 +157,89 @@ class RoleController extends Controller
     public function directions()
     {
         $directions = Department::whereNull('parent_id')
-            ->with('head')
-            ->withCount('children')
+            ->with(['head', 'children' => fn ($q) => $q->orderBy('name')])
             ->orderBy('name')
             ->get();
 
-        return view('admin.roles.directions', compact('directions'));
+        // Отделы-кандидаты для добавления в направление (все департаменты).
+        $allDepartments = Department::orderBy('name')->get(['id', 'name', 'parent_id']);
+
+        return view('admin.roles.directions', compact('directions', 'allDepartments'));
+    }
+
+    public function storeDirection(Request $request)
+    {
+        $data = $request->validate([
+            'name'          => ['required', 'string', 'max:255'],
+            'departments'   => ['array'],
+            'departments.*' => ['integer', 'exists:departments,id'],
+        ]);
+
+        $direction = Department::create(['name' => $data['name']]);
+
+        if (!empty($data['departments'])) {
+            Department::whereIn('id', $data['departments'])
+                ->where('id', '!=', $direction->id)
+                ->update(['parent_id' => $direction->id]);
+        }
+
+        $this->auditService->log('direction_created', $direction);
+
+        return redirect()->route('admin.roles.directions')->with('success', 'Направление создано.');
+    }
+
+    public function addDirectionDepartment(Request $request, Department $department)
+    {
+        $data = $request->validate([
+            'department_id' => ['required', 'integer', 'exists:departments,id'],
+        ]);
+
+        $childId = (int) $data['department_id'];
+
+        if ($childId === $department->id
+            || in_array($department->id, Department::getDescendantIds($childId), true)) {
+            return back()->with('error', 'Нельзя добавить этот отдел — возникнет цикл в структуре.');
+        }
+
+        Department::whereKey($childId)->update(['parent_id' => $department->id]);
+
+        $this->auditService->log('direction_department_added', $department);
+
+        return redirect()->route('admin.roles.directions')->with('success', 'Отдел добавлен в направление.');
+    }
+
+    public function removeDirectionDepartment(Department $department, Department $child)
+    {
+        if ((int) $child->parent_id === $department->id) {
+            $child->update(['parent_id' => null]);
+            $this->auditService->log('direction_department_removed', $department);
+        }
+
+        return redirect()->route('admin.roles.directions')->with('success', 'Отдел откреплён от направления.');
+    }
+
+    public function destroyDirection(Department $department)
+    {
+        if ($department->children()->exists()) {
+            return back()->with('error', 'Сначала открепите все отделы направления.');
+        }
+
+        $this->auditService->log('direction_deleted', $department);
+        $department->delete();
+
+        return redirect()->route('admin.roles.directions')->with('success', 'Направление удалено.');
+    }
+
+    public function updateDirectionCrossVisibility(Request $request, Department $department)
+    {
+        $department->update([
+            'cross_visibility' => $request->boolean('cross_visibility'),
+        ]);
+
+        $this->auditService->log('direction_cross_visibility_updated', $department);
+
+        return redirect()->route('admin.roles.directions')
+            ->with('success', 'Настройка направления сохранена.');
     }
 
     public function create()
@@ -96,6 +256,7 @@ class RoleController extends Controller
 
         $role = Role::create($validated);
         $role->users()->sync($userIds);
+        $this->seedDefaultPermissions($role);
 
         $this->auditService->log('role_created', $role);
 
@@ -155,6 +316,16 @@ class RoleController extends Controller
 
         $copy->users()->sync($role->users()->pluck('users.id')->all());
 
+        // Копируем гранты исходной роли.
+        $rows = DB::table('role_permissions')
+            ->where('role_id', $role->id)
+            ->pluck('permission')
+            ->map(fn ($key) => ['role_id' => $copy->id, 'permission' => $key])
+            ->all();
+        if ($rows) {
+            DB::table('role_permissions')->insert($rows);
+        }
+
         $this->auditService->log('role_duplicated', $copy);
 
         return redirect()->route('admin.roles.edit', $copy)->with('success', 'Роль продублирована.');
@@ -174,6 +345,21 @@ class RoleController extends Controller
         ], [
             'code.regex' => 'Код может содержать только латиницу в нижнем регистре, цифры и «_», и должен начинаться с буквы.',
         ]);
+    }
+
+    /** Засеять новой роли гранты по дефолтам каталога (only/except). */
+    private function seedDefaultPermissions(Role $role): void
+    {
+        $rows = [];
+        foreach (Permissions::items() as $item) {
+            if (Permissions::defaultAllows($item, $role->code)) {
+                $rows[] = ['role_id' => $role->id, 'permission' => $item['key']];
+            }
+        }
+
+        if ($rows) {
+            DB::table('role_permissions')->insert($rows);
+        }
     }
 
     private function uniqueCode(string $base): string

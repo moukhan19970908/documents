@@ -21,6 +21,7 @@ class DatabaseSeeder extends Seeder
             UserSeeder::class,
             DocumentTypeSeeder::class,
             WorkflowSeeder::class,
+            OrderSeeder::class,
         ]);
     }
 }

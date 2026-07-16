@@ -7,11 +7,26 @@
 
     @include('admin.roles.partials.tabs')
 
-    <div x-data="{ open: @js(collect($groups)->mapWithKeys(fn ($g) => [$g['key'] => true])) }">
+    @if(session('success'))
+        <div class="mb-4 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-700">
+            {{ session('success') }}
+        </div>
+    @endif
 
-        <div class="flex items-center gap-2 mb-4">
-            <span class="w-4 h-4 rounded border-2 border-amber-400 bg-amber-50 shrink-0"></span>
-            <span class="text-xs text-gray-500">узкое право — используйте выборочно</span>
+    <form method="POST" action="{{ route('admin.roles.matrix.update') }}"
+          x-data="{ open: @js(collect($groups)->mapWithKeys(fn ($g) => [$g['key'] => true])) }">
+        @csrf
+        @method('PUT')
+
+        <div class="flex items-center justify-between gap-2 mb-4">
+            <div class="flex items-center gap-2">
+                <span class="w-4 h-4 rounded border-2 border-amber-400 bg-amber-50 shrink-0"></span>
+                <span class="text-xs text-gray-500">узкое право — используйте выборочно</span>
+            </div>
+            <button type="submit"
+                    class="px-4 py-2 rounded-lg bg-[#5B4FE8] text-white text-sm font-medium hover:bg-[#4a3fd0] transition-colors">
+                Сохранить
+            </button>
         </div>
 
         <div class="bg-white rounded-xl border border-gray-200 overflow-auto max-h-[calc(100vh-16rem)]">
@@ -48,19 +63,32 @@
                         </tr>
 
                         @foreach($group['items'] as $item)
-                            <tr x-show="open[@js($group['key'])]" class="hover:bg-gray-50/50">
-                                <td class="sticky left-0 z-10 bg-white border-b border-gray-100 px-5 py-2.5
+                            @php $narrow = $item['narrow'] ?? false; @endphp
+                            <tr x-show="open[@js($group['key'])]" class="{{ $narrow ? 'bg-amber-50/40' : 'hover:bg-gray-50/50' }}">
+                                <td class="sticky left-0 z-10 border-b border-gray-100 px-5 py-2.5
+                                           {{ $narrow ? 'bg-[#FEFCF3]' : 'bg-white' }}
                                            {{ ($item['depth'] ?? 0) > 0 ? 'pl-11' : '' }}">
                                     <span class="text-sm {{ ($item['depth'] ?? 0) > 0 ? 'text-gray-600' : 'font-semibold text-gray-900' }}">
                                         {{ $item['label'] }}
                                     </span>
+                                    @if($narrow)
+                                        <svg class="inline-block w-3.5 h-3.5 text-amber-500 ml-1 -mt-0.5" xmlns="http://www.w3.org/2000/svg"
+                                             fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+                                             title="Узкое право — используйте выборочно">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"/>
+                                        </svg>
+                                    @endif
                                 </td>
 
                                 @foreach($roles as $role)
+                                    @php
+                                        // Состояние берём из БД (role_permissions), см. RoleController::matrix.
+                                        $allowed = in_array($role->id, $granted[$item['key']] ?? []);
+                                    @endphp
                                     <td class="border-b border-gray-100 text-center">
                                         <input type="checkbox"
                                                name="permissions[{{ $item['key'] }}][]" value="{{ $role->id }}"
-                                               @checked(!in_array($role->code, $item['except'], true))
+                                               @checked($allowed)
                                                class="w-5 h-5 rounded cursor-pointer
                                                       {{ ($item['narrow'] ?? false)
                                                          ? 'accent-amber-500 border-amber-300'
@@ -75,7 +103,7 @@
         </div>
 
         <p class="text-xs text-gray-400 mt-3">
-            Верстка: галочки пока не сохраняются и ни на что не влияют — состояние строится из <code>config/permissions.php</code>.
+            Раздел «Видимость меню» управляет пунктами сайдбара для ролей. Остальные разделы сохраняются, но применение — в разработке.
         </p>
-    </div>
+    </form>
 </x-app-layout>

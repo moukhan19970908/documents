@@ -127,10 +127,11 @@
         ];
     @endphp
 
+    @php $backRoute = $processMeta['index_route'] ?? 'documents.index'; @endphp
     <div x-data="documentCreate()" x-cloak>
 
         <div class="mb-5">
-            <h1 class="text-xl font-bold text-gray-900">Запуск нового документа</h1>
+            <h1 class="text-xl font-bold text-gray-900">{{ $processMeta ? 'Новый документ — ' . $processMeta['label'] : 'Запуск нового документа' }}</h1>
         </div>
 
         {{-- Степпер --}}
@@ -326,7 +327,7 @@
                 </div>
 
                 <div class="flex items-center justify-between pt-2">
-                    <a href="{{ route('documents.index') }}" class="px-6 py-2.5 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-50">Отмена</a>
+                    <a href="{{ route($backRoute) }}" class="px-6 py-2.5 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-50">Отмена</a>
                     <button type="button" @click="step = 2" :disabled="!canLeaveStep1()"
                             :class="canLeaveStep1() ? 'bg-[#5B4FE8] hover:bg-indigo-700' : 'bg-gray-200 cursor-not-allowed'"
                             class="flex items-center gap-2 text-white px-6 py-2.5 rounded-lg text-sm font-medium">

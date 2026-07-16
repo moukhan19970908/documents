@@ -1,27 +1,34 @@
 <x-app-layout>
-    <x-slot name="title">Документы — Vamin</x-slot>
+    @php $listRoute = $processMeta['index_route'] ?? 'documents.index'; @endphp
+    <x-slot name="title">{{ $processMeta['label'] ?? 'Документы' }} — Vamin</x-slot>
 
     <div class="flex items-center justify-between mb-6" x-data="customScenario">
         <div>
-            <h1 class="text-2xl font-bold text-gray-900">Документы</h1>
-            <p class="text-sm text-gray-500 mt-1">Все документы рабочего пространства</p>
+            <h1 class="text-2xl font-bold text-gray-900">{{ $processMeta['label'] ?? 'Документы' }}</h1>
+            <p class="text-sm text-gray-500 mt-1">{{ $processMeta ? 'Документы процесса «' . $processMeta['label'] . '»' : 'Все документы рабочего пространства' }}</p>
         </div>
-        <button type="button" @click="open = true" class="flex items-center gap-2 bg-[#5B4FE8] text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-            Свой сценарий
-        </button>
-
-        @include('documents.partials.custom-scenario-modal')
+        @if($processMeta)
+            <a href="{{ route($processMeta['create_route']) }}" class="flex items-center gap-2 bg-[#5B4FE8] text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                Создать
+            </a>
+        @else
+            <button type="button" @click="open = true" class="flex items-center gap-2 bg-[#5B4FE8] text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                Свой сценарий
+            </button>
+            @include('documents.partials.custom-scenario-modal')
+        @endif
     </div>
 
     {{-- Admin scope toggle --}}
     @if(auth()->user()->isAdmin())
     <div class="flex gap-1 mb-4 bg-white border border-gray-200 rounded-lg p-1 w-fit">
-        <a href="{{ route('documents.index', array_merge(request()->except(['scope', 'page']), [])) }}"
+        <a href="{{ route($listRoute, array_merge(request()->except(['scope', 'page']), [])) }}"
            class="px-4 py-1.5 rounded-md text-sm font-medium transition-colors {{ request('scope') !== 'all' ? 'bg-[#5B4FE8] text-white shadow-sm' : 'text-gray-500 hover:text-gray-700' }}">
             Мои документы
         </a>
-        <a href="{{ route('documents.index', array_merge(request()->except(['scope', 'page']), ['scope' => 'all'])) }}"
+        <a href="{{ route($listRoute, array_merge(request()->except(['scope', 'page']), ['scope' => 'all'])) }}"
            class="px-4 py-1.5 rounded-md text-sm font-medium transition-colors {{ request('scope') === 'all' ? 'bg-[#5B4FE8] text-white shadow-sm' : 'text-gray-500 hover:text-gray-700' }}">
             Все документы
         </a>
@@ -79,7 +86,7 @@
         </div>
         <button type="submit" class="px-4 py-2 bg-[#5B4FE8] text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">Найти</button>
         @if(request()->hasAny(['search', 'type', 'status', 'date_from', 'date_to', 'department']))
-            <a href="{{ route('documents.index', request('scope') === 'all' ? ['scope' => 'all'] : []) }}" class="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-50">Сбросить</a>
+            <a href="{{ route($listRoute, request('scope') === 'all' ? ['scope' => 'all'] : []) }}" class="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-50">Сбросить</a>
         @endif
     </form>
 

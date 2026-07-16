@@ -31,8 +31,14 @@
         'type'    => $p->type,
     ])->values();
 
-    $usersForRoute = $users->map(fn ($u) => ['id' => $u->id, 'name' => $u->name])->values();
+    $usersForRoute = $users->map(fn ($u) => [
+        'id'       => $u->id,
+        'name'     => $u->name,
+        'position' => $u->position ?: ($u->department?->name ?? ''),
+    ])->values();
     $departmentsForRoute = $departments->map(fn ($d) => ['id' => $d->id, 'name' => $d->name])->values();
+    // «Отделы» в резолвере = направления (корневые департаменты).
+    $directionsForRoute = ($directions ?? collect())->map(fn ($d) => ['id' => $d->id, 'name' => $d->name])->values();
 @endphp
 
 <div x-data="routeBuilder()" x-show="step === 'route'">
@@ -278,25 +284,41 @@
                                     </label>
                                 </div>
 
-                                <div>
+                                <div class="max-w-[15rem]">
                                     <label class="text-xs text-gray-500 block mb-1">Сотрудники</label>
-                                    <select multiple size="5" x-model.number="current().approver_ids"
-                                            class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
-                                        <template x-for="u in allUsers" :key="u.id">
-                                            <option :value="u.id" x-text="u.name"></option>
+                                    <input type="text" x-model="userSearch" placeholder="Поиск по имени…"
+                                           class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-1.5 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                                    <div class="border border-gray-200 rounded-lg divide-y divide-gray-50" style="max-height: 7.5rem; overflow-y: auto;">
+                                        <template x-for="u in allUsers.filter(u => !userSearch || u.name.toLowerCase().includes(userSearch.toLowerCase()))" :key="u.id">
+                                            <label class="flex items-center gap-2 px-2.5 py-1.5 hover:bg-gray-50 cursor-pointer">
+                                                <input type="checkbox" :value="u.id" x-model.number="current().approver_ids"
+                                                       class="rounded border-gray-300 text-[#5B4FE8] focus:ring-[#5B4FE8]">
+                                                <span class="text-sm text-gray-800" x-text="u.name"></span>
+                                                <span class="ml-auto text-xs text-gray-400 truncate" x-text="u.position"></span>
+                                            </label>
                                         </template>
-                                    </select>
+                                        <p x-show="allUsers.filter(u => !userSearch || u.name.toLowerCase().includes(userSearch.toLowerCase())).length === 0"
+                                           class="text-xs text-gray-400 px-2.5 py-2">Ничего не найдено</p>
+                                    </div>
+                                    <div class="flex flex-wrap gap-1 mt-1.5" x-show="current().approver_ids.length > 0">
+                                        <template x-for="id in current().approver_ids" :key="id">
+                                            <span class="inline-flex items-center gap-1 bg-[#5B4FE8]/8 text-[#5B4FE8] border border-[#5B4FE8]/20 rounded-full px-2 py-0.5 text-xs">
+                                                <span x-text="(allUsers.find(u => u.id === id) || {}).name"></span>
+                                                <button type="button" @click="current().approver_ids = current().approver_ids.filter(x => x !== id)" class="hover:text-red-500">×</button>
+                                            </span>
+                                        </template>
+                                    </div>
                                 </div>
 
                                 <div>
-                                    <label class="text-xs text-gray-500 block mb-1">Отделы</label>
+                                    <label class="text-xs text-gray-500 block mb-1">Направления</label>
                                     <select multiple size="4" x-model.number="current().group_department_ids"
                                             class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
-                                        <template x-for="d in allDepartments" :key="d.id">
+                                        <template x-for="d in allDirections" :key="d.id">
                                             <option :value="d.id" x-text="d.name"></option>
                                         </template>
                                     </select>
-                                    <p class="text-xs text-gray-400 mt-1">Отделы разворачиваются в конкретных людей при публикации. Можно совмещать с сотрудниками — это и есть параллельная группа.</p>
+                                    <p class="text-xs text-gray-400 mt-1">Направление разворачивается во всех сотрудников его отделов при публикации. Можно совмещать с сотрудниками — это и есть параллельная группа.</p>
                                 </div>
 
                                 <div x-show="current().resolver === 'group'">
@@ -304,8 +326,8 @@
                                     <select x-model="current().group_role"
                                             class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
                                         <option value="">— любая —</option>
-                                        @foreach(\App\Models\DocumentType::CREATOR_ROLES as $role => $label)
-                                            <option value="{{ $role }}">{{ $label }}</option>
+                                        @foreach($roles as $r)
+                                            <option value="{{ $r->code }}">{{ $r->name }}</option>
                                         @endforeach
                                     </select>
                                 </div>
@@ -479,6 +501,8 @@ function routeBuilder() {
         parameters: @json($parametersForRoute),
         allUsers: @json($usersForRoute),
         allDepartments: @json($departmentsForRoute),
+        allDirections: @json($directionsForRoute),
+        userSearch: '',
         actionsByKind: @json(\App\Models\WorkflowStage::ACTIONS),
         actionLabels: @json(\App\Models\WorkflowStage::ACTION_LABELS),
         selected: null,

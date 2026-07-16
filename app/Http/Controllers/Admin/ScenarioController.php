@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\BlankTemplate;
 use App\Models\Department;
+use App\Models\Role;
 use App\Models\DocumentApproval;
 use App\Models\DocumentType;
 use App\Models\User;
@@ -237,8 +238,13 @@ class ScenarioController extends Controller
         return [
             'scenario'       => $scenario,
             'documentTypes'  => DocumentType::with(['subtypes', 'numerator'])->orderBy('name')->get(),
-            'users'          => User::where('is_active', true)->where('role', '!=', 'external')->orderBy('name')->get(),
+            'users'          => User::where('is_active', true)->where('role', '!=', 'external')
+                                    ->with('department')->orderBy('name')->get(),
             'departments'    => Department::orderBy('name')->get(),
+            // «Отделы» в резолвере берём как направления (корневые департаменты).
+            'directions'     => Department::whereNull('parent_id')->orderBy('name')->get(),
+            // «Роль / группа» берём из реальных ролей (Роли и доступы).
+            'roles'          => Role::orderByDesc('level')->orderBy('name')->get(),
             'versions'       => $scenario?->versions()->get() ?? collect(),
             'blankTemplates' => BlankTemplate::with('subtype')->where('is_active', true)->orderBy('name')->get(),
         ];

@@ -89,7 +89,13 @@
       "Bash(J=/tmp/c.txt; rm -f $J; B=http://127.0.0.1:8321 *)",
       "Bash(php -r '$l=json_decode\\(file_get_contents\\('\\\\''composer.lock'\\\\''\\),true\\); foreach\\($l['\\\\''packages'\\\\''] as $p\\){ if\\(in_array\\($p['\\\\''name'\\\\''],['\\\\''ezyang/htmlpurifier'\\\\'','\\\\''mews/purifier'\\\\'']\\)\\) echo $p['\\\\''name'\\\\''].'\\\\'' = '\\\\''.$p['\\\\''version'\\\\''].PHP_EOL; }')",
       "Bash(php -r 'echo PHP_VERSION;')",
-      "Bash(echo \"--- локальный PHP: $\\(php -r 'echo PHP_VERSION;'\\)\")"
+      "Bash(echo \"--- локальный PHP: $\\(php -r 'echo PHP_VERSION;'\\)\")",
+      "Bash(curl -s -b /tmp/m2.txt -c /tmp/m2.txt -o /tmp/m3.html -w '%{http_code}' http://127.0.0.1:8321/admin/roles/matrix)",
+      "Bash(pkill -f \"artisan serve\")",
+      "PowerShell(cd c:\\\\xampp\\\\htdocs\\\\documents; php artisan view:clear 2>&1; php -r \"require 'vendor/autoload.php'; \\\\$app=require 'bootstrap/app.php'; \\\\$k=\\\\$app->make\\(Illuminate\\\\Contracts\\\\Console\\\\Kernel::class\\); \\\\$k->bootstrap\\(\\); echo 'rows='.DB::table\\('role_permissions'\\)->count\\(\\).'; roles='.DB::table\\('roles'\\)->count\\(\\).PHP_EOL; \\\\$s=DB::table\\('role_permissions'\\)->join\\('roles','roles.id','=','role_permissions.role_id'\\)->where\\('roles.code','external'\\)->pluck\\('permission'\\)->all\\(\\); echo 'external: '.implode\\(',',\\\\$s\\).PHP_EOL;\")",
+      "Bash(rm -f /tmp/check.php /tmp/check2.php /tmp/check3.php)",
+      "Bash(grep -n 'class Document\\\\|function approvals\\\\|function initiator\\\\|public function scope\\\\|protected $fillable' app/Models/Document.php)",
+      "Bash(grep -n \"^use App\\\\\\\\\\\\\\\\Models\" app/Http/Controllers/DocumentController.php)"
     ],
     "additionalDirectories": [
       "C:\\xampp\\php",

@@ -12,6 +12,9 @@
  *   depth  — 1 для вложенных пунктов (визуальный отступ)
  *   narrow — узкое право: выделяется в матрице янтарным цветом
  *   except — коды ролей, у которых права по умолчанию нет (у остальных — есть)
+ *   only   — белый список: право есть ТОЛЬКО у этих ролей. Имеет приоритет над except.
+ *            Для узких прав используйте только его: иначе новая роль, созданная админом
+ *            в интерфейсе, автоматически получит право, раз её нет в списке исключений.
  */
 return [
     [
@@ -52,6 +55,16 @@ return [
             ['key' => 'menu.admin.roles',            'label' => 'Роли и доступы',           'depth' => 1, 'narrow' => true, 'except' => ['external', 'observer', 'linear', 'head_unit', 'head_department', 'director', 'ceo', 'chief_of_staff', 'process_owner', 'registrar', 'archiver']],
             ['key' => 'menu.admin.blank_templates',  'label' => 'Шаблоны бланков',          'depth' => 1, 'narrow' => true, 'except' => ['external', 'observer', 'linear', 'head_unit', 'head_department', 'director', 'ceo', 'chief_of_staff', 'archiver']],
             ['key' => 'menu.admin.org_structure',    'label' => 'Оргструктура',             'depth' => 1, 'narrow' => true, 'except' => ['external', 'observer', 'linear', 'head_unit', 'process_owner', 'registrar', 'archiver']],
+        ],
+    ],
+
+    [
+        'key'   => 'orders',
+        'label' => 'Приказы',
+        'items' => [
+            // Издание приказа — узкое право: только высшее руководство и администратор.
+            ['key' => 'orders.issue',    'label' => 'Издать приказ',      'narrow' => true, 'only' => ['ceo', 'chief_of_staff', 'admin']],
+            ['key' => 'orders.view_all', 'label' => 'Видеть все приказы', 'only' => ['head_department', 'director', 'ceo', 'chief_of_staff', 'admin']],
         ],
     ],
 ];

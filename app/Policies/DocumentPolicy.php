@@ -2,7 +2,9 @@
 
 namespace App\Policies;
 
+use App\Models\Department;
 use App\Models\Document;
+use App\Models\DocumentWatcher;
 use App\Models\User;
 
 class DocumentPolicy
@@ -14,6 +16,17 @@ class DocumentPolicy
 
     public function view(User $user, Document $document): bool
     {
+        // Наблюдатель видит документы своих целей (но действовать не может).
+        if ($this->isWatching($user, $document)) {
+            return true;
+        }
+
+        // Доступ уровня «department»: документы отделов своего направления
+        // (с учётом кросс-видимости) — так же, как их показывает список.
+        if ($this->withinDepartmentScope($user, $document)) {
+            return true;
+        }
+
         // Anyone delegated to in any approval stage can view
         $isDelegatee = $document->approvals()
             ->whereHas('stages.decisions', fn($q) => $q
@@ -50,6 +63,44 @@ class DocumentPolicy
                               ->exists(),
             default    => false,
         };
+    }
+
+    /** Документ инициирован в пределах доступной пользователю области отделов. */
+    private function withinDepartmentScope(User $user, Document $document): bool
+    {
+        if ($user->resolveWorkflowAccess() !== 'department' || !$user->department_id) {
+            return false;
+        }
+
+        $initiatorDeptId = $document->initiator->department_id ?? null;
+        if ($initiatorDeptId === null) {
+            return false;
+        }
+
+        return in_array($initiatorDeptId, Department::visibleScopeIds($user->department_id), true);
+    }
+
+    /** Наблюдает ли пользователь за участником этого документа. */
+    private function isWatching(User $user, Document $document): bool
+    {
+        $rules = DocumentWatcher::where('watcher_id', $user->id)->get(['target_id', 'scope']);
+
+        foreach ($rules as $rule) {
+            $targetId = $rule->target_id;
+
+            if ($rule->scope !== 'approver' && $document->initiator_id === $targetId) {
+                return true;
+            }
+
+            if ($rule->scope !== 'initiator'
+                && $document->approvals()
+                    ->whereHas('stages.workflowStage.approvers', fn ($q) => $q->where('approver_id', $targetId))
+                    ->exists()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function create(User $user): bool

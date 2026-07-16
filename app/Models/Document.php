@@ -80,6 +80,29 @@ class Document extends Model
         return $this->hasMany(DocumentApproval::class);
     }
 
+    /**
+     * Документы, где участвует пользователь.
+     * scope: participant — инициатор или согласующий; initiator — только инициатор;
+     * approver — только согласующий.
+     */
+    public function scopeParticipatedBy($query, int $userId, string $scope = 'participant')
+    {
+        return $query->where(function ($q) use ($userId, $scope) {
+            $includeInitiator = $scope !== 'approver';
+            $includeApprover  = $scope !== 'initiator';
+
+            if ($includeInitiator) {
+                $q->where('initiator_id', $userId);
+            }
+
+            if ($includeApprover) {
+                $method = $includeInitiator ? 'orWhereHas' : 'whereHas';
+                $q->{$method}('approvals.stages.workflowStage.approvers',
+                    fn ($a) => $a->where('approver_id', $userId));
+            }
+        });
+    }
+
     public function activeApproval(): HasOne
     {
         return $this->hasOne(DocumentApproval::class)->where('status', 'in_progress')->latestOfMany();

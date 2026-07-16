@@ -8,6 +8,7 @@ use App\Models\Chat;
 use App\Models\Document;
 use App\Models\DocumentApproval;
 use App\Models\DocumentNote;
+use App\Models\DocumentWatcher;
 use App\Models\DocumentType;
 use App\Models\Task;
 use App\Models\Workflow;
@@ -81,6 +82,13 @@ class DocumentController extends Controller
             $query->whereHas('initiator', fn($q) => $q->whereIn('department_id', $deptIds));
         }
 
+        // Процессная страница (Кредитный комитет и т.п.): только документы,
+        // чей сценарий относится к этому типу процесса.
+        $process = $request->route('process');
+        if ($process) {
+            $query->whereHas('workflow', fn ($q) => $q->where('process_type', $process));
+        }
+
         // Apply access-level-based filtering
         $user      = auth()->user();
         $docAccess = $user->resolveWorkflowAccess();
@@ -94,15 +102,30 @@ class DocumentController extends Controller
                 ->orWhere('user_id', $user->id)              // this user made any decision (approve/reject/delegate/…)
             );
 
+        // Watch rules broaden visibility: a watcher also sees documents of the
+        // users they observe (per scope), without gaining any action rights.
+        $watchClause = $this->watchVisibilityClause($user);
+
+        // Apply a restriction while still letting watched documents through.
+        $restrictWith = function (\Closure $restriction) use ($query, $watchClause) {
+            $query->where(function ($q) use ($restriction, $watchClause) {
+                $q->where($restriction);
+                if ($watchClause) {
+                    $q->orWhere($watchClause);
+                }
+            });
+        };
+
         if ($user->isAdmin()) {
             // Admin: by default show only documents where they participate;
             // pass ?scope=all to see all documents in the workspace.
             if ($request->get('scope') !== 'all') {
-                $query->where($isInvolved);
+                $restrictWith($isInvolved);
             }
         } elseif ($docAccess === 'department' && $user->department_id) {
-            $accessibleDeptIds = Department::getDescendantIds($user->department_id);
-            $query->where(fn($q) => $q
+            // Учитываем кросс-видимость направления (visibleScopeIds).
+            $accessibleDeptIds = Department::visibleScopeIds($user->department_id);
+            $restrictWith(fn($q) => $q
                 ->whereHas('initiator', fn($q2) => $q2->whereIn('department_id', $accessibleDeptIds))
                 ->orWhereHas('approvals.stages.workflowStage.approvers', fn($q2) => $q2->where('approver_id', $user->id))
                 ->orWhereHas('approvals.stages.decisions', fn($q2) => $q2
@@ -111,7 +134,7 @@ class DocumentController extends Controller
                 )
             );
         } elseif ($docAccess === 'own') {
-            $query->where($isInvolved);
+            $restrictWith($isInvolved);
         }
         // full access non-admin: no restriction — all documents visible
 
@@ -142,12 +165,69 @@ class DocumentController extends Controller
         if ($user->isAdmin() || $docAccess === 'full') {
             $departments = Department::all();
         } elseif ($docAccess === 'department' && $user->department_id) {
-            $departments = Department::whereIn('id', Department::getDescendantIds($user->department_id))->get();
+            $departments = Department::whereIn('id', Department::visibleScopeIds($user->department_id))->get();
         } else {
             $departments = collect();
         }
 
-        return view('documents.index', compact('documents', 'documentTypes', 'departments', 'approverCandidates'));
+        $processMeta = $this->processMeta($process);
+
+        return view('documents.index', compact('documents', 'documentTypes', 'departments', 'approverCandidates', 'processMeta'));
+    }
+
+    /** Сценарии без указанного процесса относятся к общему документообороту (legacy). */
+    private const GENERAL_PROCESS = [null, '', 'document_flow'];
+
+    /** Ограничить запрос сценариев процессом страницы (или общим документооборотом). */
+    private function scopeWorkflowsToProcess($query, ?string $process)
+    {
+        return $process
+            ? $query->where('process_type', $process)
+            : $query->where(fn ($q) => $q->whereNull('process_type')->orWhereIn('process_type', ['', 'document_flow']));
+    }
+
+    /** Подходит ли сценарий (коллекция) процессу страницы. */
+    private function workflowMatchesProcess($workflow, ?string $process): bool
+    {
+        return $process
+            ? $workflow->process_type === $process
+            : in_array($workflow->process_type, self::GENERAL_PROCESS, true);
+    }
+
+    /** Контекст процессной страницы (заголовок, маршруты) или null для общего документооборота. */
+    private function processMeta(?string $process): ?array
+    {
+        if (!$process) {
+            return null;
+        }
+
+        $base = ['credit_committee' => 'credit-committee'][$process] ?? null;
+
+        return [
+            'type'         => $process,
+            'label'        => Workflow::PROCESS_TYPES[$process] ?? $process,
+            'index_route'  => $base ? "{$base}.index" : 'documents.index',
+            'create_route' => $base ? "{$base}.create" : 'documents.create',
+        ];
+    }
+
+    /**
+     * Условие видимости по правилам наблюдения: документы всех целей,
+     * за которыми наблюдает пользователь (с учётом области). null — правил нет.
+     */
+    private function watchVisibilityClause(User $user): ?\Closure
+    {
+        $rules = DocumentWatcher::where('watcher_id', $user->id)->get(['target_id', 'scope']);
+
+        if ($rules->isEmpty()) {
+            return null;
+        }
+
+        return function ($q) use ($rules) {
+            foreach ($rules as $rule) {
+                $q->orWhere(fn ($sub) => $sub->participatedBy($rule->target_id, $rule->scope));
+            }
+        };
     }
 
     public function create()
@@ -162,20 +242,31 @@ class DocumentController extends Controller
             return redirect()->route('documents.index');
         }
 
-        $workflows = $this->availableWorkflows($user);
+        // Каждая процессная страница создаёт документ только своего типа процесса.
+        // Общий документооборот (процесс не задан) показывает свои сценарии
+        // (document_flow + legacy без процесса), исключая приказы, кредитный комитет и т.п.
+        $process = request()->route('process');
+
+        $workflows = $this->availableWorkflows($user)
+            ->filter(fn ($w) => $this->workflowMatchesProcess($w, $process))
+            ->values();
 
         // The classifier drives the form: type → subtype → scenario.
         // Звенья с исполнителями — визард показывает маршрут по фазам ещё до запуска.
         $documentTypes = DocumentType::where('is_active', true)
             ->with(['fields', 'numerator', 'subtypes' => fn ($q) => $q->where('is_active', true)
-                ->with(['fields', 'numerator', 'workflows.parameters', 'workflows.blankTemplates',
+                ->with(['fields', 'numerator',
+                        'workflows' => fn ($w) => $this->scopeWorkflowsToProcess($w, $process),
+                        'workflows.parameters', 'workflows.blankTemplates',
                         'workflows.stages' => fn ($s) => $s->orderBy('sort_order')->with('approvers.user')])])
             ->orderBy('name')
             ->get()
             ->filter(fn (DocumentType $type) => $type->isAvailableFor($user))
             ->values();
 
-        return view('documents.create', compact('workflows', 'documentTypes'));
+        $processMeta = $this->processMeta($process);
+
+        return view('documents.create', compact('workflows', 'documentTypes', 'processMeta'));
     }
 
     public function store(StoreDocumentRequest $request, DocumentNamingService $namingService, DocumentNumberService $numberService)
@@ -455,8 +546,9 @@ class DocumentController extends Controller
             abort(403, 'Нет доступа к задачам.');
         }
 
-        // 'mine' shows only the user's own tasks; 'all' honours their wider access.
-        $canSeeAll = $access !== 'own';
+        // Переключатель «Обычный / Администратор» доступен только администратору.
+        // Все остальные видят строго свои задачи, независимо от уровня доступа к разделу.
+        $canSeeAll = $user->isAdmin();
         $scope     = ($canSeeAll && $request->get('scope') === 'all') ? 'all' : 'mine';
 
         // Pending approval tasks (согласование / ознакомление / приёмка).
@@ -471,10 +563,8 @@ class DocumentController extends Controller
 
         if ($scope === 'mine') {
             $taskQuery->where('assignee_id', $user->id);
-        } elseif ($access === 'department' && $user->department_id) {
-            $taskQuery->whereHas('assignee', fn($q) => $q->where('department_id', $user->department_id));
         }
-        // access 'full' + scope 'all' — no restriction, every task is visible
+        // Админ в режиме «Администратор» — без ограничений, видит все задачи
 
         // Documents sent back for revision — the initiator must rework them.
         // These carry no local Task (the approval task is cancelled on revision),
@@ -484,9 +574,6 @@ class DocumentController extends Controller
 
         if ($scope === 'mine') {
             $revisionQuery->where('initiator_id', $user->id);
-        } elseif ($access === 'department' && $user->department_id) {
-            $deptIds = Department::getDescendantIds($user->department_id);
-            $revisionQuery->whereHas('initiator', fn($q) => $q->whereIn('department_id', $deptIds));
         }
 
         // Normalise both sources into a single card list for the view.

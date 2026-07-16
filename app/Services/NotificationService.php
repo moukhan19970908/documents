@@ -20,6 +20,10 @@ class NotificationService
             'delegated_to_you'  => 'Вам делегировано согласование',
             'trip_approval'     => 'Новое согласование командировки',
             'vacation_approval' => 'Новое согласование отпуска',
+            'order_published'   => 'Новый приказ для ознакомления',
+            'order_ack_reminder' => 'Напоминание об ознакомлении',
+            'order_approval'    => 'Приказ на согласование',
+            'order_rejected'    => 'Приказ отклонён',
         ];
 
         $bodies = [
@@ -30,6 +34,10 @@ class NotificationService
             'delegated_to_you'  => 'Вам делегировано согласование: ' . ($data['title'] ?? ''),
             'trip_approval'     => 'Заявка на командировку на согласование: ' . ($data['title'] ?? ''),
             'vacation_approval' => 'Заявка на отпуск на согласование: ' . ($data['title'] ?? ''),
+            'order_published'   => 'Опубликован приказ для ознакомления: ' . ($data['title'] ?? ''),
+            'order_ack_reminder' => 'Ознакомьтесь с приказом: ' . ($data['title'] ?? ''),
+            'order_approval'    => 'Приказ на согласование: ' . ($data['title'] ?? ''),
+            'order_rejected'    => 'Приказ отклонён и возвращён: ' . ($data['title'] ?? ''),
         ];
 
         $title = $titles[$type] ?? $type;
@@ -73,6 +81,7 @@ class NotificationService
         return match ($type) {
             'trip_approval'     => isset($data['trip_id']) ? route('trips.show', $data['trip_id']) : null,
             'vacation_approval' => isset($data['vacation_id']) ? route('vacations.show', $data['vacation_id']) : null,
+            'order_published', 'order_ack_reminder', 'order_approval', 'order_rejected' => isset($data['order_id']) ? route('orders.show', $data['order_id']) : null,
             default             => isset($data['document_id']) ? route('documents.show', $data['document_id']) : null,
         };
     }

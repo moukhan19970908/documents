@@ -5,6 +5,7 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\BitrixSocialiteController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentController;
+use App\Http\Controllers\OrderController;
 use App\Http\Controllers\ApprovalController;
 use App\Http\Controllers\DocumentFileController;
 use App\Http\Controllers\DocumentRelatedFileController;
@@ -18,6 +19,7 @@ use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\DepartmentController;
 use App\Http\Controllers\Admin\AccessControlController;
 use App\Http\Controllers\Admin\BlankTemplateController;
+use App\Http\Controllers\Admin\NumberingController;
 use App\Http\Controllers\Admin\DocumentTypeController;
 use App\Http\Controllers\Admin\ScenarioController;
 use App\Http\Controllers\Admin\WorkflowFolderController;
@@ -80,6 +82,26 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
     Route::get('documents/{document}/related-files/{file}/preview', [DocumentRelatedFileController::class, 'preview'])->name('documents.related-files.preview');
     Route::delete('documents/{document}/related-files/{file}', [DocumentRelatedFileController::class, 'destroy'])->name('documents.related-files.destroy');
 
+    // Приказы
+    Route::get('orders', [OrderController::class, 'index'])->name('orders.index');
+    Route::get('orders/create', [OrderController::class, 'create'])->name('orders.create');
+    Route::post('orders', [OrderController::class, 'store'])->name('orders.store');
+    Route::get('orders/{order}', [OrderController::class, 'show'])->name('orders.show');
+    Route::get('orders/{order}/edit', [OrderController::class, 'edit'])->name('orders.edit');
+    Route::put('orders/{order}', [OrderController::class, 'update'])->name('orders.update');
+    Route::post('orders/{order}/publish', [OrderController::class, 'publish'])->name('orders.publish');
+    Route::delete('orders/{order}', [OrderController::class, 'destroy'])->name('orders.destroy');
+    Route::post('orders/{order}/acknowledge', [OrderController::class, 'acknowledge'])->name('orders.acknowledge');
+    Route::post('orders/{order}/remind', [OrderController::class, 'remind'])->name('orders.remind');
+    Route::get('orders/{order}/file', [OrderController::class, 'file'])->name('orders.file');
+    Route::get('orders/{order}/pdf', [OrderController::class, 'pdf'])->name('orders.pdf');
+    Route::post('orders/{order}/approve', [OrderController::class, 'approve'])->name('orders.approve');
+    Route::post('orders/{order}/reject', [OrderController::class, 'reject'])->name('orders.reject');
+
+    // Кредитный комитет — документы процесса credit_committee (тот же движок, что и документооборот)
+    Route::get('credit-committee', [DocumentController::class, 'index'])->defaults('process', 'credit_committee')->name('credit-committee.index');
+    Route::get('credit-committee/create', [DocumentController::class, 'create'])->defaults('process', 'credit_committee')->name('credit-committee.create');
+
     // Chat
     Route::get('chats', [ChatController::class, 'index'])->name('chats.index');
     Route::get('chats/{chat}', [ChatController::class, 'show'])->name('chats.show');
@@ -123,9 +145,18 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
         Route::post('access-control/users/{user}/archive-access', [AccessControlController::class, 'updateUserArchiveAccess'])->name('access-control.users.archive-access');
         Route::post('access-control/departments/{department}/archive-access', [AccessControlController::class, 'updateDeptArchiveAccess'])->name('access-control.depts.archive-access');
         Route::get('roles/matrix', [RoleController::class, 'matrix'])->name('roles.matrix');
+        Route::put('roles/matrix', [RoleController::class, 'updateMatrix'])->name('roles.matrix.update');
         Route::get('roles/watchers', [RoleController::class, 'watchers'])->name('roles.watchers');
+        Route::post('roles/watchers', [RoleController::class, 'storeWatcher'])->name('roles.watchers.store');
+        Route::put('roles/watchers/{watcher}', [RoleController::class, 'updateWatcher'])->name('roles.watchers.update');
+        Route::delete('roles/watchers/{watcher}', [RoleController::class, 'destroyWatcher'])->name('roles.watchers.destroy');
         Route::get('roles/personal', [RoleController::class, 'personal'])->name('roles.personal');
         Route::get('roles/directions', [RoleController::class, 'directions'])->name('roles.directions');
+        Route::post('roles/directions', [RoleController::class, 'storeDirection'])->name('roles.directions.store');
+        Route::delete('roles/directions/{department}', [RoleController::class, 'destroyDirection'])->name('roles.directions.destroy');
+        Route::post('roles/directions/{department}/departments', [RoleController::class, 'addDirectionDepartment'])->name('roles.directions.departments.add');
+        Route::delete('roles/directions/{department}/departments/{child}', [RoleController::class, 'removeDirectionDepartment'])->name('roles.directions.departments.remove');
+        Route::patch('roles/directions/{department}/cross-visibility', [RoleController::class, 'updateDirectionCrossVisibility'])->name('roles.directions.cross-visibility');
         Route::resource('roles', RoleController::class)->except(['show']);
         Route::post('roles/{role}/duplicate', [RoleController::class, 'duplicate'])->name('roles.duplicate');
         Route::resource('users', UserController::class);
@@ -139,6 +170,8 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
         Route::post('document-types/{document_type}/duplicate', [DocumentTypeController::class, 'duplicate'])->name('document-types.duplicate');
         Route::patch('document-types/{document_type}/toggle', [DocumentTypeController::class, 'toggle'])->name('document-types.toggle');
         Route::patch('document-types/{document_type}/counters/{counter}', [DocumentTypeController::class, 'updateCounter'])->name('document-types.counters.update');
+        Route::get('numbering', [NumberingController::class, 'index'])->name('numbering.index');
+        Route::put('numbering/{numerator}', [NumberingController::class, 'update'])->name('numbering.update');
         Route::resource('blank-templates', BlankTemplateController::class)->except(['show']);
         Route::patch('blank-templates/{blank_template}/toggle', [BlankTemplateController::class, 'toggle'])->name('blank-templates.toggle');
         Route::resource('workflow-folders', WorkflowFolderController::class);

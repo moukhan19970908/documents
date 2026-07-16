@@ -27,9 +27,18 @@ class DocumentNumberService
 
     public function numeratorFor(Document $document): ?Numerator
     {
-        $document->loadMissing(['type.numerator', 'subtype.numerator', 'subtype.type.numerator']);
+        $document->loadMissing(['type.numerator', 'subtype.numerator', 'subtype.type.numerator', 'workflow']);
 
-        return $document->subtype?->effectiveNumerator() ?? $document->type?->numerator;
+        $specific = $document->subtype?->effectiveNumerator() ?? $document->type?->numerator;
+        if ($specific) {
+            return $specific;
+        }
+
+        // Тип/подтип без своего нумератора — берём глобальный поток (вкладка «Нумерация»):
+        // документы процесса credit_committee нумеруются отдельно от общего документооборота.
+        $key = $document->workflow?->process_type === 'credit_committee' ? 'credit_committee' : 'document';
+
+        return Numerator::where('key', $key)->first();
     }
 
     /**

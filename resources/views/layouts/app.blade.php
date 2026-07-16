@@ -56,22 +56,12 @@
             {{-- Navigation --}}
             <nav class="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto">
                 @php
-                    if (auth()->user()->isExternal()) {
-                        // External participants: only their own workspace.
-                        $navItems = [
-                            ['route' => 'dashboard', 'label' => 'Дашборд', 'icon' => 'dashboard'],
-                            ['route' => 'tasks', 'label' => 'Мои задачи', 'icon' => 'tasks', 'url' => route('tasks', ['filter' => 'pending']), 'badge' => $menuActiveTasks ?? 0],
-                            ['route' => 'chats.index', 'label' => 'Чаты', 'icon' => 'chat', 'badge' => $menuUnreadChats ?? 0],
-                            ['route' => 'archive.index', 'label' => 'Архив', 'icon' => 'archive'],
-                        ];
-                    } else {
-                        // Top group — items shown above the «Процессы» section.
-                        $navItems = [
-                            ['route' => 'dashboard', 'label' => 'Дашборд', 'icon' => 'dashboard'],
-                            ['route' => 'tasks', 'label' => 'Мои задачи', 'icon' => 'tasks', 'url' => route('tasks', ['filter' => 'pending']), 'badge' => $menuActiveTasks ?? 0],
-                            ['route' => 'chats.index', 'label' => 'Чаты', 'icon' => 'chat', 'badge' => $menuUnreadChats ?? 0],
-                        ];
-                    }
+                    // Top group — видимость управляется матрицей прав (menu.*).
+                    $navItems = array_filter([
+                        ['key' => 'menu.dashboard', 'route' => 'dashboard', 'label' => 'Дашборд', 'icon' => 'dashboard'],
+                        ['key' => 'menu.tasks', 'route' => 'tasks', 'label' => 'Мои задачи', 'icon' => 'tasks', 'url' => route('tasks', ['filter' => 'pending']), 'badge' => $menuActiveTasks ?? 0],
+                        ['key' => 'menu.chats', 'route' => 'chats.index', 'label' => 'Чаты', 'icon' => 'chat', 'badge' => $menuUnreadChats ?? 0],
+                    ], fn ($item) => auth()->user()->canSeeMenu($item['key']));
                 @endphp
 
                 @foreach($navItems as $item)
@@ -91,18 +81,18 @@
                     </a>
                 @endforeach
 
-                @unless(auth()->user()->isExternal())
+                @if(auth()->user()->canSeeMenu('menu.processes'))
                 {{-- Процессы (collapsible group) --}}
                 @php
-                    $processItems = [
-                        ['label' => 'Документооборот', 'route' => 'documents.index', 'url' => route('documents.index')],
-                        ['label' => 'Приказы', 'url' => '#'],
-                        ['label' => 'Поручения', 'url' => '#'],
-                        ['label' => 'Заявки', 'url' => '#'],
-                        ['label' => 'Кредитный комитет', 'url' => '#'],
-                        ['label' => 'Задания', 'url' => '#'],
-                        ['label' => 'Проверки', 'url' => '#'],
-                    ];
+                    $processItems = array_filter([
+                        ['key' => 'menu.processes.documents', 'label' => 'Документооборот', 'route' => 'documents.index', 'url' => route('documents.index')],
+                        ['key' => 'menu.processes.orders', 'label' => 'Приказы', 'route' => 'orders', 'url' => route('orders.index')],
+                        ['key' => 'menu.processes.assignments', 'label' => 'Поручения', 'url' => '#'],
+                        ['key' => 'menu.processes.requests', 'label' => 'Заявки', 'url' => '#'],
+                        ['key' => 'menu.processes.credit_committee', 'label' => 'Кредитный комитет', 'route' => 'credit-committee', 'url' => route('credit-committee.index')],
+                        ['key' => 'menu.processes.jobs', 'label' => 'Задания', 'url' => '#'],
+                        ['key' => 'menu.processes.audits', 'label' => 'Проверки', 'url' => '#'],
+                    ], fn ($proc) => auth()->user()->canSeeMenu($proc['key']));
                 @endphp
                 <div x-data="{ open: true }">
                     <button @click="open = !open"
@@ -122,17 +112,19 @@
                         @endforeach
                     </div>
                 </div>
+                @endif
 
-                @if(auth()->user()->isAdmin())
+                @if(auth()->user()->canSeeMenu('menu.admin'))
                 {{-- Администрирование (collapsible group) --}}
                 @php
-                    $adminItems = [
-                        ['label' => 'Конструктор процессов', 'route' => 'admin.scenarios', 'url' => route('admin.scenarios.index')],
-                        ['label' => 'Классификаторы и типы', 'route' => 'admin.document-types', 'url' => route('admin.document-types.index')],
-                        ['label' => 'Роли и доступы', 'route' => 'admin.roles', 'url' => route('admin.roles.index')],
-                        ['label' => 'Шаблоны бланков', 'route' => 'admin.blank-templates', 'url' => route('admin.blank-templates.index')],
-                        ['label' => 'Оргструктура', 'url' => '#'],
-                    ];
+                    $adminItems = array_filter([
+                        ['key' => 'menu.admin.scenarios', 'label' => 'Конструктор процессов', 'route' => 'admin.scenarios', 'url' => route('admin.scenarios.index')],
+                        ['key' => 'menu.admin.document_types', 'label' => 'Классификаторы и типы', 'route' => 'admin.document-types', 'url' => route('admin.document-types.index')],
+                        ['key' => 'menu.admin.numbering', 'label' => 'Нумерация', 'route' => 'admin.numbering', 'url' => route('admin.numbering.index')],
+                        ['key' => 'menu.admin.roles', 'label' => 'Роли и доступы', 'route' => 'admin.roles', 'url' => route('admin.roles.index')],
+                        ['key' => 'menu.admin.blank_templates', 'label' => 'Шаблоны бланков', 'route' => 'admin.blank-templates', 'url' => route('admin.blank-templates.index')],
+                        ['key' => 'menu.admin.org_structure', 'label' => 'Оргструктура', 'url' => '#'],
+                    ], fn ($adm) => auth()->user()->canSeeMenu($adm['key']));
                 @endphp
                 @php $adminOpen = request()->routeIs('admin.document-types.*') || request()->routeIs('admin.scenarios.*') || request()->routeIs('admin.roles.*'); @endphp
                 <div x-data="{ open: @json($adminOpen) }">
@@ -157,10 +149,10 @@
 
                 {{-- Main items below «Процессы» --}}
                 @php
-                    $lowerNavItems = [
-                        ['route' => 'archive.index', 'label' => 'Архив', 'icon' => 'archive'],
-                        ['route' => 'employees.index', 'label' => 'Сотрудники', 'icon' => 'employees'],
-                    ];
+                    $lowerNavItems = array_filter([
+                        ['key' => 'menu.archive', 'route' => 'archive.index', 'label' => 'Архив', 'icon' => 'archive'],
+                        ['key' => 'menu.employees', 'route' => 'employees.index', 'label' => 'Сотрудники', 'icon' => 'employees'],
+                    ], fn ($item) => auth()->user()->canSeeMenu($item['key']));
                 @endphp
                 @foreach($lowerNavItems as $item)
                     <a href="{{ $item['url'] ?? route($item['route']) }}"
@@ -180,22 +172,27 @@
                 @endforeach
 
                 {{-- Аналитика --}}
+                @if(auth()->user()->canSeeMenu('menu.analytics'))
                 <a href="#"
                    class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors">
                     @include('partials.nav-icon', ['icon' => 'analytics', 'active' => false])
                     Аналитика
                 </a>
+                @endif
 
                 {{-- Trips --}}
+                @if(auth()->user()->canSeeMenu('menu.trips'))
                 <div class="pt-3 pb-1">
                     <p class="px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Командировки</p>
                 </div>
+                @if(auth()->user()->canSeeMenu('menu.trips.my'))
                 <a href="{{ route('trips.index') }}"
                    class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {{ request()->routeIs('trips.index') || (request()->routeIs('trips.*') && !request()->routeIs('trips.approvals') && !request()->routeIs('trips.registries.*')) ? 'bg-[#5B4FE8] text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
                     Мои заявки
                 </a>
-                @if(auth()->user()->isManager() || auth()->user()->isApprover('trip'))
+                @endif
+                @if(auth()->user()->canSeeMenu('menu.trips.approvals') || auth()->user()->isManager() || auth()->user()->isApprover('trip'))
                     <a href="{{ route('trips.approvals') }}"
                        class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {{ request()->routeIs('trips.approvals') ? 'bg-[#5B4FE8] text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
@@ -205,7 +202,7 @@
                         @endif
                     </a>
                 @endif
-                @if(auth()->user()->isManager())
+                @if(auth()->user()->canSeeMenu('menu.trips.registries') || auth()->user()->isManager())
                     <a href="{{ route('trips.registries.index') }}"
                        class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {{ request()->routeIs('trips.registries.*') ? 'bg-[#5B4FE8] text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
@@ -215,17 +212,21 @@
                         @endif
                     </a>
                 @endif
+                @endif
 
                 {{-- Vacations --}}
+                @if(auth()->user()->canSeeMenu('menu.vacations'))
                 <div class="pt-3 pb-1">
                     <p class="px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Отпуска</p>
                 </div>
+                @if(auth()->user()->canSeeMenu('menu.vacations.my'))
                 <a href="{{ route('vacations.index') }}"
                    class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {{ request()->routeIs('vacations.index') || (request()->routeIs('vacations.*') && !request()->routeIs('vacations.approvals') && !request()->routeIs('vacations.registries.*')) ? 'bg-[#5B4FE8] text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                     Мои заявки
                 </a>
-                @if(auth()->user()->isManager() || auth()->user()->isApprover('vacation'))
+                @endif
+                @if(auth()->user()->canSeeMenu('menu.vacations.approvals') || auth()->user()->isManager() || auth()->user()->isApprover('vacation'))
                     <a href="{{ route('vacations.approvals') }}"
                        class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {{ request()->routeIs('vacations.approvals') ? 'bg-[#5B4FE8] text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
@@ -235,7 +236,7 @@
                         @endif
                     </a>
                 @endif
-                @if(auth()->user()->isManager() || auth()->user()->isApprover('vacation_registry'))
+                @if(auth()->user()->canSeeMenu('menu.vacations.registries') || auth()->user()->isManager() || auth()->user()->isApprover('vacation_registry'))
                     <a href="{{ route('vacations.registries.index') }}"
                        class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {{ request()->routeIs('vacations.registries.*') ? 'bg-[#5B4FE8] text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
@@ -245,7 +246,7 @@
                         @endif
                     </a>
                 @endif
-                @endunless
+                @endif
             </nav>
 
             {{-- Bottom links --}}

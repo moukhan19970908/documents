@@ -214,6 +214,45 @@ class User extends Authenticatable
         return in_array($permission, $this->permissions, true);
     }
 
+    /**
+     * Виден ли пользователю пункт меню по матрице прав.
+     * Админ видит всё; иначе — если хотя бы одна роль пользователя
+     * имеет это право в role_permissions.
+     */
+    public function canSeeMenu(string $key): bool
+    {
+        if ($this->isAdmin()) {
+            return true;
+        }
+
+        return (bool) array_intersect(
+            \App\Support\Permissions::grantedRoleCodes($key),
+            $this->roleCodes()
+        );
+    }
+
+    /**
+     * Право из матрицы «Роли и доступы» (config/permissions.php → role_permissions).
+     * Админ имеет любое право.
+     */
+    public function hasMatrixPermission(string $key): bool
+    {
+        if ($this->isAdmin()) {
+            return true;
+        }
+
+        return (bool) array_intersect(
+            \App\Support\Permissions::grantedRoleCodes($key),
+            $this->roleCodes()
+        );
+    }
+
+    /** Узкое право издания приказов (ТЗ 16.1). */
+    public function canIssueOrders(): bool
+    {
+        return $this->hasMatrixPermission('orders.issue');
+    }
+
     public function isManager(): bool
     {
         return ($this->role_level ?? 1) >= 2 || $this->hasAnyRole(['admin', 'director']);

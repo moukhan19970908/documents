@@ -7,6 +7,8 @@ use App\Models\Document;
 use App\Models\DocumentApproval;
 use App\Models\DocumentApprovalDecision;
 use App\Models\DocumentApprovalStage;
+use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 
 class DashboardController extends Controller
 {
@@ -59,12 +61,20 @@ class DashboardController extends Controller
                 ->where('deadline_at', '<', now())
                 ->count(),
             // Documents still moving through a process (not finalized/archived).
-            'in_work_count'    => Document::whereNotIn('status', ['signed', 'archived', 'rejected'])->count(),
+            // Админ считает по всей системе, остальные — только по своим документам.
+            'in_work_count'    => Document::whereNotIn('status', ['signed', 'archived', 'rejected'])
+                ->when(!$user->isAdmin(), fn ($q) => $q->whereIn('id', $this->involvedDocumentIds($user)))
+                ->count(),
             'avg_approval_days' => $avgApprovalDays,
         ];
 
         // Documents grouped by status for the "Документы по статусам" panel.
-        $statusCounts = Document::selectRaw('status, COUNT(*) as c')->groupBy('status')->pluck('c', 'status');
+        // Всю картину видит только администратор — остальным считаем лишь их документы.
+        $statusCounts = Document::query()
+            ->when(!$user->isAdmin(), fn ($q) => $q->whereIn('id', $this->involvedDocumentIds($user)))
+            ->selectRaw('status, COUNT(*) as c')
+            ->groupBy('status')
+            ->pluck('c', 'status');
         $statusBreakdown = [
             ['label' => 'На согласовании',    'count' => (int) $statusCounts->get('in_review', 0),                                         'color' => '#3B82F6'],
             ['label' => 'Утверждён',          'count' => (int) $statusCounts->get('approved', 0) + (int) $statusCounts->get('signed', 0), 'color' => '#22C55E'],
@@ -80,11 +90,33 @@ class DashboardController extends Controller
                     $q->orWhere('action', 'LIKE', '%' . $keyword . '%');
                 }
             })
+            // Всю ленту видит только администратор — остальным события лишь их документов.
+            ->when(!$user->isAdmin(), fn ($q) => $q
+                ->where('model_type', Document::class)
+                ->whereIn('model_id', $this->involvedDocumentIds($user))
+            )
             ->latest()
             ->limit(10)
             ->get();
 
         return view('dashboard.index', compact('pendingApprovals', 'stats', 'activity', 'statusBreakdown'));
+    }
+
+    /**
+     * Документы, в которых пользователь участвует: инициатор, согласующий на любом звене
+     * или принимал решение (в том числе получил делегирование). То же правило, что в реестре
+     * документов, — дашборд не должен показывать больше, чем реестр.
+     */
+    private function involvedDocumentIds(User $user): Builder
+    {
+        return Document::select('id')->where(fn ($q) => $q
+            ->where('initiator_id', $user->id)
+            ->orWhereHas('approvals.stages.workflowStage.approvers', fn ($a) => $a->where('approver_id', $user->id))
+            ->orWhereHas('approvals.stages.decisions', fn ($a) => $a
+                ->where('delegated_to', $user->id)
+                ->orWhere('user_id', $user->id)
+            )
+        );
     }
 
     public function myTasks()

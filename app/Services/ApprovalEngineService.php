@@ -250,6 +250,12 @@ class ApprovalEngineService
             $approval = $stage->documentApproval;
             $document = $approval->document;
 
+            // Человек высказался — его задача закрыта, даже если звено ещё ждёт остальных.
+            // Отказ и доработка снимают задачи всего звена, поэтому их здесь нет.
+            if (in_array($action, ['approve', 'opinion_yes', 'opinion_no', 'acknowledge', 'accept', 'execute', 'delegate'], true)) {
+                $this->completeTaskFor($stage, $user);
+            }
+
             match($action) {
                 'approve'                    => $this->handleApprove($stage, $approval, $document),
                 'reject'                     => $this->handleReject($stage, $approval, $document, $user, $comment),
@@ -435,6 +441,18 @@ class ApprovalEngineService
 
         $newUser = User::find($delegatedTo);
         if ($newUser) {
+            // Задача переходит вместе с полномочием: у делегировавшего она уже закрыта
+            // решением, а тому, кому делегировали, её надо выдать — иначе действовать
+            // он может, а в «Моих задачах» документа не увидит.
+            Task::create([
+                'document_id'                => $document->id,
+                'document_approval_stage_id' => $stage->id,
+                'assignee_id'                => $newUser->id,
+                'title'                      => 'Согласовать: ' . $document->title,
+                'status'                     => 'pending',
+                'deadline_at'                => $stage->deadline_at,
+            ]);
+
             $this->notificationService->notify($newUser, 'delegated_to_you', [
                 'title'       => $document->title,
                 'document_id' => $document->id,
@@ -526,6 +544,22 @@ class ApprovalEngineService
         if (!$stage->workflowStage->is_blocking && $stage->workflowStage->isAdvisory()) {
             $stage->update(['status' => 'approved', 'completed_at' => now()]);
             $this->moveToNextStage($approval);
+        }
+    }
+
+    /** Задача одного участника звена: закрывается его собственным решением. */
+    private function completeTaskFor(DocumentApprovalStage $stage, User $user): void
+    {
+        $tasks = Task::where('document_approval_stage_id', $stage->id)
+            ->where('assignee_id', $user->id)
+            ->where('status', 'pending')
+            ->get();
+
+        foreach ($tasks as $task) {
+            if ($task->bitrix24_task_id) {
+                $this->bitrix24->completeTask($task->bitrix24_task_id);
+            }
+            $task->update(['status' => 'completed', 'completed_at' => now()]);
         }
     }
 
