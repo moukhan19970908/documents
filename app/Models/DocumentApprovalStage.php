@@ -28,9 +28,10 @@ class DocumentApprovalStage extends Model
         return $this->belongsTo(DocumentApproval::class);
     }
 
+    /** withTrashed: звено могли убрать из маршрута — история должна его видеть. */
     public function workflowStage(): BelongsTo
     {
-        return $this->belongsTo(WorkflowStage::class);
+        return $this->belongsTo(WorkflowStage::class)->withTrashed();
     }
 
     public function decisions(): HasMany

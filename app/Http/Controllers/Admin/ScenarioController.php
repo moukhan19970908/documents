@@ -7,6 +7,7 @@ use App\Models\BlankTemplate;
 use App\Models\Department;
 use App\Models\Role;
 use App\Models\DocumentApproval;
+use App\Models\DocumentApprovalStage;
 use App\Models\DocumentType;
 use App\Models\User;
 use App\Models\Workflow;
@@ -137,8 +138,16 @@ class ScenarioController extends Controller
 
         DB::transaction(function () use ($scenario, $validated, $request) {
             foreach ($scenario->stages as $stage) {
+                // По звену уже шли согласования (запуски по шаблону) — физически удалить
+                // нельзя: на него ссылается история. Убираем из маршрута мягко, состав
+                // участников оставляем, иначе история согласований потеряет подписантов.
+                if (DocumentApprovalStage::where('workflow_stage_id', $stage->id)->exists()) {
+                    $stage->delete();
+                    continue;
+                }
+
                 $stage->approvers()->delete();
-                $stage->delete();
+                $stage->forceDelete();
             }
 
             foreach (array_values($validated['stages'] ?? []) as $i => $data) {

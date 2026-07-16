@@ -6,10 +6,13 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class WorkflowStage extends Model
 {
-    use HasFactory;
+    // Мягкое удаление: звено, по которому уже шли согласования, убирается из
+    // маршрута, но строка остаётся — на неё ссылается история (document_approval_stages).
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
         'workflow_id', 'name', 'stage_type', 'sort_order', 'deadline_hours',

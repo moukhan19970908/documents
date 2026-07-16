@@ -60,9 +60,10 @@ class Document extends Model
         return $this->belongsTo(User::class, 'initiator_id');
     }
 
+    /** withTrashed: звено могли убрать из маршрута — карточка документа должна его показывать. */
     public function currentStage(): BelongsTo
     {
-        return $this->belongsTo(WorkflowStage::class, 'current_stage_id');
+        return $this->belongsTo(WorkflowStage::class, 'current_stage_id')->withTrashed();
     }
 
     public function files(): HasMany
