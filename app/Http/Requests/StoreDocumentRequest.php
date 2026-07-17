@@ -37,6 +37,8 @@ class StoreDocumentRequest extends FormRequest
             'adhoc.ack.*'         => ['integer', 'exists:users,id'],
             'adhoc.intake'        => ['nullable', 'array'],
             'adhoc.intake.*'      => ['integer', 'exists:users,id'],
+            'role_picks'          => ['nullable', 'array'],
+            'role_picks.*'        => ['nullable', 'integer', 'exists:users,id'],
             'file'                => ['nullable', 'file', 'max:51200'], // 50MB
             'approvers'           => ['nullable', 'array'],
             'approvers.*'         => ['integer', 'exists:users,id'],

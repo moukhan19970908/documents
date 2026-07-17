@@ -40,13 +40,15 @@
                     'value'      => $st->condition_value,
                     'sla_days'   => $st->sla_days,
                     'resolver'   => $st->resolver,
+                    'role_code'  => $st->resolver === 'group' ? $st->group_role : null,
                     'role_name'  => $st->group_role ? ($roleNames[$st->group_role] ?? $st->group_role) : null,
-                    'approvers'  => $st->approvers
-                        ->filter(fn ($a) => $a->user)
-                        ->map(fn ($a) => [
-                            'id'       => $a->user->id,
-                            'name'     => $a->user->name,
-                            'position' => $a->user->role_label ?: $a->user->position,
+                    // Роль/отдел разворачиваем в конкретных людей — теми же правилами, что и публикация,
+                    // чтобы предпросмотр совпал с составом, который запустит движок.
+                    'approvers'  => $st->resolvedApprovers()
+                        ->map(fn ($u) => [
+                            'id'       => $u->id,
+                            'name'     => $u->name,
+                            'position' => $u->role_label ?: $u->position,
                         ])->values(),
                 ])->values(),
             ];
@@ -258,19 +260,30 @@
                                 <div class="ml-4 border-l-2 border-gray-100 pl-4 space-y-2">
                                     <template x-for="(stage, index) in stagesOf('{{ $phase }}')" :key="index">
                                         <div class="bg-white border border-gray-200 rounded-xl px-4 py-3">
-                                            {{-- Звено на роли: исполнителя выбирают при запуске --}}
+                                            {{-- Звено на роли: инициатор выбирает одного исполнителя из тех, у кого эта роль --}}
                                             <template x-if="stage.resolver === 'group' && stage.role_name">
                                                 <div>
                                                     <p class="flex items-center gap-1.5 text-xs text-gray-500 mb-2">
                                                         <svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                                                         <span x-text="'Роль: ' + stage.role_name"></span>
                                                     </p>
-                                                    <select x-model="rolePicks[stage.name]"
-                                                            class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
-                                                        <template x-for="approver in stage.approvers" :key="approver.id">
-                                                            <option :value="approver.id" x-text="approver.name"></option>
-                                                        </template>
-                                                    </select>
+
+                                                    <template x-if="stage.approvers.length > 0">
+                                                        <div>
+                                                            <select x-model="rolePicks[stage.role_code]"
+                                                                    class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                                                                <option value="">— выберите исполнителя —</option>
+                                                                <template x-for="approver in stage.approvers" :key="approver.id">
+                                                                    <option :value="approver.id" x-text="approver.name + (approver.position ? ' — ' + approver.position : '')"></option>
+                                                                </template>
+                                                            </select>
+                                                            <input type="hidden" :name="`role_picks[${stage.role_code}]`" :value="rolePicks[stage.role_code] ?? ''">
+                                                        </div>
+                                                    </template>
+
+                                                    {{-- У роли нет ни одного сотрудника — выбирать не из кого --}}
+                                                    <p x-show="stage.approvers.length === 0" class="text-sm text-amber-600"
+                                                       x-text="'Нет сотрудников с ролью «' + stage.role_name + '» — обратитесь к администратору'"></p>
                                                 </div>
                                             </template>
 
@@ -322,7 +335,7 @@
 
                     <p class="text-xs text-gray-400 mt-3">
                         Участники ознакомления и приёма добавляются только к этому документу — сам сценарий не меняется.
-                        Выбор исполнителя из роли пока не сохраняется: звено запустится на всех, кого дал сценарий.
+                        Для звена на роли выберите одного исполнителя — звено уйдёт только ему.
                     </p>
                 </div>
 
@@ -594,7 +607,8 @@
             source: 'blank',
             blankId: @json(old('blank_template_id', '')),
 
-            rolePicks: {},
+            // Выбор исполнителя для звена на роли: role_code => id пользователя.
+            rolePicks: @json(old('role_picks', (object) [])),
             adhoc: { ack: [], intake: [] },
 
             init() {
@@ -602,6 +616,7 @@
 
                 // После ошибки валидации возвращаем пользователя к тому, что он уже выбрал.
                 if (this.scenarioId) {
+                    this.syncRolePicks();
                     this.resetSource();
                     this.step = 2;
                 }
@@ -627,8 +642,29 @@
                 this.answers = {};
                 this.rolePicks = {};
                 this.adhoc = { ack: [], intake: [] };
+                this.syncRolePicks();
                 this.resetSource();
                 this.syncTitle();
+            },
+
+            /** Готовит выбор исполнителей для звеньев на роли: единственного кандидата ставим сразу,
+             *  где кандидатов несколько — ждём выбора инициатора. Ранее сделанный выбор сохраняем. */
+            syncRolePicks() {
+                const picks = {};
+
+                (this.current()?.stages ?? []).forEach(stage => {
+                    if (stage.resolver !== 'group' || !stage.role_code) return;
+
+                    if (this.rolePicks[stage.role_code]) {
+                        picks[stage.role_code] = this.rolePicks[stage.role_code];
+                    } else if (stage.approvers.length === 1) {
+                        picks[stage.role_code] = String(stage.approvers[0].id);
+                    } else {
+                        picks[stage.role_code] = '';
+                    }
+                });
+
+                this.rolePicks = picks;
             },
 
             parameters() {
@@ -663,12 +699,22 @@
 
             /** Участники фазы для сводки на шаге 3: состав сценария плюс добавленные вручную. */
             phaseParticipants(phase) {
-                const fromRoute = this.stagesOf(phase).flatMap(stage => stage.approvers);
+                const fromRoute = this.stagesOf(phase).flatMap(stage => this.stageParticipants(stage));
                 const added = this.adhoc[phase] ?? [];
 
                 return [...fromRoute, ...added].filter(
                     (person, index, list) => list.findIndex(p => p.id === person.id) === index
                 );
+            },
+
+            /** Кто реально пойдёт по звену: для роли — только выбранный исполнитель. */
+            stageParticipants(stage) {
+                if (stage.resolver === 'group' && stage.role_code) {
+                    const picked = stage.approvers.find(a => a.id === Number(this.rolePicks[stage.role_code]));
+                    return picked ? [picked] : [];
+                }
+
+                return stage.approvers;
             },
 
             addAdhoc(phase, userId) {
@@ -748,9 +794,16 @@
             canLeaveStep1() {
                 if (!this.scenarioId) return false;
 
-                return this.parameters()
+                const paramsReady = this.parameters()
                     .filter(parameter => parameter.is_required)
                     .every(parameter => (this.answers[parameter.key] ?? '') !== '');
+
+                // Для каждого звена на роли (с кандидатами) исполнитель должен быть выбран.
+                const rolesReady = this.routeStages()
+                    .filter(stage => stage.resolver === 'group' && stage.role_code && stage.approvers.length > 0)
+                    .every(stage => (this.rolePicks[stage.role_code] ?? '') !== '');
+
+                return paramsReady && rolesReady;
             },
 
             canLeaveStep2() {

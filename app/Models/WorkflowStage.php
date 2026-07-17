@@ -138,4 +138,61 @@ class WorkflowStage extends Model
             default        => (string) $actual === (string) $expected,
         };
     }
+
+    /**
+     * Кому фактически уйдёт звено: явно назначенные участники плюс развёрнутая группа
+     * (роль и/или отделы). Единственный источник правды — им пользуется и публикация
+     * сценария (ScenarioPublisher), и предпросмотр маршрута в форме запуска, чтобы список
+     * на экране совпадал с тем, что запустит движок.
+     *
+     * @return int[]
+     */
+    public function resolvedApproverIds(): array
+    {
+        $departmentIds = $this->group_department_ids ?: array_filter([$this->group_department_id]);
+
+        // Параллельная группа: конкретные участники и целые отделы складываются.
+        // Роль сужает только отделы — сам по себе список людей уже конкретен.
+        $fromGroup = ($departmentIds || $this->group_role)
+            ? self::usersOfGroup($departmentIds, $this->resolver === 'group' ? $this->group_role : null)
+            : [];
+
+        return array_values(array_unique(array_merge(
+            $this->approvers->pluck('approver_id')->all(),
+            $fromGroup,
+        )));
+    }
+
+    /** Те же участники, что resolvedApproverIds(), но моделями — для показа в интерфейсе. */
+    public function resolvedApprovers()
+    {
+        return User::whereIn('id', $this->resolvedApproverIds())
+            ->orderBy('name')
+            ->get(['id', 'name', 'position', 'role_title', 'role']);
+    }
+
+    /**
+     * Разворачивает группу (отделы + роль) в id пользователей.
+     * Направление (корневой департамент) разворачивается во всё своё поддерево;
+     * роль учитывает и основную (users.role), и назначенные через pivot.
+     *
+     * @param  int[]  $departmentIds
+     * @return int[]
+     */
+    public static function usersOfGroup(array $departmentIds, ?string $role): array
+    {
+        $deptIds = [];
+        foreach ($departmentIds as $id) {
+            $deptIds = array_merge($deptIds, Department::getDescendantIds((int) $id));
+        }
+        $deptIds = array_values(array_unique($deptIds));
+
+        return User::where('is_active', true)
+            ->when($deptIds, fn ($q) => $q->whereIn('department_id', $deptIds))
+            ->when($role, fn ($q) => $q->where(fn ($w) => $w
+                ->where('role', $role)
+                ->orWhereHas('roles', fn ($r) => $r->where('code', $role))))
+            ->pluck('id')
+            ->all();
+    }
 }

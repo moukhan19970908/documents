@@ -258,7 +258,7 @@ class DocumentController extends Controller
                 ->with(['fields', 'numerator',
                         'workflows' => fn ($w) => $this->scopeWorkflowsToProcess($w, $process),
                         'workflows.parameters', 'workflows.blankTemplates',
-                        'workflows.stages' => fn ($s) => $s->orderBy('sort_order')->with('approvers.user')])])
+                        'workflows.stages' => fn ($s) => $s->orderBy('sort_order')->with('approvers')])])
             ->orderBy('name')
             ->get()
             ->filter(fn (DocumentType $type) => $type->isAvailableFor($user))
@@ -337,6 +337,7 @@ class DocumentController extends Controller
                     $workflow,
                     $request->input('parameters', []),
                     $request->input('adhoc', []),
+                    array_filter($request->input('role_picks', [])),
                 );
                 $this->auditService->log(auth()->user()->name . ' начал процесс «' . $document->title . '»', $document);
             }

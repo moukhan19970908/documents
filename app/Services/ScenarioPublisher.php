@@ -2,8 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\Department;
-use App\Models\User;
 use App\Models\Workflow;
 use App\Models\WorkflowStage;
 use App\Models\WorkflowStageApprover;
@@ -175,19 +173,7 @@ class ScenarioPublisher
     /** @return int[] user ids */
     private function resolveApprovers(WorkflowStage $stage): array
     {
-        $departmentIds = $stage->group_department_ids
-            ?: array_filter([$stage->group_department_id]);
-
-        // Параллельная группа: конкретные участники и целые отделы складываются.
-        // Роль сужает только отделы — сам по себе список людей уже конкретен.
-        $fromGroup = ($departmentIds || $stage->group_role)
-            ? $this->usersOf($departmentIds, $stage->resolver === 'group' ? $stage->group_role : null)
-            : [];
-
-        return array_values(array_unique(array_merge(
-            $stage->approvers->pluck('approver_id')->all(),
-            $fromGroup,
-        )));
+        return $stage->resolvedApproverIds();
     }
 
     /** @return int[] user ids */
@@ -195,28 +181,8 @@ class ScenarioPublisher
     {
         return array_values(array_unique(array_merge(
             $branch->approver_ids ?? [],
-            $branch->department_ids ? $this->usersOf($branch->department_ids, null) : [],
+            $branch->department_ids ? WorkflowStage::usersOfGroup($branch->department_ids, null) : [],
         )));
-    }
-
-    /** @return int[] user ids */
-    private function usersOf(array $departmentIds, ?string $role): array
-    {
-        // Направление (корневой департамент) разворачивается во всё своё поддерево.
-        $deptIds = [];
-        foreach ($departmentIds as $id) {
-            $deptIds = array_merge($deptIds, Department::getDescendantIds((int) $id));
-        }
-        $deptIds = array_values(array_unique($deptIds));
-
-        return User::where('is_active', true)
-            ->when($deptIds, fn ($q) => $q->whereIn('department_id', $deptIds))
-            // Роль учитывает и основную (users.role), и назначенные через pivot.
-            ->when($role, fn ($q) => $q->where(fn ($w) => $w
-                ->where('role', $role)
-                ->orWhereHas('roles', fn ($r) => $r->where('code', $role))))
-            ->pluck('id')
-            ->all();
     }
 
     private function nextVersionLabel(Workflow $scenario): string

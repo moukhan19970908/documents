@@ -65,18 +65,21 @@ class ApprovalEngineService
      *                               they decide which stages join the route and are frozen here.
      * @param array $adhoc           участники, добавленные инициатором при запуске:
      *                               ['ack' => [id, ...], 'intake' => [id, ...]]
+     * @param array $rolePicks       выбранный исполнитель для звена на роли:
+     *                               ['код_роли' => id пользователя]
      */
-    public function startApproval(Document $doc, Workflow $workflow, array $parameterValues = [], array $adhoc = []): DocumentApproval    {
+    public function startApproval(Document $doc, Workflow $workflow, array $parameterValues = [], array $adhoc = [], array $rolePicks = []): DocumentApproval    {
         // v2 runs off an immutable published version, so editing the scenario never rewrites a
         // route that is already in flight. v1 keeps running off its live stages, as before.
         $definition = $workflow->isV2() && !$workflow->is_version
             ? $this->publishedVersionOrFail($workflow)
             : $workflow;
 
-        // Добавленные участники ознакомления и приёма — свойство этого документа, а не сценария.
-        // Поэтому маршрут форкается в копию, которую видит только он: общая версия не меняется.
-        if ($this->hasAdhoc($adhoc)) {
-            $definition = $this->forkForDocument($definition, $doc, $adhoc);
+        // Добавленные участники и выбор исполнителя для роли — свойство этого документа, а не
+        // сценария. Поэтому маршрут форкается в копию, которую видит только он: общая версия
+        // не меняется.
+        if ($this->hasAdhoc($adhoc) || $rolePicks) {
+            $definition = $this->forkForDocument($definition, $doc, $adhoc, $rolePicks);
         }
 
         return DB::transaction(function () use ($doc, $definition, $parameterValues) {
@@ -145,16 +148,18 @@ class ApprovalEngineService
 
     /**
      * Копия маршрута под один документ: те же звенья и те же исполнители, плюс участники,
-     * которых инициатор добавил в фазы ознакомления и приёма. Копия помечена как версия и
-     * неактивна, поэтому не попадает ни в один список сценариев.
+     * которых инициатор добавил в фазы ознакомления и приёма. Звено на роли при этом сужается
+     * до одного выбранного исполнителя. Копия помечена как версия и неактивна, поэтому не
+     * попадает ни в один список сценариев.
      *
-     * @param array<string, int[]> $adhoc
+     * @param array<string, int[]>  $adhoc
+     * @param array<string, int>    $rolePicks
      */
-    private function forkForDocument(Workflow $definition, Document $doc, array $adhoc): Workflow
+    private function forkForDocument(Workflow $definition, Document $doc, array $adhoc, array $rolePicks = []): Workflow
     {
         $definition->loadMissing('stages.approvers');
 
-        return DB::transaction(function () use ($definition, $doc, $adhoc) {
+        return DB::transaction(function () use ($definition, $doc, $adhoc, $rolePicks) {
             // Родитель форка — сама версия, а не сценарий, и published_at пуст: иначе форк
             // попал бы в цепочку версий сценария и publishedVersion() отдавал бы его
             // следующим документам как «последнюю публикацию».
@@ -174,7 +179,17 @@ class ApprovalEngineService
                 $copy->sort_order  = $order++;
                 $copy->save();
 
-                foreach ($stage->approvers as $approver) {
+                // Звено на роли с выбранным исполнителем уходит только ему; если выбор пуст или
+                // не входит в состав роли — оставляем всех, кого дал сценарий.
+                $pick = ($stage->resolver === 'group' && $stage->group_role)
+                    ? (int) ($rolePicks[$stage->group_role] ?? 0)
+                    : 0;
+
+                $approvers = ($pick && $stage->approvers->firstWhere('approver_id', $pick))
+                    ? $stage->approvers->where('approver_id', $pick)
+                    : $stage->approvers;
+
+                foreach ($approvers as $approver) {
                     $approverCopy = $approver->replicate();
                     $approverCopy->workflow_stage_id = $copy->id;
                     $approverCopy->save();
