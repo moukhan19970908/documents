@@ -117,4 +117,21 @@ class Workflow extends Model
     {
         return $this->blankTemplates->isEmpty() || $this->allow_file_upload;
     }
+
+    /**
+     * Кто может запускать документы по этому сценарию. Права выдаются отделу либо отдельным
+     * сотрудникам дополнительно: доступ есть у того, чей отдел разрешён, либо кто добавлен лично.
+     * Ничего не задано — сценарий доступен всем.
+     */
+    public function isLaunchableBy(User $user): bool
+    {
+        $departments = $this->allowed_departments ?? [];
+        $users = $this->allowed_users ?? [];
+
+        if (empty($departments) && empty($users)) {
+            return true;
+        }
+
+        return in_array($user->department_id, $departments) || in_array($user->id, $users);
+    }
 }

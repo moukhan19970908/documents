@@ -170,6 +170,15 @@
                                     @endif
                                 @endforeach
                             @endif
+
+                            {{-- Ответы на параметры запуска сценария --}}
+                            @foreach($launchParameters as $parameter)
+                                <div>
+                                    <p class="text-xs text-gray-400">{{ $parameter['label'] }}</p>
+                                    <p class="text-sm font-medium text-gray-900 mt-0.5">{{ $parameter['value'] }}</p>
+                                </div>
+                            @endforeach
+
                             <div>
                                 <p class="text-xs text-gray-400">Инициатор</p>
                                 <p class="text-sm font-medium text-gray-900 mt-0.5">{{ $document->initiator->name }}</p>

@@ -97,7 +97,7 @@ class ScenarioController extends Controller
     {
         $step = $request->input('step');
 
-        return in_array($step, ['basic', 'classifier', 'parameters', 'route'], true) ? $step : 'basic';
+        return in_array($step, ['basic', 'classifier', 'parameters', 'route', 'rights'], true) ? $step : 'basic';
     }
 
     /** Step 4 — the route. Stages are rewritten wholesale: the template is not what running processes use. */
@@ -276,6 +276,12 @@ class ScenarioController extends Controller
             'blank_template_ids.*'  => ['integer', 'exists:blank_templates,id'],
             'allow_file_upload'     => ['nullable', 'boolean'],
 
+            // Права запуска: доступ выдаётся отделам либо отдельным сотрудникам дополнительно.
+            'allowed_departments'   => ['nullable', 'array'],
+            'allowed_departments.*' => ['integer', 'exists:departments,id'],
+            'allowed_users'         => ['nullable', 'array'],
+            'allowed_users.*'       => ['integer', 'exists:users,id'],
+
             'parameters'                => ['nullable', 'array'],
             'parameters.*.key'          => ['required', 'string', 'max:64', 'regex:/^[a-z0-9_]+$/i'],
             'parameters.*.label'        => ['required', 'string', 'max:255'],
@@ -299,6 +305,9 @@ class ScenarioController extends Controller
             'document_type_id'  => $validated['document_type_id'] ?? null,
             // Чекбокса нет, пока в сценарии нет бланков, — тогда файл разрешён по умолчанию.
             'allow_file_upload' => (bool) ($validated['allow_file_upload'] ?? true),
+            // Пустой список прав = без ограничений, поэтому храним null.
+            'allowed_departments' => ($validated['allowed_departments'] ?? []) ?: null,
+            'allowed_users'       => ($validated['allowed_users'] ?? []) ?: null,
         ];
     }
 

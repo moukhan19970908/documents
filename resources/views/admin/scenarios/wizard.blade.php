@@ -37,7 +37,17 @@
 
         $selectedBlanks = old('blank_template_ids', $scenario?->blankTemplates->pluck('id')->all() ?? []);
 
-        $wizardSteps = ['basic', 'classifier', 'parameters', 'route'];
+        // Права запуска: список отделов и отдельных сотрудников.
+        $departmentsData = $departments->map(fn ($d) => ['id' => $d->id, 'name' => $d->name])->values();
+        $usersData = $users->map(fn ($u) => [
+            'id'         => $u->id,
+            'name'       => $u->name,
+            'department' => $u->department?->name,
+        ])->values();
+        $selectedDepartments = old('allowed_departments', $scenario?->allowed_departments ?? []);
+        $selectedUsers = old('allowed_users', $scenario?->allowed_users ?? []);
+
+        $wizardSteps = ['basic', 'classifier', 'parameters', 'route', 'rights'];
 
         // После ошибки валидации открываем тот шаг, на котором ошибка, — иначе сообщение
         // остаётся на скрытой вкладке и выглядит как беспричинный откат на первый шаг.
@@ -45,6 +55,7 @@
             if (str_starts_with($field, 'parameters')) return 'parameters';
             if (str_starts_with($field, 'blank_template_ids')) return 'classifier';
             if (in_array($field, ['document_type_id', 'subtypes'], true)) return 'classifier';
+            if (str_starts_with($field, 'allowed_')) return 'rights';
             return 'basic';
         };
 
@@ -80,8 +91,8 @@
             @endphp
             @foreach($steps as $number => $step)
                 @php
-                    // Шаг 4 пишет звенья сценария, поэтому при создании сначала сохраняем черновик.
-                    $isBuilt = $number <= 3 || $number === 4;
+                    // Шаг 4 (маршрут) пишет звенья сценария, поэтому при создании сначала сохраняем черновик.
+                    $isBuilt = true;
                     $needsSave = $number === 4 && !$scenario;
                 @endphp
                 <button type="button"
@@ -407,6 +418,75 @@
                     </div>
                 </div>
             </div>
+
+            {{-- ============ Шаг 5: Права ============ --}}
+            <div x-show="step === 'rights'" class="space-y-5">
+                <div class="flex items-start gap-2 bg-gray-50 border border-gray-100 rounded-lg px-4 py-3 text-xs text-gray-500">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span>
+                        Определяет, кто может запускать документы по этому сценарию.
+                        Ничего не выбрано — сценарий доступен всем. Выбранные отделы ограничивают доступ;
+                        отдельные сотрудники получают доступ дополнительно, независимо от отдела.
+                    </span>
+                </div>
+
+                {{-- Отделы --}}
+                <div class="bg-white rounded-xl border border-gray-200 p-6">
+                    <div class="flex items-center justify-between mb-1">
+                        <p class="text-sm font-semibold text-gray-800">Отделы</p>
+                        <button type="button" x-show="allowedDepartments.length > 0" @click="allowedDepartments = []"
+                                class="text-xs text-gray-400 hover:text-red-500">Очистить</button>
+                    </div>
+                    <p class="text-xs text-gray-400 mb-4">Сотрудники этих отделов смогут запускать документы по сценарию.</p>
+
+                    <div class="grid grid-cols-2 gap-x-6 gap-y-1 max-h-72 overflow-y-auto">
+                        <template x-for="department in allDepartments" :key="department.id">
+                            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer py-1.5 px-2 rounded-lg hover:bg-gray-50">
+                                <input type="checkbox" name="allowed_departments[]" :value="department.id" x-model.number="allowedDepartments"
+                                       class="rounded border-gray-300 text-[#5B4FE8] focus:ring-[#5B4FE8]">
+                                <span x-text="department.name"></span>
+                            </label>
+                        </template>
+                        <p x-show="allDepartments.length === 0" class="text-sm text-gray-400 py-1">Отделов пока нет.</p>
+                    </div>
+                </div>
+
+                {{-- Дополнительные сотрудники --}}
+                <div class="bg-white rounded-xl border border-gray-200 p-6">
+                    <p class="text-sm font-semibold text-gray-800">Дополнительные сотрудники</p>
+                    <p class="text-xs text-gray-400 mb-4">Получат доступ персонально — даже если их отдел не выбран выше.</p>
+
+                    <div class="flex flex-wrap items-center gap-2 mb-3">
+                        <template x-for="id in allowedUsers" :key="id">
+                            <span class="inline-flex items-center gap-1.5 bg-[#5B4FE8]/8 text-[#5B4FE8] border border-[#5B4FE8]/20 rounded-full px-3 py-1 text-xs font-medium">
+                                <span x-text="userName(id)"></span>
+                                <button type="button" @click="removeUser(id)" class="hover:text-red-500">×</button>
+                            </span>
+                        </template>
+                        <p x-show="allowedUsers.length === 0" class="text-xs text-gray-400">Персональный доступ никому не выдан.</p>
+                    </div>
+
+                    <select @change="addUser($event.target.value); $event.target.value = ''"
+                            class="w-full max-w-md text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                        <option value="">+ Добавить сотрудника</option>
+                        <template x-for="person in availableUsers()" :key="person.id">
+                            <option :value="person.id" x-text="person.name + (person.department ? ' — ' + person.department : '')"></option>
+                        </template>
+                    </select>
+
+                    <template x-for="id in allowedUsers" :key="'h' + id">
+                        <input type="hidden" name="allowed_users[]" :value="id">
+                    </template>
+                </div>
+
+                <div class="flex items-center justify-between pt-2">
+                    <button type="button" @click="step = 'route'" class="px-6 py-2.5 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-50">← Назад</button>
+                    <button type="submit" @click="$refs.stepInput.value = 'rights'"
+                            class="px-6 py-2.5 bg-[#5B4FE8] text-white rounded-lg text-sm font-medium hover:bg-indigo-700">
+                        Сохранить права
+                    </button>
+                </div>
+            </div>
         </form>
 
         {{-- Шаг 4: маршрут (свой form — вложенные формы недопустимы) --}}
@@ -430,6 +510,11 @@
             allBlanks: @json($blanksData),
             blankIds: @json(array_map('intval', $selectedBlanks)),
             allowFileUpload: @json((bool) old('allow_file_upload', $scenario->allow_file_upload ?? true)),
+
+            allDepartments: @json($departmentsData),
+            allUsers: @json($usersData),
+            allowedDepartments: @json(array_map('intval', $selectedDepartments ?? [])),
+            allowedUsers: @json(array_map('intval', $selectedUsers ?? [])),
 
             parameters: @json($parametersData).map((p, i) => ({ ...p, uid: 'p' + i })),
 
@@ -490,6 +575,26 @@
                     uid: 'p' + Date.now(),
                     id: null, key: '', label: '', type: 'select', options: [''], is_required: false,
                 });
+            },
+
+            // ——— Права запуска ———
+            availableUsers() {
+                return this.allUsers.filter(user => !this.allowedUsers.includes(user.id));
+            },
+
+            addUser(value) {
+                const id = Number(value);
+                if (id && !this.allowedUsers.includes(id)) {
+                    this.allowedUsers.push(id);
+                }
+            },
+
+            removeUser(id) {
+                this.allowedUsers = this.allowedUsers.filter(userId => userId !== id);
+            },
+
+            userName(id) {
+                return this.allUsers.find(user => user.id === id)?.name ?? ('#' + id);
             },
         };
     }

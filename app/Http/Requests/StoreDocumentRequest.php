@@ -95,6 +95,19 @@ class StoreDocumentRequest extends FormRequest
                 }
             },
 
+            // Права запуска: сценарий, недоступный сотруднику, нельзя запустить даже прямым запросом.
+            function (Validator $validator) {
+                if (!$this->workflow_id) {
+                    return;
+                }
+
+                $workflow = Workflow::find($this->workflow_id);
+
+                if ($workflow && !$workflow->isLaunchableBy($this->user())) {
+                    $validator->errors()->add('workflow_id', 'У вас нет прав на запуск этого сценария.');
+                }
+            },
+
             // Способ принести документ задан сценарием: его бланки и разрешение на загрузку файла.
             function (Validator $validator) {
                 $workflow = $this->workflow_id ? Workflow::with('blankTemplates')->find($this->workflow_id) : null;

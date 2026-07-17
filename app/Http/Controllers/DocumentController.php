@@ -264,6 +264,15 @@ class DocumentController extends Controller
             ->filter(fn (DocumentType $type) => $type->isAvailableFor($user))
             ->values();
 
+        // Права запуска действуют и на пути «тип → подтип → сценарий»: сценарии, недоступные
+        // сотруднику, не должны попадать в форму создания.
+        $documentTypes->each(fn (DocumentType $type) => $type->subtypes->each(
+            fn ($subtype) => $subtype->setRelation(
+                'workflows',
+                $subtype->workflows->filter(fn ($w) => $w->isLaunchableBy($user))->values()
+            )
+        ));
+
         $processMeta = $this->processMeta($process);
 
         return view('documents.create', compact('workflows', 'documentTypes', 'processMeta'));
@@ -373,21 +382,8 @@ class DocumentController extends Controller
             ->with(['stages.approvers.user', 'blankTemplates'])
             ->orderBy('name')
             ->get()
-            ->filter(function ($workflow) use ($user) {
-                // No department restriction — accessible to all
-                if (empty($workflow->allowed_departments)) {
-                    return true;
-                }
-                // User's department must be in allowed_departments
-                if (!in_array($user->department_id, $workflow->allowed_departments)) {
-                    return false;
-                }
-                // If specific users are set, user must be in that list
-                if (!empty($workflow->allowed_users)) {
-                    return in_array($user->id, $workflow->allowed_users);
-                }
-                return true;
-            })
+            // Права запуска: доступ выдан отделу пользователя либо ему лично (см. Workflow::isLaunchableBy).
+            ->filter(fn ($workflow) => $workflow->isLaunchableBy($user))
             ->values();
     }
 
@@ -397,7 +393,8 @@ class DocumentController extends Controller
 
         $document->load([
             'type.fields',
-            'workflow',
+            'workflow.parameters',
+            'latestApproval',
             'blank',
             'initiator.department',
             'files',
@@ -446,7 +443,18 @@ class DocumentController extends Controller
         // позже, при регистрации, — в сохранённом теле они так и остаются токенами.
         $blankBody = $namingService->fillBlank($document);
 
-        return view('documents.show', compact('document', 'approvers', 'chat', 'blankBody'));
+        // Ответы на параметры запуска (шаг «Параметры» сценария) — их вводили при запуске
+        // и хранят в согласовании; подписи берём из параметров сценария по ключу.
+        $parameterLabels = $document->workflow?->parameters->pluck('label', 'key') ?? collect();
+        $launchParameters = collect($document->latestApproval?->parameter_values ?? [])
+            ->reject(fn ($value) => $value === '' || $value === null)
+            ->map(fn ($value, $key) => [
+                'label' => $parameterLabels[$key] ?? $key,
+                'value' => is_array($value) ? implode(', ', $value) : $value,
+            ])
+            ->values();
+
+        return view('documents.show', compact('document', 'approvers', 'chat', 'blankBody', 'launchParameters'));
     }
 
     /** Тело документа, заполняемого по бланку. Токены в нём остаются — их подставит показ. */
