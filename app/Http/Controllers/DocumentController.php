@@ -560,13 +560,14 @@ class DocumentController extends Controller
         $canSeeAll = $user->isAdmin();
         $scope     = ($canSeeAll && $request->get('scope') === 'all') ? 'all' : 'mine';
 
-        // Pending approval tasks (согласование / ознакомление / приёмка).
+        // Pending tasks: документы (согласование/утверждение/ознакомление/приём/доработка) и приказы.
         $taskQuery = Task::with([
                 'document.type',
                 'document.initiator',
                 'assignee',
                 'stage.workflowStage',
                 'document.activeApproval.stages.workflowStage',
+                'order.initiator',
             ])
             ->where('status', 'pending');
 
@@ -575,25 +576,48 @@ class DocumentController extends Controller
         }
         // Админ в режиме «Администратор» — без ограничений, видит все задачи
 
-        // Documents sent back for revision — the initiator must rework them.
-        // These carry no local Task (the approval task is cancelled on revision),
-        // so we surface the document itself as a "Доработать" item.
-        $revisionQuery = Document::with(['type', 'initiator', 'latestApproval.stages.workflowStage'])
-            ->where('status', 'requires_changes');
-
-        if ($scope === 'mine') {
-            $revisionQuery->where('initiator_id', $user->id);
-        }
-
-        // Normalise both sources into a single card list for the view.
+        // Normalise all sources into a single card list for the view.
         $items = collect();
 
         foreach ($taskQuery->get() as $task) {
+            // Задача по приказу (проверка перед публикацией или ознакомление).
+            if ($task->order_id) {
+                $order = $task->order;
+                if (! $order) {
+                    continue;
+                }
+                $items->push([
+                    'kind'        => $order->status === 'on_approval' ? 'soglas' : 'oznak',
+                    'title'       => $task->title,
+                    'document'    => null,
+                    'link'        => route('orders.show', $order),
+                    'ref'         => $order->number ?? ('Приказ #' . $order->id),
+                    'abbr'        => 'ПРК',
+                    'stage_label' => null,
+                    'initiator'   => $order->initiator,
+                    'assignee'    => $task->assignee,
+                    'deadline'    => $task->deadline_at,
+                    'is_overdue'  => $task->isOverdue(),
+                ]);
+                continue;
+            }
+
             $doc = $task->document;
+            if (! $doc) {
+                continue;
+            }
+            // Задача без звена — это «Доработайте документ» инициатору.
+            $kind = $task->document_approval_stage_id === null
+                ? 'dorabotka'
+                : $this->phaseKind($task->stage?->workflowStage?->phase, $doc->type?->name, $task->stage?->workflowStage?->name);
+
             $items->push([
-                'kind'        => $this->deriveTaskKind($task->stage?->workflowStage?->name, $doc->type?->name),
-                'title'       => $doc->title,
+                'kind'        => $kind,
+                'title'       => $task->title,
                 'document'    => $doc,
+                'link'        => route('documents.show', $doc),
+                'ref'         => 'D-' . $doc->id,
+                'abbr'        => $this->typeAbbr($doc->type?->name),
                 'stage_label' => $this->stagePosition($doc->activeApproval, $task->document_approval_stage_id),
                 'initiator'   => $doc->initiator,
                 'assignee'    => $task->assignee,
@@ -602,11 +626,26 @@ class DocumentController extends Controller
             ]);
         }
 
+        // Legacy: документы на доработке БЕЗ задачи (созданные до появления задач-доработок).
+        $reworkDocIds = Task::whereNull('document_approval_stage_id')->whereNull('order_id')
+            ->where('status', 'pending')->pluck('document_id')->filter()->all();
+
+        $revisionQuery = Document::with(['type', 'initiator', 'latestApproval.stages.workflowStage'])
+            ->where('status', 'requires_changes')
+            ->whereNotIn('id', $reworkDocIds ?: [0]);
+
+        if ($scope === 'mine') {
+            $revisionQuery->where('initiator_id', $user->id);
+        }
+
         foreach ($revisionQuery->get() as $doc) {
             $items->push([
                 'kind'        => 'dorabotka',
-                'title'       => $doc->title,
+                'title'       => 'Доработайте документ ' . $doc->title,
                 'document'    => $doc,
+                'link'        => route('documents.show', $doc),
+                'ref'         => 'D-' . $doc->id,
+                'abbr'        => $this->typeAbbr($doc->type?->name),
                 'stage_label' => null,
                 'initiator'   => $doc->initiator,
                 'assignee'    => $doc->initiator,
@@ -640,6 +679,27 @@ class DocumentController extends Controller
             str_contains($t, 'поручен') || str_contains($t, 'задани')                       => 'priem',
             default                                                                         => 'soglas',
         };
+    }
+
+    /** Карточная категория задачи по фазе звена; для старых звеньев без фазы — эвристика по названию. */
+    private function phaseKind(?string $phase, ?string $typeName, ?string $stageName): string
+    {
+        return match ($phase) {
+            'ack'                          => 'oznak',
+            'intake'                       => 'priem',
+            'approval', 'approve', 'opinion' => 'soglas',
+            default                        => $this->deriveTaskKind($stageName, $typeName),
+        };
+    }
+
+    /** Аббревиатура типа для значка карточки ([ДК] по умолчанию). */
+    private function typeAbbr(?string $typeName): string
+    {
+        $words = collect(preg_split('/\s+/', trim((string) $typeName)))->filter()->values();
+
+        return $words->count() >= 2
+            ? mb_strtoupper(mb_substr($words[0], 0, 1) . mb_substr($words[1], 0, 1))
+            : ($words->count() ? mb_strtoupper(mb_substr($words[0], 0, 2)) : 'ДК');
     }
 
     /** "этап X из Y" for a task's stage within its approval, or null. */

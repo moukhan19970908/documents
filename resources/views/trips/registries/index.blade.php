@@ -179,4 +179,28 @@
             <div class="px-5 py-3 border-t border-gray-100">{{ $registries->links() }}</div>
         @endif
     </div>
+
+    {{-- Выбывшие (ТЗ 18.4): заявки, выведенные из моих реестров на доработку --}}
+    @if(isset($droppedItems) && $droppedItems->isNotEmpty())
+        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden mt-6">
+            <div class="px-5 py-4 border-b border-gray-100">
+                <h2 class="text-sm font-semibold text-gray-800">Выбывшие</h2>
+                <p class="text-xs text-gray-400 mt-0.5">Выведены из реестра на доработку — вернутся в пул после исправления</p>
+            </div>
+            <div class="divide-y divide-gray-50">
+                @foreach($droppedItems as $item)
+                    <div class="px-5 py-3.5 flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <p class="text-sm font-medium text-gray-900">{{ $item->tripRequest?->user->name }} — {{ $item->tripRequest?->city }}</p>
+                            <p class="text-xs text-gray-500 mt-0.5">
+                                Реестр «{{ $item->registry?->title }}» · вывел: {{ $item->dropper?->name ?? '—' }}@if($item->dropped_at) · {{ $item->dropped_at->format('d.m.Y') }}@endif
+                            </p>
+                            @if($item->drop_comment)<p class="text-xs text-gray-600 mt-0.5">{{ $item->drop_comment }}</p>@endif
+                        </div>
+                        <span class="shrink-0 text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">На доработке</span>
+                    </div>
+                @endforeach
+            </div>
+        </div>
+    @endif
 </x-app-layout>

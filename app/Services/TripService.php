@@ -12,6 +12,7 @@ class TripService
     public function __construct(
         private ApprovalService $approvalService,
         private NotificationService $notifications,
+        private TripTaskService $tripTasks,
     ) {}
 
     /**
@@ -70,6 +71,7 @@ class TripService
                 'daily_rate'           => $data['daily_rate'] ?? 0,
                 'accommodation_total'  => $data['accommodation_total'] ?? 0,
                 'transport_total'      => $data['transport_total'] ?? 0,
+                'transport_type'       => $data['transport_type'] ?? null,
                 'total_amount'         => $total,
                 'comment'              => $data['comment'] ?? null,
             ]);
@@ -111,9 +113,16 @@ class TripService
             }
         });
 
+        $fresh = $trip->fresh();
+
         // Moved on to the next step — notify its approver.
-        if ($trip->fresh()?->status === 'pending') {
-            $this->notifyCurrentApprover($trip->fresh());
+        if ($fresh?->status === 'pending') {
+            $this->notifyCurrentApprover($fresh);
+        }
+
+        // Согласование завершено — параллельно порождаются задания (ТЗ 18.3).
+        if ($fresh?->status === 'approved') {
+            $this->tripTasks->generateFor($fresh);
         }
     }
 

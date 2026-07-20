@@ -6,8 +6,10 @@ use App\Models\BlankTemplate;
 use App\Models\Department;
 use App\Models\DocumentType;
 use App\Models\Order;
+use App\Models\Task;
 use App\Models\User;
 use App\Services\AuditService;
+use App\Services\Bitrix24Service;
 use App\Services\NotificationService;
 use App\Services\OrderAudienceService;
 use App\Services\OrderNumberService;
@@ -25,6 +27,7 @@ class OrderController extends Controller
         private OrderAudienceService $audienceService,
         private NotificationService $notifications,
         private AuditService $audit,
+        private Bitrix24Service $bitrix,
     ) {}
 
     public function index(Request $request)
@@ -151,6 +154,7 @@ class OrderController extends Controller
         abort_unless($approval && $order->status === 'on_approval', 403);
 
         $approval->update(['status' => 'approved', 'decided_at' => now()]);
+        $this->closeOrderTasks($order, auth()->id(), 'completed');
         $this->audit->log('order_approval_approved', $order);
 
         // Все согласующие одобрили — публикуем.
@@ -172,6 +176,7 @@ class OrderController extends Controller
             'decided_at' => now(),
         ]);
         $order->update(['status' => 'draft']);
+        $this->closeOrderTasks($order, null, 'cancelled');
         $this->audit->log('order_approval_rejected', $order);
 
         $this->notifications->notify($order->initiator, 'order_rejected', [
@@ -206,6 +211,7 @@ class OrderController extends Controller
 
         if (! $ack->acknowledged_at) {
             $ack->update(['acknowledged_at' => now()]);
+            $this->closeOrderTasks($order, auth()->id(), 'completed');
             $this->audit->log('order_acknowledged', $order);
         }
 
@@ -264,6 +270,40 @@ class OrderController extends Controller
     /** Метки ролей согласующих (ТЗ 16.1). */
     private const APPROVER_ROLES = ['legal' => 'Юрист', 'hr' => 'Кадры', 'finance' => 'Финансы'];
 
+    /** Поставить задачу по приказу (в «Мои задачи» + Битрикс). Постановщик — инициатор приказа. */
+    private function createOrderTask(Order $order, User $assignee, string $title, string $description, $deadline = null): void
+    {
+        $task = Task::create([
+            'order_id'    => $order->id,
+            'assignee_id' => $assignee->id,
+            'title'       => $title,
+            'description' => $description,
+            'status'      => 'pending',
+            'deadline_at' => $deadline,
+        ]);
+
+        $bitrixId = $this->bitrix->createTask($assignee, $title, $description, $deadline);
+        if ($bitrixId) {
+            $task->update(['bitrix24_task_id' => $bitrixId]);
+        }
+    }
+
+    /** Закрыть незавершённые задачи приказа (одного адресата или всех) со статусом completed|cancelled. */
+    private function closeOrderTasks(Order $order, ?int $userId, string $status): void
+    {
+        $query = Task::where('order_id', $order->id)->where('status', 'pending');
+        if ($userId) {
+            $query->where('assignee_id', $userId);
+        }
+
+        foreach ($query->get() as $task) {
+            if ($task->bitrix24_task_id) {
+                $this->bitrix->completeTask($task->bitrix24_task_id);
+            }
+            $task->update(['status' => $status, 'completed_at' => $status === 'completed' ? now() : null]);
+        }
+    }
+
     /** Публикация: либо сразу, либо через фазу согласования. */
     private function publishOrApprove(Order $order, Request $request)
     {
@@ -297,10 +337,18 @@ class OrderController extends Controller
             $order->update(['status' => 'on_approval', 'requires_approval' => true]);
         });
 
+        $url = route('orders.show', $order->id);
         foreach ($order->approvals()->with('approver')->get() as $a) {
             $this->notifications->notify($a->approver, 'order_approval', [
                 'title' => $order->title, 'order_id' => $order->id,
             ]);
+            // Задача согласующему: проверить приказ перед публикацией (ТЗ приказы, п.1).
+            $this->createOrderTask(
+                $order,
+                $a->approver,
+                "Проверьте приказ - {$order->title} перед публикацией",
+                "Поступил новый приказ на проверку перед публикацией - {$order->title}\n\nСсылка на документ — {$url}",
+            );
         }
 
         $this->audit->log('order_sent_to_approval', $order);
@@ -329,11 +377,25 @@ class OrderController extends Controller
             ]);
         });
 
+        $ackUsers = User::whereIn('id', $userIds)->get();
+
         $this->notifications->notifyMany(
-            User::whereIn('id', $userIds)->get(),
+            $ackUsers,
             'order_published',
             ['title' => $order->title, 'order_id' => $order->id],
         );
+
+        // Задача каждому адресату на ознакомление (ТЗ приказы, п.2) — своя задача, чтобы все увидели.
+        $url = route('orders.show', $order->id);
+        foreach ($ackUsers as $u) {
+            $this->createOrderTask(
+                $order,
+                $u,
+                "Ознакомьтесь с новым приказом - {$order->title}",
+                "Поступил новый приказ - {$order->title}\nТребуется ваше ознакомление!\n\nСсылка на документ — {$url}",
+                $order->ack_deadline,
+            );
+        }
 
         $this->audit->log('order_published', $order);
 

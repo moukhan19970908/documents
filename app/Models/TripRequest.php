@@ -16,7 +16,7 @@ class TripRequest extends Model
     protected $fillable = [
         'user_id', 'signatory_id', 'route_id', 'current_step', 'status',
         'city', 'location_type', 'purpose', 'date_start', 'date_end',
-        'daily_rate', 'accommodation_total', 'transport_total', 'total_amount', 'comment',
+        'daily_rate', 'accommodation_total', 'transport_total', 'transport_type', 'total_amount', 'comment',
     ];
 
     protected $casts = [
@@ -53,6 +53,12 @@ class TripRequest extends Model
     public function registryItem(): \Illuminate\Database\Eloquent\Relations\HasOne
     {
         return $this->hasOne(RegistryItem::class, 'trip_request_id');
+    }
+
+    /** Порождаемые задания командировки (ТЗ 18.3). */
+    public function tripTasks(): HasMany
+    {
+        return $this->hasMany(TripTask::class)->orderBy('id');
     }
 
     public function getDaysCountAttribute(): int

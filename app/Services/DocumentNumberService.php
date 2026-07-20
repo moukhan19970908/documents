@@ -6,6 +6,7 @@ use App\Models\Document;
 use App\Models\DocumentCounter;
 use App\Models\DocumentRegistration;
 use App\Models\Numerator;
+use App\Models\NumeratorBinding;
 use App\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -29,16 +30,47 @@ class DocumentNumberService
     {
         $document->loadMissing(['type.numerator', 'subtype.numerator', 'subtype.type.numerator', 'workflow']);
 
+        // 1. Привязка классификатора со страницы «Нумерация» имеет высший приоритет.
+        $binding = $this->bindingFor($document);
+        if ($binding) {
+            return $binding->numerator;
+        }
+
+        // 2. Инлайновый нумератор подтипа/типа (редактор типа документа).
         $specific = $document->subtype?->effectiveNumerator() ?? $document->type?->numerator;
         if ($specific) {
             return $specific;
         }
 
-        // Тип/подтип без своего нумератора — берём глобальный поток (вкладка «Нумерация»):
+        // 3. Тип/подтип без своего нумератора — берём глобальный поток (вкладка «Нумерация»):
         // документы процесса credit_committee нумеруются отдельно от общего документооборота.
         $key = $document->workflow?->process_type === 'credit_committee' ? 'credit_committee' : 'document';
 
         return Numerator::where('key', $key)->first();
+    }
+
+    /** Привязка нумератора к классификатору документа: подтип имеет приоритет над типом. */
+    private function bindingFor(Document $document): ?NumeratorBinding
+    {
+        if ($document->document_subtype_id) {
+            $binding = NumeratorBinding::with('numerator')
+                ->where('classifier_type', 'document_subtype')
+                ->where('classifier_id', (string) $document->document_subtype_id)
+                ->first();
+
+            if ($binding) {
+                return $binding;
+            }
+        }
+
+        if ($document->document_type_id) {
+            return NumeratorBinding::with('numerator')
+                ->where('classifier_type', 'document_type')
+                ->where('classifier_id', (string) $document->document_type_id)
+                ->first();
+        }
+
+        return null;
     }
 
     /**
@@ -145,6 +177,13 @@ class DocumentNumberService
     public function scopeKey(Numerator $numerator, Document $document): string
     {
         $parts = [];
+
+        // Нумератор, привязанный к классификатору: если счётчик не сквозной, каждый
+        // классификатор ведёт собственную последовательность (ключ включает сам классификатор).
+        $binding = $this->bindingFor($document);
+        if ($binding && ! $numerator->shared_counter) {
+            $parts[] = $binding->classifier_type . ':' . $binding->classifier_id;
+        }
 
         foreach ($numerator->scope ?? [] as $dimension) {
             $parts[] = match ($dimension) {

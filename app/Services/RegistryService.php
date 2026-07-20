@@ -79,6 +79,42 @@ class RegistryService
         });
     }
 
+    /**
+     * Частичный возврат (ТЗ 18.1 п.12): одна заявка выпадает из реестра на доработку,
+     * остальные продолжают путь. Если активных заявок не осталось — реестр отклоняется.
+     */
+    public function returnItem(Registry $registry, RegistryItem $item, User $approver, string $comment): void
+    {
+        DB::transaction(function () use ($registry, $item, $approver, $comment) {
+            $request = $registry->type === 'trip' ? $item->tripRequest : $item->vacationRequest;
+
+            if ($request) {
+                $request->update(['status' => 'revision']);
+                $this->approvalService->log($registry->type, $request->id, $registry->current_step, $approver->id, 'sent_revision', $comment);
+            }
+
+            $item->update([
+                'status'       => 'dropped',
+                'dropped_by'   => $approver->id,
+                'drop_comment' => $comment,
+                'dropped_at'   => now(),
+            ]);
+
+            // Пересчёт суммы реестра по оставшимся активным позициям (командировки).
+            if ($registry->type === 'trip') {
+                $total = $registry->items()->where('status', 'active')->with('tripRequest')->get()
+                    ->sum(fn ($i) => (float) ($i->tripRequest?->total_amount ?? 0));
+                $registry->update(['total_amount' => $total]);
+            }
+
+            // Реестр опустел — отклоняем целиком.
+            if ($registry->items()->where('status', 'active')->count() === 0) {
+                $registry->update(['status' => 'rejected', 'comment' => 'Все заявки выведены на доработку.']);
+                $this->approvalService->log('registry', $registry->id, $registry->current_step, $approver->id, 'rejected', 'Все заявки выведены на доработку.');
+            }
+        });
+    }
+
     public function submit(Registry $registry): void
     {
         $registry->update(['status' => 'pending', 'current_step' => 1]);

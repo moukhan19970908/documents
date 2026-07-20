@@ -110,4 +110,80 @@
             </form>
         @endforeach
     </div>
+
+    {{-- Нумерация по классификаторам --------------------------------------------------------- --}}
+    <div class="mt-12 max-w-3xl" x-data="{ creating: false }">
+        <div class="flex items-start justify-between mb-4">
+            <div>
+                <h2 class="text-xl font-bold text-gray-900">Нумерация по классификаторам</h2>
+                <p class="text-sm text-gray-500 mt-1">Отдельные правила номера для типов/подтипов документов и видов приказов. Имеют приоритет над общими потоками выше.</p>
+            </div>
+            <button type="button" @click="creating = !creating"
+                    class="shrink-0 px-4 py-2 bg-[#5B4FE8] text-white rounded-lg text-sm font-medium hover:bg-indigo-700">
+                <span x-show="!creating">+ Создать</span>
+                <span x-show="creating" x-cloak>Отмена</span>
+            </button>
+        </div>
+
+        {{-- Форма создания --}}
+        <div x-show="creating" x-cloak class="bg-white border border-[#5B4FE8]/30 rounded-xl p-5 mb-4">
+            <h3 class="font-semibold text-gray-900 mb-4">Новая нумерация</h3>
+            @include('admin.numbering._custom-form', [
+                'numerator'   => null,
+                'action'      => route('admin.numbering.custom.store'),
+                'method'      => 'POST',
+                'submitLabel' => 'Создать',
+            ])
+        </div>
+
+        {{-- Список пользовательских нумераторов --}}
+        <div class="space-y-4">
+            @forelse($custom as $n)
+                <div x-data="{ editing: false }" class="bg-white border border-gray-200 rounded-xl p-5">
+                    <div class="flex items-start gap-4">
+                        <div class="w-10 h-10 rounded-xl bg-indigo-50 text-[#5B4FE8] flex items-center justify-center shrink-0">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.99 1.99 0 013 12V7a4 4 0 014-4z"/></svg>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <h3 class="font-semibold text-gray-900">{{ $n->name }}</h3>
+                                <span class="font-mono text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600">{{ $n->preview }}</span>
+                                <span class="text-xs text-gray-400">{{ $n->shared_counter ? 'сквозной счётчик' : 'счётчик на классификатор' }}</span>
+                            </div>
+                            <div class="mt-2 flex flex-wrap gap-1.5">
+                                @forelse($n->bindings as $b)
+                                    <span class="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-[#5B4FE8]">
+                                        {{ $classifierLabels[$b->classifier_type . ':' . $b->classifier_id] ?? ($b->classifier_type . ':' . $b->classifier_id) }}
+                                    </span>
+                                @empty
+                                    <span class="text-xs text-amber-600">Не привязана ни к одному классификатору</span>
+                                @endforelse
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <button type="button" @click="editing = !editing" class="text-sm text-gray-500 hover:text-[#5B4FE8]">Изменить</button>
+                            <form method="POST" action="{{ route('admin.numbering.custom.destroy', $n) }}"
+                                  onsubmit="return confirm('Удалить нумерацию «{{ $n->name }}»? Классификаторы вернутся к общему потоку.')">
+                                @csrf @method('DELETE')
+                                <button type="submit" class="text-sm text-red-500 hover:text-red-700">Удалить</button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div x-show="editing" x-cloak class="mt-5 pt-5 border-t border-gray-100">
+                        @include('admin.numbering._custom-form', [
+                            'numerator'   => $n,
+                            'action'      => route('admin.numbering.custom.update', $n),
+                            'method'      => 'PUT',
+                            'submitLabel' => 'Сохранить',
+                        ])
+                    </div>
+                </div>
+            @empty
+                <p class="text-sm text-gray-400 bg-gray-50 border border-dashed border-gray-200 rounded-xl px-4 py-6 text-center">
+                    Пока нет отдельных нумераций. Все документы и приказы используют общие потоки выше.
+                </p>
+            @endforelse
+        </div>
+    </div>
 </x-app-layout>

@@ -87,6 +87,9 @@ class ApprovalEngineService
             // document. Idempotent, so a resubmit keeps the original number.
             $this->registerDocument($doc, 'on_launch');
 
+            // Повторный запуск после доработки — снимаем задачу «Доработайте документ».
+            $this->closeReworkTasks($doc);
+
             $approval = DocumentApproval::create([
                 'document_id'      => $doc->id,
                 'workflow_id'      => $definition->id,
@@ -414,13 +417,26 @@ class ApprovalEngineService
             'reviewer'    => $user->name,
         ]);
 
-        $this->bitrix24->createRevisionTask(
-            $document,
+        // Инициатору ставится задача «Доработайте документ …» с комментарием руководителя.
+        $text = $this->reworkTaskText($document, $comment);
+        $task = Task::create([
+            'document_id' => $document->id,
+            'assignee_id' => $document->initiator_id,
+            'title'       => $text['title'],
+            'description' => $text['description'],
+            'status'      => 'pending',
+            'deadline_at' => $stage->deadline_at,
+        ]);
+
+        $bitrix24TaskId = $this->bitrix24->createTask(
             $document->initiator,
-            $user,
-            $comment,
-            $stage->deadline_at
+            $text['title'],
+            $text['description'],
+            $stage->deadline_at,
         );
+        if ($bitrix24TaskId) {
+            $task->update(['bitrix24_task_id' => $bitrix24TaskId]);
+        }
 
         event(new DocumentRejected($document, $user, $comment));
     }
@@ -459,11 +475,13 @@ class ApprovalEngineService
             // Задача переходит вместе с полномочием: у делегировавшего она уже закрыта
             // решением, а тому, кому делегировали, её надо выдать — иначе действовать
             // он может, а в «Моих задачах» документа не увидит.
+            $text = $this->documentTaskText($stage->workflowStage->phase, $document);
             Task::create([
                 'document_id'                => $document->id,
                 'document_approval_stage_id' => $stage->id,
                 'assignee_id'                => $newUser->id,
-                'title'                      => 'Согласовать: ' . $document->title,
+                'title'                      => $text['title'],
+                'description'                => $text['description'],
                 'status'                     => 'pending',
                 'deadline_at'                => $stage->deadline_at,
             ]);
@@ -507,21 +525,8 @@ class ApprovalEngineService
 
         $document = $approval->document;
 
-        // Determine sender: last approver of previous stage, or document initiator for the first stage
-        $previousStage = $approval->stages()
-            ->where('status', 'approved')
-            ->orderByDesc('completed_at')
-            ->first();
-
-        if ($previousStage) {
-            $lastDecision = $previousStage->decisions()
-                ->where('action', 'approve')
-                ->orderByDesc('decided_at')
-                ->first();
-            $sender = $lastDecision?->user ?? $document->initiator;
-        } else {
-            $sender = $document->initiator;
-        }
+        // Текст задачи зависит от фазы звена (согласование / утверждение / ознакомление / приём).
+        $text = $this->documentTaskText($stage->workflowStage->phase, $document);
 
         $approverIds = $stage->workflowStage->approvers()->pluck('approver_id');
         $approvers = User::whereIn('id', $approverIds)->get();
@@ -531,16 +536,17 @@ class ApprovalEngineService
                 'document_id'                => $document->id,
                 'document_approval_stage_id' => $stage->id,
                 'assignee_id'                => $approver->id,
-                'title'                      => 'Согласовать: ' . $document->title,
+                'title'                      => $text['title'],
+                'description'                => $text['description'],
                 'status'                     => 'pending',
                 'deadline_at'                => $stage->deadline_at,
             ]);
 
-            $bitrix24TaskId = $this->bitrix24->createApprovalTask(
-                $document,
+            $bitrix24TaskId = $this->bitrix24->createTask(
                 $approver,
-                $sender,
-                $stage->deadline_at
+                $text['title'],
+                $text['description'],
+                $stage->deadline_at,
             );
             if ($bitrix24TaskId) {
                 $task->update(['bitrix24_task_id' => $bitrix24TaskId]);
@@ -622,6 +628,66 @@ class ApprovalEngineService
         event(new DocumentApproved($document));
 
         $this->auditService->log('document_approved', $document);
+    }
+
+    /** Текст задачи по фазе звена (тексты задач документооборота — согласование/утверждение/ознакомление/приём). */
+    private function documentTaskText(?string $phase, Document $document): array
+    {
+        $t    = $document->title;
+        $link = 'Ссылка на документ — ' . route('documents.show', $document->id);
+
+        return match ($phase ?: 'approval') {
+            'approve' => [
+                'title'       => "Утвердите документ {$t}",
+                'description' => "Поступил новый документ на утверждение - {$t}\n\n{$link}",
+            ],
+            'ack' => [
+                'title'       => "Ознакомьтесь с документом {$t}",
+                'description' => "Поступил новый документ на ознакомление - {$t}\n\n{$link}",
+            ],
+            'intake' => [
+                'title'       => "Примите в исполнение документ - {$t}",
+                'description' => "Поступил новый документ на исполнение - {$t}\n\n{$link}",
+            ],
+            'opinion' => [
+                'title'       => "Дайте заключение по документу {$t}",
+                'description' => "Поступил документ для заключения - {$t}\n\n{$link}",
+            ],
+            default => [ // approval / null — фаза согласования
+                'title'       => "Согласуйте документ {$t}",
+                'description' => "Поступил новый документ на согласование - {$t}\n\n{$link}",
+            ],
+        };
+    }
+
+    /** Текст задачи инициатору при возврате документа на доработку. */
+    private function reworkTaskText(Document $document, ?string $comment): array
+    {
+        $t = $document->title;
+
+        return [
+            'title'       => "Доработайте документ {$t}",
+            'description' => "Документ {$t} возвращён на доработку\nКомментарий руководителя:\n"
+                . ($comment ?: '—')
+                . "\n\nСсылка на документ — " . route('documents.show', $document->id),
+        ];
+    }
+
+    /** Закрыть незавершённые задачи «Доработайте документ» (перезапуск после доработки). */
+    private function closeReworkTasks(Document $document): void
+    {
+        $tasks = Task::where('document_id', $document->id)
+            ->whereNull('document_approval_stage_id')
+            ->whereNull('order_id')
+            ->where('status', 'pending')
+            ->get();
+
+        foreach ($tasks as $task) {
+            if ($task->bitrix24_task_id) {
+                $this->bitrix24->completeTask($task->bitrix24_task_id);
+            }
+            $task->update(['status' => 'completed', 'completed_at' => now()]);
+        }
     }
 
     /**

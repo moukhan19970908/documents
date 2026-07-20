@@ -29,6 +29,8 @@ return [
             ['key' => 'menu.processes.documents',        'label' => 'Документооборот',   'depth' => 1, 'except' => ['external', 'observer']],
             ['key' => 'menu.processes.orders',           'label' => 'Приказы',           'depth' => 1, 'except' => ['external', 'observer', 'process_owner', 'registrar']],
             ['key' => 'menu.processes.assignments',      'label' => 'Поручения',         'depth' => 1, 'except' => ['external', 'observer', 'process_owner', 'registrar']],
+            ['key' => 'menu.processes.procedures',       'label' => 'Процедуры',         'depth' => 1, 'except' => ['external', 'observer', 'process_owner', 'registrar']],
+            ['key' => 'menu.processes.procedure_tasks',  'label' => 'Задачи процедур',   'depth' => 1, 'except' => ['external', 'observer', 'process_owner', 'registrar']],
             ['key' => 'menu.processes.requests',         'label' => 'Заявки',            'depth' => 1, 'except' => ['external', 'observer', 'process_owner']],
             ['key' => 'menu.processes.jobs',             'label' => 'Задания',           'depth' => 1, 'except' => ['external', 'observer', 'registrar']],
             ['key' => 'menu.processes.audits',           'label' => 'Проверки',          'depth' => 1, 'narrow' => true, 'except' => ['external', 'observer', 'linear', 'registrar']],
@@ -65,6 +67,37 @@ return [
             // Издание приказа — узкое право: только высшее руководство и администратор.
             ['key' => 'orders.issue',    'label' => 'Издать приказ',      'narrow' => true, 'only' => ['ceo', 'chief_of_staff', 'admin']],
             ['key' => 'orders.view_all', 'label' => 'Видеть все приказы', 'only' => ['head_department', 'director', 'ceo', 'chief_of_staff', 'admin']],
+        ],
+    ],
+
+    [
+        'key'   => 'assignments',
+        'label' => 'Поручения',
+        'items' => [
+            // Ставить корневые поручения — руководители и выше.
+            ['key' => 'assignments.issue',    'label' => 'Ставить поручения',   'narrow' => true, 'only' => ['head_unit', 'head_department', 'director', 'ceo', 'chief_of_staff', 'admin']],
+            ['key' => 'assignments.view_all', 'label' => 'Видеть все поручения', 'only' => ['ceo', 'chief_of_staff', 'admin']],
+        ],
+    ],
+
+    [
+        'key'   => 'procedures',
+        'label' => 'Процедуры',
+        'items' => [
+            // Запускать процедуры по шаблону — руководители и выше.
+            ['key' => 'procedures.start',    'label' => 'Запускать процедуры',   'narrow' => true, 'only' => ['head_unit', 'head_department', 'director', 'ceo', 'chief_of_staff', 'admin']],
+            ['key' => 'procedures.view_all', 'label' => 'Видеть все процедуры',    'only' => ['ceo', 'chief_of_staff', 'admin']],
+            ['key' => 'procedures.manage',   'label' => 'Настраивать шаблоны процедур', 'narrow' => true, 'only' => ['admin']],
+        ],
+    ],
+
+    [
+        'key'   => 'inspections',
+        'label' => 'Проверки',
+        'items' => [
+            // Инициировать проверки — узкий круг: аппарат управления, ГД, контрольные органы.
+            ['key' => 'inspections.issue',    'label' => 'Инициировать проверки',  'narrow' => true, 'only' => ['chief_of_staff', 'ceo', 'admin']],
+            ['key' => 'inspections.view_all', 'label' => 'Видеть все проверки',     'only' => ['ceo', 'chief_of_staff', 'admin']],
         ],
     ],
 ];

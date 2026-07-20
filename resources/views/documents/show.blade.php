@@ -699,10 +699,12 @@
                             }
                         }
                         $stageGroups[] = [
-                            'stage'     => $stage,
-                            'type'      => $stage->workflowStage?->stage_type ?? 'sequential',
-                            'name'      => $stage->workflowStage?->name ?? 'Этап',
-                            'approvers' => $approverNodes,
+                            'stage'       => $stage,
+                            'type'        => $stage->workflowStage?->stage_type ?? 'sequential',
+                            'name'        => $stage->workflowStage?->name ?? 'Этап',
+                            // Заголовок группы — название фазы звена, а не общий «параллельное согласование».
+                            'phase_label' => \App\Models\WorkflowStage::PHASES[$stage->workflowStage?->kind() ?? 'approval'] ?? 'Согласование',
+                            'approvers'   => $approverNodes,
                         ];
                     }
                 @endphp
@@ -731,7 +733,7 @@
                             @if($group['type'] === 'parallel' && $group['approvers']->count() > 1)
                                 {{-- Parallel group box --}}
                                 <div class="shrink-0 border-2 border-gray-200 rounded-2xl px-5 py-4 flex flex-col items-center gap-3 bg-gray-50/60">
-                                    <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Параллельное согласование</p>
+                                    <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">{{ $group['phase_label'] }}</p>
                                     <div class="flex items-start gap-4">
                                         @foreach($group['approvers'] as $ap)
                                             @include('documents._approval_node', [

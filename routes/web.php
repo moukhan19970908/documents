@@ -14,6 +14,14 @@ use App\Http\Controllers\ArchiveController;
 use App\Http\Controllers\WorkflowController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\EmployeesController;
+use App\Http\Controllers\KnowledgeController;
+use App\Http\Controllers\AssignmentController;
+use App\Http\Controllers\ProcedureController;
+use App\Http\Controllers\Procedure\ProcedureTaskController;
+use App\Http\Controllers\InspectionController;
+use App\Http\Controllers\Admin\ProcedureTemplateController;
+use App\Http\Controllers\RequestsController;
+use App\Http\Controllers\Admin\KnowledgeController as AdminKnowledgeController;
 use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\DepartmentController;
@@ -28,6 +36,7 @@ use App\Http\Controllers\Admin\ExternalParticipantController;
 use App\Http\Controllers\Trip\TripRequestController;
 use App\Http\Controllers\Trip\TripApprovalController;
 use App\Http\Controllers\Trip\TripRegistryController;
+use App\Http\Controllers\Trip\TripTaskController;
 use App\Http\Controllers\Vacation\VacationRequestController;
 use App\Http\Controllers\Vacation\VacationApprovalController;
 use App\Http\Controllers\Vacation\VacationRegistryController;
@@ -52,6 +61,69 @@ Route::middleware('auth')->group(function () {
 Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRestriction::class])->group(function () {
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+
+    // База знаний (чтение — всем авторизованным)
+    Route::get('knowledge', [KnowledgeController::class, 'index'])->name('knowledge.index');
+    Route::get('knowledge/{material}', [KnowledgeController::class, 'show'])->name('knowledge.show');
+
+    // Заявки — единый хаб (ТЗ 18): Отпуска / Командировки / Иное
+    Route::get('requests', [RequestsController::class, 'index'])->name('requests.index');
+
+    // Поручения (свободное дерево, ТЗ 17)
+    Route::get('assignments', [AssignmentController::class, 'index'])->name('assignments.index');
+    Route::get('assignments/create', [AssignmentController::class, 'create'])->name('assignments.create');
+    Route::post('assignments', [AssignmentController::class, 'store'])->name('assignments.store');
+    Route::get('assignments/{assignment}', [AssignmentController::class, 'show'])->name('assignments.show');
+    Route::post('assignments/{assignment}/sub', [AssignmentController::class, 'storeSub'])->name('assignments.sub');
+    Route::post('assignments/{assignment}/start', [AssignmentController::class, 'start'])->name('assignments.start');
+    Route::post('assignments/{assignment}/contribute', [AssignmentController::class, 'contribute'])->name('assignments.contribute');
+    Route::post('assignments/{assignment}/submit', [AssignmentController::class, 'submit'])->name('assignments.submit');
+    Route::post('assignments/{assignment}/accept', [AssignmentController::class, 'accept'])->name('assignments.accept');
+    Route::post('assignments/{assignment}/return', [AssignmentController::class, 'returnToRework'])->name('assignments.return');
+    Route::post('assignments/{assignment}/extend', [AssignmentController::class, 'extendDeadline'])->name('assignments.extend');
+    Route::post('assignments/{assignment}/extend/approve', [AssignmentController::class, 'approveExtension'])->name('assignments.extend.approve');
+    Route::post('assignments/{assignment}/extend/reject', [AssignmentController::class, 'rejectExtension'])->name('assignments.extend.reject');
+    Route::delete('assignments/{assignment}', [AssignmentController::class, 'destroy'])->name('assignments.destroy');
+    Route::get('assignment-files/{file}', [AssignmentController::class, 'file'])->name('assignments.file');
+
+    // Процедуры (сценарное дерево с чек-листом и веером задач, ТЗ 19)
+    Route::prefix('procedures')->name('procedures.')->group(function () {
+        Route::get('/', [ProcedureController::class, 'index'])->name('index');
+        Route::get('/create', [ProcedureController::class, 'create'])->name('create');
+        Route::post('/', [ProcedureController::class, 'store'])->name('store');
+        // Порождённые задачи (литеральные пути — до wildcard /{procedure})
+        Route::get('/tasks', [ProcedureTaskController::class, 'index'])->name('tasks.index');
+        Route::post('/tasks/{task}/take', [ProcedureTaskController::class, 'take'])->name('tasks.take');
+        Route::post('/tasks/{task}/submit', [ProcedureTaskController::class, 'submit'])->name('tasks.submit');
+        Route::post('/tasks/{task}/accept', [ProcedureTaskController::class, 'accept'])->name('tasks.accept');
+        Route::post('/tasks/{task}/return', [ProcedureTaskController::class, 'returnTask'])->name('tasks.return');
+        Route::post('/tasks/{task}/deadline', [ProcedureTaskController::class, 'changeDeadline'])->name('tasks.deadline');
+        Route::get('/task-files/{file}', [ProcedureTaskController::class, 'file'])->name('tasks.file');
+        Route::get('/files/{file}', [ProcedureController::class, 'file'])->name('file');
+        // Карточка процедуры и действия по этапам
+        Route::get('/{procedure}', [ProcedureController::class, 'show'])->name('show');
+        Route::post('/{procedure}/stage', [ProcedureController::class, 'submitStage'])->name('stage');
+        Route::post('/{procedure}/branch', [ProcedureController::class, 'branch'])->name('branch');
+        Route::post('/{procedure}/checklist', [ProcedureController::class, 'submitChecklist'])->name('checklist');
+        Route::delete('/{procedure}', [ProcedureController::class, 'destroy'])->name('destroy');
+    });
+
+    // Проверки (свободное дерево, отдельный раздел [ПРВ], ТЗ 20)
+    Route::prefix('inspections')->name('inspections.')->group(function () {
+        Route::get('/', [InspectionController::class, 'index'])->name('index');
+        Route::get('/create', [InspectionController::class, 'create'])->name('create');
+        Route::post('/', [InspectionController::class, 'store'])->name('store');
+        Route::get('/files/{file}', [InspectionController::class, 'file'])->name('file');
+        Route::get('/{inspection}', [InspectionController::class, 'show'])->name('show');
+        Route::post('/{inspection}/sub', [InspectionController::class, 'storeSub'])->name('sub');
+        Route::post('/{inspection}/start', [InspectionController::class, 'start'])->name('start');
+        Route::post('/{inspection}/contribute', [InspectionController::class, 'contribute'])->name('contribute');
+        Route::post('/{inspection}/submit', [InspectionController::class, 'submit'])->name('submit');
+        Route::post('/{inspection}/accept', [InspectionController::class, 'accept'])->name('accept');
+        Route::post('/{inspection}/return', [InspectionController::class, 'returnToRework'])->name('return');
+        Route::post('/{inspection}/spawn-assignment', [InspectionController::class, 'spawnAssignment'])->name('spawn-assignment');
+        Route::delete('/{inspection}', [InspectionController::class, 'destroy'])->name('destroy');
+    });
 
     // Documents
     Route::resource('documents', DocumentController::class);
@@ -170,10 +242,38 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
         Route::post('document-types/{document_type}/duplicate', [DocumentTypeController::class, 'duplicate'])->name('document-types.duplicate');
         Route::patch('document-types/{document_type}/toggle', [DocumentTypeController::class, 'toggle'])->name('document-types.toggle');
         Route::patch('document-types/{document_type}/counters/{counter}', [DocumentTypeController::class, 'updateCounter'])->name('document-types.counters.update');
+        Route::get('assignments/settings', [\App\Http\Controllers\Admin\AssignmentSettingController::class, 'edit'])->name('assignments.settings');
+        Route::put('assignments/settings', [\App\Http\Controllers\Admin\AssignmentSettingController::class, 'update'])->name('assignments.settings.update');
+        Route::get('trip-tasks/settings', [\App\Http\Controllers\Admin\TripTaskSettingController::class, 'edit'])->name('trip-tasks.settings');
+        Route::put('trip-tasks/settings', [\App\Http\Controllers\Admin\TripTaskSettingController::class, 'update'])->name('trip-tasks.settings.update');
+        // Шаблоны процедур (сценарии, ТЗ 19)
+        Route::get('procedures', [ProcedureTemplateController::class, 'index'])->name('procedures.index');
+        Route::post('procedures', [ProcedureTemplateController::class, 'store'])->name('procedures.store');
+        Route::get('procedures/{template}/edit', [ProcedureTemplateController::class, 'edit'])->name('procedures.edit');
+        Route::put('procedures/{template}', [ProcedureTemplateController::class, 'update'])->name('procedures.update');
+        Route::delete('procedures/{template}', [ProcedureTemplateController::class, 'destroy'])->name('procedures.destroy');
+        Route::post('procedures/{template}/stages', [ProcedureTemplateController::class, 'storeStage'])->name('procedures.stages.store');
+        Route::put('procedures/{template}/stages/{stage}', [ProcedureTemplateController::class, 'updateStage'])->name('procedures.stages.update');
+        Route::delete('procedures/{template}/stages/{stage}', [ProcedureTemplateController::class, 'destroyStage'])->name('procedures.stages.destroy');
+        Route::post('procedures/{template}/items', [ProcedureTemplateController::class, 'storeItem'])->name('procedures.items.store');
+        Route::put('procedures/{template}/items/{item}', [ProcedureTemplateController::class, 'updateItem'])->name('procedures.items.update');
+        Route::delete('procedures/{template}/items/{item}', [ProcedureTemplateController::class, 'destroyItem'])->name('procedures.items.destroy');
         Route::get('numbering', [NumberingController::class, 'index'])->name('numbering.index');
+        Route::post('numbering/custom', [NumberingController::class, 'storeCustom'])->name('numbering.custom.store');
+        Route::put('numbering/custom/{numerator}', [NumberingController::class, 'updateCustom'])->name('numbering.custom.update');
+        Route::delete('numbering/custom/{numerator}', [NumberingController::class, 'destroyCustom'])->name('numbering.custom.destroy');
         Route::put('numbering/{numerator}', [NumberingController::class, 'update'])->name('numbering.update');
         Route::resource('blank-templates', BlankTemplateController::class)->except(['show']);
         Route::patch('blank-templates/{blank_template}/toggle', [BlankTemplateController::class, 'toggle'])->name('blank-templates.toggle');
+
+        // База знаний — управление материалами и доступом
+        Route::get('knowledge/create', [AdminKnowledgeController::class, 'create'])->name('knowledge.create');
+        Route::post('knowledge', [AdminKnowledgeController::class, 'store'])->name('knowledge.store');
+        Route::get('knowledge/{material}/edit', [AdminKnowledgeController::class, 'edit'])->name('knowledge.edit');
+        Route::put('knowledge/{material}', [AdminKnowledgeController::class, 'update'])->name('knowledge.update');
+        Route::delete('knowledge/{material}', [AdminKnowledgeController::class, 'destroy'])->name('knowledge.destroy');
+        Route::get('knowledge/{material}/access', [AdminKnowledgeController::class, 'access'])->name('knowledge.access');
+        Route::put('knowledge/{material}/access', [AdminKnowledgeController::class, 'updateAccess'])->name('knowledge.access.update');
         Route::resource('workflow-folders', WorkflowFolderController::class);
         Route::resource('approval-routes', ApprovalRouteController::class);
         Route::patch('approval-routes/{approval_route}/toggle', [ApprovalRouteController::class, 'toggle'])->name('approval-routes.toggle');
@@ -193,6 +293,12 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
         Route::post('/registries/{registry}/reject', [TripRegistryController::class, 'reject'])->name('registries.reject');
         Route::post('/registries/{registry}/accounting', [TripRegistryController::class, 'sendToAccounting'])->name('registries.send-accounting');
         Route::post('/registries/{registry}/accept', [TripRegistryController::class, 'accept'])->name('registries.accept');
+        Route::post('/registries/{registry}/items/{item}/return', [TripRegistryController::class, 'returnItem'])->name('registries.items.return');
+        // Порождаемые задания командировок (ТЗ 18.3)
+        Route::get('/tasks', [TripTaskController::class, 'index'])->name('tasks.index');
+        Route::post('/tasks/{task}/take', [TripTaskController::class, 'take'])->name('tasks.take');
+        Route::post('/tasks/{task}/complete', [TripTaskController::class, 'complete'])->name('tasks.complete');
+        Route::get('/task-files/{file}', [TripTaskController::class, 'file'])->name('tasks.file');
         Route::get('/{trip}', [TripRequestController::class, 'show'])->name('show');
         Route::get('/{trip}/edit', [TripRequestController::class, 'edit'])->name('edit');
         Route::put('/{trip}', [TripRequestController::class, 'update'])->name('update');
@@ -216,6 +322,7 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
         Route::post('/registries/{registry}/reject', [VacationRegistryController::class, 'reject'])->name('registries.reject');
         Route::post('/registries/{registry}/accounting', [VacationRegistryController::class, 'sendToAccounting'])->name('registries.send-accounting');
         Route::post('/registries/{registry}/accept', [VacationRegistryController::class, 'accept'])->name('registries.accept');
+        Route::post('/registries/{registry}/items/{item}/return', [VacationRegistryController::class, 'returnItem'])->name('registries.items.return');
         Route::get('/{vacation}', [VacationRequestController::class, 'show'])->name('show');
         Route::get('/{vacation}/edit', [VacationRequestController::class, 'edit'])->name('edit');
         Route::put('/{vacation}', [VacationRequestController::class, 'update'])->name('update');

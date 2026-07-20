@@ -54,6 +54,7 @@ class TripRequestController extends Controller
             'date_end'            => ['required', 'date', 'gte:date_start'],
             'daily_rate'          => ['required', 'numeric', 'min:0'],
             'accommodation_total' => ['required', 'numeric', 'min:0'],
+            'transport_type'      => ['nullable', 'in:own,company'],
             'comment'             => ['nullable', 'string'],
         ]);
 
@@ -76,7 +77,8 @@ class TripRequestController extends Controller
     public function show(TripRequest $trip)
     {
         $this->authorize('view', $trip);
-        $trip->load(['user.department', 'route.steps.approverUser', 'approvalLogs.approver', 'signatory']);
+        $trip->load(['user.department', 'route.steps.approverUser', 'approvalLogs.approver', 'signatory',
+            'tripTasks.assignee', 'tripTasks.files']);
         return view('trips.show', compact('trip'));
     }
 

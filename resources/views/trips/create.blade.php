@@ -105,6 +105,21 @@
             </div>
 
             <div class="bg-white rounded-xl border border-gray-200 p-6">
+                <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-2">Транспорт</label>
+                <div class="flex flex-wrap gap-4 text-sm text-gray-700">
+                    <label class="inline-flex items-center gap-2">
+                        <input type="radio" name="transport_type" value="own" @checked(old('transport_type') === 'own') class="text-[#5B4FE8] focus:ring-[#5B4FE8]">
+                        Свой — нужна топливная карта
+                    </label>
+                    <label class="inline-flex items-center gap-2">
+                        <input type="radio" name="transport_type" value="company" @checked(old('transport_type') === 'company') class="text-[#5B4FE8] focus:ring-[#5B4FE8]">
+                        Организации — служебный автомобиль
+                    </label>
+                </div>
+                <p class="text-xs text-gray-400 mt-2">После согласования по этому выбору автоматически создаётся задание.</p>
+            </div>
+
+            <div class="bg-white rounded-xl border border-gray-200 p-6">
                 <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Комментарий</label>
                 <textarea name="comment" rows="2"
                           class="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]"

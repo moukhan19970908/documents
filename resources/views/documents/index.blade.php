@@ -117,6 +117,24 @@
                                 'rejected'         => 'bg-red-100 text-red-700',
                                 'archived'         => 'bg-gray-100 text-gray-500',
                             ][$doc->status] ?? 'bg-gray-100 text-gray-600';
+
+                            $statusLabel = $doc->status_label;
+
+                            // На согласовании бейдж отражает текущую фазу маршрута: утверждение,
+                            // заключение, ознакомление и приём получают свою надпись и цвет.
+                            if ($doc->status === 'in_review') {
+                                $phase = ($doc->activeApproval ?? $doc->latestApproval)?->stages
+                                    ->firstWhere('status', 'in_progress')?->workflowStage?->kind();
+
+                                [$statusLabel, $statusBadge] = match($phase) {
+                                    'approval' => ['На согласовании', 'bg-blue-100 text-blue-700'],
+                                    'approve'  => ['На утверждении',  'bg-violet-100 text-violet-700'],
+                                    'opinion'  => ['На заключении',   'bg-sky-100 text-sky-700'],
+                                    'ack'      => ['На ознакомлении', 'bg-amber-100 text-amber-700'],
+                                    'intake'   => ['На приёмке',      'bg-purple-100 text-purple-700'],
+                                    default    => [$statusLabel, $statusBadge],
+                                };
+                            }
                         @endphp
                         <tr class="hover:bg-gray-50 transition-colors">
                             <td class="px-5 py-3.5">
@@ -158,7 +176,7 @@
                             </td>
                             <td class="px-5 py-3.5">
                                 <span class="inline-flex px-2 py-1 text-xs font-semibold rounded {{ $statusBadge }}">
-                                    {{ $doc->status_label }}
+                                    {{ $statusLabel }}
                                 </span>
                                 @php
                                     $stages = $doc->activeApproval?->stages ?? collect();

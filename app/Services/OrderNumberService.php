@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\DocumentCounter;
 use App\Models\Numerator;
+use App\Models\NumeratorBinding;
 use App\Models\Order;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -17,11 +18,22 @@ class OrderNumberService
 {
     public function assign(Order $order): string
     {
-        $numerator = Numerator::where('key', 'order')->firstOrFail();
-        $scopeKey  = $numerator->periodKey();
+        // Привязка вида приказа к нумератору (страница «Нумерация») имеет приоритет
+        // над глобальным потоком «order».
+        $binding = NumeratorBinding::with('numerator')
+            ->where('classifier_type', 'order_kind')
+            ->where('classifier_id', $order->kind)
+            ->first();
+
+        $numerator = $binding?->numerator ?? Numerator::where('key', 'order')->firstOrFail();
+
+        // Отдельная последовательность на каждый вид, если счётчик не сквозной.
+        $scopeKey = ($binding && ! $numerator->shared_counter)
+            ? 'order_kind:' . $order->kind . '|' . $numerator->periodKey()
+            : $numerator->periodKey();
 
         $seq    = $this->nextValue($numerator, $scopeKey);
-        $number = $numerator->format($seq);
+        $number = $numerator->format($seq, ['{вид}' => Order::KINDS[$order->kind] ?? $order->kind]);
 
         $order->forceFill(['seq' => $seq, 'number' => $number])->save();
 

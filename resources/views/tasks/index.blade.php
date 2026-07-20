@@ -67,13 +67,8 @@
                 @php
                     $kind = $item['kind'];
                     $meta = $kindMeta[$kind];
-                    $doc  = $item['document'];
-
-                    $typeName = $doc->type?->name;
-                    $words = collect(preg_split('/\s+/', trim((string) $typeName)))->filter()->values();
-                    $abbr = $words->count() >= 2
-                        ? mb_strtoupper(mb_substr($words[0], 0, 1) . mb_substr($words[1], 0, 1))
-                        : ($words->count() ? mb_strtoupper(mb_substr($words[0], 0, 2)) : 'ДК');
+                    $abbr = $item['abbr'];
+                    $link = $item['link'];
 
                     $dl = $item['deadline'];
                     if ($item['is_overdue']) {
@@ -115,12 +110,12 @@
                         <div class="flex-1 min-w-0">
                             <div class="flex items-center gap-2 flex-wrap">
                                 <span class="text-xs font-semibold text-gray-400">[{{ $abbr }}]</span>
-                                <a href="{{ route('documents.show', $doc) }}" class="font-semibold text-gray-900 hover:text-[#5B4FE8] truncate">{{ $item['title'] }}</a>
+                                <a href="{{ $link }}" class="font-semibold text-gray-900 hover:text-[#5B4FE8] truncate">{{ $item['title'] }}</a>
                                 <span class="px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap"
                                       style="background: {{ $meta['color'] }}1A; color: {{ $meta['color'] }}">{{ $meta['label'] }}</span>
                             </div>
                             <p class="text-xs text-gray-400 mt-1">
-                                D-{{ $doc->id }}@if($item['stage_label']) · {{ $item['stage_label'] }}@endif
+                                {{ $item['ref'] }}@if($item['stage_label']) · {{ $item['stage_label'] }}@endif
                             </p>
                             <div class="flex items-center gap-x-4 gap-y-1 mt-2 text-xs text-gray-500 flex-wrap">
                                 <span class="flex items-center gap-1.5">
@@ -149,10 +144,10 @@
                                 </span>
                             @endif
                             <div class="flex items-center gap-2">
-                                <a href="{{ route('documents.show', $doc) }}"
+                                <a href="{{ $link }}"
                                    class="px-4 py-1.5 rounded-lg text-sm font-medium text-white hover:opacity-90 transition-opacity"
                                    style="background: {{ $meta['color'] }}">{{ $meta['btn'] }}</a>
-                                <a href="{{ route('documents.show', $doc) }}"
+                                <a href="{{ $link }}"
                                    class="px-4 py-1.5 rounded-lg text-sm font-medium border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors">Открыть</a>
                             </div>
                         </div>

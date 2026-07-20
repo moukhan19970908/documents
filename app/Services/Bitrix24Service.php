@@ -66,6 +66,42 @@ class Bitrix24Service
     }
 
     /**
+     * Универсальная постановка задачи в Bitrix24 с готовыми заголовком и описанием.
+     * Используется для задач с типизированным текстом по фазе (документы) и по приказам.
+     * Возвращает id созданной задачи в Bitrix или null.
+     */
+    public function createTask(
+        User $assignee,
+        string $title,
+        string $description,
+        ?\DateTimeInterface $deadline = null
+    ): ?string {
+        if (empty($this->webhookUrl) || !$assignee->bitrix24_id) {
+            return null;
+        }
+
+        $deadlineAt = $deadline ?? now()->addDays(3);
+
+        try {
+            $response = Http::post($this->webhookUrl . '/tasks.task.add', [
+                'fields' => [
+                    'TITLE'          => $title,
+                    'RESPONSIBLE_ID' => $assignee->bitrix24_id,
+                    'DESCRIPTION'    => $description,
+                    'DEADLINE'       => ($deadlineAt instanceof \Carbon\Carbon
+                        ? $deadlineAt
+                        : \Carbon\Carbon::parse($deadlineAt))->toIso8601String(),
+                ],
+            ]);
+
+            return (string) ($response->json()['result']['task']['id'] ?? null) ?: null;
+        } catch (\Exception $e) {
+            Log::error('Bitrix24 createTask failed: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
      * Task type 2 — document returned for revision.
      * Sent to the initiator when an approver requests changes.
      */

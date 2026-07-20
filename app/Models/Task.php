@@ -8,8 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class Task extends Model
 {
     protected $fillable = [
-        'document_id', 'document_approval_stage_id', 'assignee_id',
-        'title', 'status', 'deadline_at', 'completed_at', 'bitrix24_task_id',
+        'document_id', 'order_id', 'document_approval_stage_id', 'assignee_id',
+        'title', 'description', 'status', 'deadline_at', 'completed_at', 'bitrix24_task_id',
     ];
 
     protected $casts = [
@@ -20,6 +20,11 @@ class Task extends Model
     public function document(): BelongsTo
     {
         return $this->belongsTo(Document::class);
+    }
+
+    public function order(): BelongsTo
+    {
+        return $this->belongsTo(Order::class);
     }
 
     public function stage(): BelongsTo

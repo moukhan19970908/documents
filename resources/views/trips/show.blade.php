@@ -223,5 +223,39 @@
             @endif
 
         </div>
+
+        {{-- Задания по командировке (ТЗ 18.3): результаты возвращаются инициатору --}}
+        @if($trip->tripTasks->isNotEmpty())
+            <div class="bg-white rounded-xl border border-gray-200 mt-4">
+                <div class="px-5 py-4 border-b border-gray-100">
+                    <p class="text-[11px] font-semibold text-gray-400 uppercase tracking-widest">Задания по командировке</p>
+                    <p class="text-xs text-gray-400 mt-0.5">Порождаются после согласования, результаты возвращаются инициатору</p>
+                </div>
+                <div class="divide-y divide-gray-50">
+                    @foreach($trip->tripTasks as $task)
+                        <div class="px-5 py-3.5">
+                            <div class="flex items-center justify-between gap-3">
+                                <div class="min-w-0">
+                                    <p class="text-sm font-medium text-gray-900">{{ $task->title }}</p>
+                                    <p class="text-xs text-gray-400">{{ $task->whoLabel() }} · {{ $task->assignee?->name ?? 'исполнитель не назначен' }}</p>
+                                </div>
+                                <span class="shrink-0 text-xs px-2.5 py-1 rounded-full {{ $task->statusColor() }}">{{ $task->statusLabel() }}</span>
+                            </div>
+                            @if($task->result_comment)<p class="text-sm text-gray-600 mt-1.5">{{ $task->result_comment }}</p>@endif
+                            @if($task->files->isNotEmpty())
+                                <div class="mt-2 flex flex-wrap gap-2">
+                                    @foreach($task->files as $f)
+                                        <a href="{{ route('trips.tasks.file', $f) }}" class="inline-flex items-center gap-1.5 text-xs text-[#5B4FE8] hover:underline">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
+                                            {{ $f->original_name }}
+                                        </a>
+                                    @endforeach
+                                </div>
+                            @endif
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        @endif
     </div>
 </x-app-layout>

@@ -44,11 +44,16 @@
             <div class="bg-green-50 border border-green-200 text-green-700 text-sm rounded-xl px-4 py-3 mb-5">{{ session('success') }}</div>
         @endif
 
+        @php
+            $activeItems  = $registry->items->where('status', 'active')->values();
+            $droppedItems = $registry->items->where('status', 'dropped')->values();
+        @endphp
+
         {{-- Items table --}}
-        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden mb-5">
+        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden mb-5" x-data="{ returnId: null, comment: '' }">
             <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
                 <h2 class="text-sm font-semibold text-gray-800">Заявки в реестре</h2>
-                <span class="text-xs text-gray-400">{{ $registry->items->count() }} заявок</span>
+                <span class="text-xs text-gray-400">{{ $activeItems->count() }} заявок</span>
             </div>
             <table class="w-full text-sm">
                 <thead>
@@ -58,10 +63,11 @@
                         <th class="text-left px-5 py-3 font-semibold">Тип</th>
                         <th class="text-left px-5 py-3 font-semibold">Даты</th>
                         <th class="text-right px-5 py-3 font-semibold">Дней</th>
+                        @if($canReturnItems)<th class="px-5 py-3"></th>@endif
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50">
-                    @foreach($registry->items as $item)
+                    @foreach($activeItems as $item)
                         @php $vacation = $item->vacationRequest; @endphp
                         <tr>
                             <td class="px-5 py-3.5 font-medium text-gray-900">{{ $vacation->user->name }}</td>
@@ -71,11 +77,61 @@
                                 {{ $vacation->date_start->format('d.m.Y') }} — {{ $vacation->date_end->format('d.m.Y') }}
                             </td>
                             <td class="px-5 py-3.5 text-right font-semibold text-gray-900">{{ $vacation->days_count }}</td>
+                            @if($canReturnItems)
+                                <td class="px-5 py-3.5 text-right">
+                                    <button type="button" @click="returnId = {{ $item->id }}; comment = ''"
+                                            class="text-xs text-gray-400 hover:text-red-500" title="Вернуть заявку на доработку">Вернуть</button>
+                                </td>
+                            @endif
                         </tr>
                     @endforeach
                 </tbody>
             </table>
+
+            {{-- Модалка возврата одной заявки --}}
+            @if($canReturnItems)
+                <div x-show="returnId !== null" x-transition class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" style="display:none">
+                    <div class="bg-white rounded-xl w-full max-w-md p-6" @click.outside="returnId = null">
+                        <h3 class="text-base font-semibold text-gray-900 mb-1">Вернуть заявку на доработку</h3>
+                        <p class="text-xs text-gray-400 mb-3">Заявка выпадет из реестра, остальные продолжат согласование.</p>
+                        <form :action="`/vacations/registries/{{ $registry->id }}/items/${returnId}/return`" method="POST">
+                            @csrf
+                            <textarea name="comment" x-model="comment" rows="3" required
+                                      class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-red-400 mb-4"
+                                      placeholder="Что нужно исправить..."></textarea>
+                            <div class="flex gap-2 justify-end">
+                                <button type="button" @click="returnId = null" class="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">Отмена</button>
+                                <button type="submit" class="px-4 py-2 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600">Вернуть на доработку</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            @endif
         </div>
+
+        {{-- Выбывшие заявки --}}
+        @if($droppedItems->isNotEmpty())
+            <div class="bg-white rounded-xl border border-gray-200 overflow-hidden mb-5">
+                <div class="px-5 py-4 border-b border-gray-100">
+                    <h2 class="text-sm font-semibold text-gray-800">Выбывшие</h2>
+                    <p class="text-xs text-gray-400 mt-0.5">Выведены из реестра на доработку</p>
+                </div>
+                <div class="divide-y divide-gray-50">
+                    @foreach($droppedItems as $item)
+                        <div class="px-5 py-3.5">
+                            <div class="flex items-center justify-between gap-3">
+                                <span class="text-sm font-medium text-gray-900">{{ $item->vacationRequest?->user->name }}</span>
+                                <span class="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">На доработке</span>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-0.5">
+                                Вывел: {{ $item->dropper?->name ?? '—' }}@if($item->dropped_at) · {{ $item->dropped_at->format('d.m.Y H:i') }}@endif
+                            </p>
+                            @if($item->drop_comment)<p class="text-xs text-gray-600 mt-0.5">{{ $item->drop_comment }}</p>@endif
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        @endif
 
         {{-- Approval history --}}
         @if($registry->approvalLogs->isNotEmpty())

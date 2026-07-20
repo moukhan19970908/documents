@@ -258,6 +258,16 @@ class User extends Authenticatable
         return ($this->role_level ?? 1) >= 2 || $this->hasAnyRole(['admin', 'director']);
     }
 
+    /** Ранг сотрудника для доступа к Базе знаний: 3 — директор, 2 — руководитель, 1 — сотрудник. */
+    public function knowledgeRank(): int
+    {
+        return match (true) {
+            $this->hasAnyRole(['admin', 'director']) || ($this->role_level ?? 1) >= 3 => 3,
+            $this->isManager()                                                        => 2,
+            default                                                                   => 1,
+        };
+    }
+
     /**
      * Whether this user is named as a specific approver in any active route step.
      * Optionally scoped to a request type (trip, vacation, vacation_registry).

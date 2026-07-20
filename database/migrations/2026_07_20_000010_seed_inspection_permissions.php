@@ -1,0 +1,39 @@
+<?php
+
+use App\Support\Permissions;
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\DB;
+
+return new class extends Migration
+{
+    /** Гранты прав «Проверки» и видимости меню по дефолтам каталога. */
+    private const KEYS = ['menu.processes.audits', 'inspections.issue', 'inspections.view_all'];
+
+    public function up(): void
+    {
+        $items = collect(Permissions::items())->keyBy('key');
+        $roles = DB::table('roles')->get(['id', 'code']);
+
+        foreach (self::KEYS as $key) {
+            $item = $items[$key] ?? null;
+            if (! $item) {
+                continue;
+            }
+
+            foreach ($roles as $role) {
+                if (Permissions::defaultAllows($item, $role->code)) {
+                    DB::table('role_permissions')->updateOrInsert(
+                        ['role_id' => $role->id, 'permission' => $key],
+                        [],
+                    );
+                }
+            }
+        }
+    }
+
+    public function down(): void
+    {
+        // menu.processes.audits мог существовать до этого модуля — снимаем только права проверок.
+        DB::table('role_permissions')->whereIn('permission', ['inspections.issue', 'inspections.view_all'])->delete();
+    }
+};
