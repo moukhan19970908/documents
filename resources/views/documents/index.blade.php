@@ -135,6 +135,11 @@
                                     default    => [$statusLabel, $statusBadge],
                                 };
                             }
+
+                            // Согласование пройдено, но ознакомились не все — не «Одобрено», а «На ознакомлении».
+                            if ($doc->awaitingAck()) {
+                                $statusBadge = 'bg-amber-100 text-amber-700';
+                            }
                         @endphp
                         <tr class="hover:bg-gray-50 transition-colors">
                             <td class="px-5 py-3.5">

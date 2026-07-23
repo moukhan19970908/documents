@@ -124,8 +124,53 @@ class Document extends Model
         return $this->hasMany(DocumentRelatedFile::class)->latest();
     }
 
+    /** @var array<string,int>|null Мемоизация прогресса ознакомления на время запроса. */
+    private ?array $ackProgressCache = null;
+
+    /**
+     * Прогресс фазы ознакомления: ['done' => x, 'total' => y], либо null, если фазы нет.
+     * Считается по задачам ознакомления — они закрываются в момент ознакомления участника.
+     */
+    public function ackProgress(): ?array
+    {
+        if ($this->ackProgressCache === null) {
+            $rows = Task::where('document_id', $this->id)
+                ->whereIn('status', ['pending', 'completed'])
+                ->whereHas('stage.workflowStage', fn ($q) => $q->where('phase', 'ack'))
+                ->get(['status']);
+
+            $this->ackProgressCache = $rows->isEmpty() ? [] : [
+                'done'  => $rows->where('status', 'completed')->count(),
+                'total' => $rows->count(),
+            ];
+        }
+
+        return $this->ackProgressCache ?: null;
+    }
+
+    /**
+     * Согласование пройдено, но ознакомились ещё не все: маршрут не держим, однако
+     * документ не должен выглядеть «Одобрено», пока фаза ознакомления не закрыта.
+     */
+    public function awaitingAck(): bool
+    {
+        if ($this->status !== 'approved') {
+            return false;
+        }
+
+        $progress = $this->ackProgress();
+
+        return $progress && $progress['done'] < $progress['total'];
+    }
+
     public function getStatusLabelAttribute(): string
     {
+        if ($this->awaitingAck()) {
+            $progress = $this->ackProgress();
+
+            return "На ознакомлении ({$progress['done']}/{$progress['total']})";
+        }
+
         return match($this->status) {
             'draft'            => 'Черновик',
             'in_review'        => 'На одобрении',
@@ -139,6 +184,10 @@ class Document extends Model
 
     public function getStatusColorAttribute(): string
     {
+        if ($this->awaitingAck()) {
+            return 'amber';
+        }
+
         return match($this->status) {
             'draft'            => 'gray',
             'in_review'        => 'blue',

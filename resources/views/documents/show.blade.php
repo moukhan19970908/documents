@@ -13,6 +13,11 @@
         ];
         $statusBadge = $statusColors[$document->status] ?? 'bg-gray-100 text-gray-600';
 
+        // Согласование пройдено, но ознакомились не все — бейдж «На ознакомлении».
+        if ($document->awaitingAck()) {
+            $statusBadge = 'bg-amber-100 text-amber-700';
+        }
+
         $approval     = $document->activeApproval ?? $document->approvals->sortByDesc('id')->first();
         $activeStage  = $document->activeApproval?->activeStage();
         $deadline     = $document->deadline_at;
