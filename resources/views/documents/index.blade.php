@@ -65,13 +65,13 @@
                 <option value="archived" {{ request('status') === 'archived' ? 'selected' : '' }}>Архив</option>
             </select>
         </div>
-        @if($departments->isNotEmpty())
+        @if($directions->isNotEmpty())
         <div class="w-44">
-            <label class="text-xs text-gray-500 font-medium block mb-1">Департамент</label>
-            <select name="department" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
-                <option value="">Все департаменты</option>
-                @foreach($departments as $dept)
-                    <option value="{{ $dept->id }}" {{ request('department') == $dept->id ? 'selected' : '' }}>{{ $dept->name }}</option>
+            <label class="text-xs text-gray-500 font-medium block mb-1">Направление</label>
+            <select name="direction" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                <option value="">Все направления</option>
+                @foreach($directions as $dir)
+                    <option value="{{ $dir->id }}" {{ request('direction') == $dir->id ? 'selected' : '' }}>{{ $dir->name }}</option>
                 @endforeach
             </select>
         </div>
@@ -85,7 +85,7 @@
             <input type="date" name="date_to" value="{{ request('date_to') }}" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
         </div>
         <button type="submit" class="px-4 py-2 bg-[#5B4FE8] text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">Найти</button>
-        @if(request()->hasAny(['search', 'type', 'status', 'date_from', 'date_to', 'department']))
+        @if(request()->hasAny(['search', 'type', 'status', 'date_from', 'date_to', 'direction']))
             <a href="{{ route($listRoute, request('scope') === 'all' ? ['scope' => 'all'] : []) }}" class="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-50">Сбросить</a>
         @endif
     </form>

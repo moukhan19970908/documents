@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 class Material extends Model
 {
     protected $fillable = [
-        'title', 'type', 'study_minutes', 'body',
+        'title', 'description', 'type', 'study_minutes', 'body',
         'direction_id', 'department_id', 'level',
         'is_general', 'access_level', 'is_published', 'author_id',
     ];
@@ -74,6 +74,71 @@ class Material extends Model
     public function typeLabel(): string
     {
         return self::TYPES[$this->type] ?? $this->type;
+    }
+
+    /** Встраиваемый URL плеера для ссылки на YouTube/Vimeo/Rutube, иначе null. */
+    public static function videoEmbedUrl(?string $link): ?string
+    {
+        $link = trim((string) $link);
+        if ($link === '') {
+            return null;
+        }
+
+        if (preg_match('~(?:youtube\.com/(?:watch\?v=|embed/|shorts/)|youtu\.be/)([A-Za-z0-9_-]{11})~', $link, $m)) {
+            return 'https://www.youtube.com/embed/' . $m[1];
+        }
+
+        if (preg_match('~vimeo\.com/(?:video/)?(\d+)~', $link, $m)) {
+            return 'https://player.vimeo.com/video/' . $m[1];
+        }
+
+        if (preg_match('~rutube\.ru/(?:video|play/embed)/([A-Za-z0-9]+)~', $link, $m)) {
+            return 'https://rutube.ru/play/embed/' . $m[1];
+        }
+
+        return null;
+    }
+
+    /** Ссылка ведёт на прямой видеофайл (mp4/webm/ogg). */
+    public static function isDirectVideoLink(?string $link): bool
+    {
+        return (bool) preg_match('~\.(mp4|webm|ogg)(\?.*)?$~i', (string) $link);
+    }
+
+    /** HTML встроенного плеера для видео-ссылки, либо null для не-видео. */
+    public static function videoPlayerHtml(?string $link): ?string
+    {
+        if ($embed = static::videoEmbedUrl($link)) {
+            return '<div class="my-4 aspect-video rounded-xl overflow-hidden border border-gray-200 bg-black">'
+                . '<iframe src="' . e($embed) . '" class="w-full h-full" frameborder="0" '
+                . 'allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" '
+                . 'allowfullscreen></iframe></div>';
+        }
+
+        if (static::isDirectVideoLink($link)) {
+            return '<div class="my-4 rounded-xl overflow-hidden border border-gray-200 bg-black">'
+                . '<video src="' . e($link) . '" controls class="w-full"></video></div>';
+        }
+
+        return null;
+    }
+
+    /**
+     * Тело материала с встроенными плеерами: после каждой ссылки-видео
+     * добавляется её встроенный проигрыватель прямо в статье.
+     */
+    public function bodyWithVideos(): string
+    {
+        $html = (string) $this->body;
+        if ($html === '') {
+            return $html;
+        }
+
+        return preg_replace_callback(
+            '~<a\b[^>]*\bhref="([^"]+)"[^>]*>.*?</a>~is',
+            fn ($m) => $m[0] . (static::videoPlayerHtml($m[1]) ?? ''),
+            $html
+        );
     }
 
     public function levelLabel(): string

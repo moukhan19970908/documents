@@ -42,6 +42,13 @@
                            class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
                 </div>
 
+                <div>
+                    <label class="text-xs text-gray-500 block mb-1">Описание</label>
+                    <textarea name="description" rows="2"
+                              placeholder="Короткое описание материала — показывается под заголовком и в списке."
+                              class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">{{ old('description', $material->description) }}</textarea>
+                </div>
+
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label class="text-xs text-gray-500 block mb-1.5">Тип материала</label>
@@ -66,6 +73,7 @@
 
             {{-- Тело материала --}}
             <label class="text-xs text-gray-500 block mb-1">Тело материала</label>
+            <p class="text-xs text-gray-400 mb-1">Вставляйте ссылки прямо в текст (кнопка «ссылка»). Если ссылка ведёт на видео (YouTube, Vimeo, Rutube или файл mp4/webm/ogg), плеер покажется в статье под ссылкой.</p>
             @include('partials.blank-editor', [
                 'content'    => old('body', $material->body ?? ''),
                 'inputName'  => 'body',

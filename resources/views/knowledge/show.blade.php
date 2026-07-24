@@ -1,7 +1,7 @@
 <x-app-layout>
     <x-slot name="title">{{ $material->title }} — База знаний</x-slot>
 
-    <div class="max-w-3xl mx-auto">
+    <div class="max-w-5xl mx-auto">
         <a href="{{ route('knowledge.index') }}" class="text-xs text-gray-400 hover:text-gray-600">← База знаний</a>
 
         @if(session('success'))
@@ -24,6 +24,10 @@
 
             <h1 class="text-3xl font-bold text-gray-900 leading-tight">{{ $material->title }}</h1>
 
+            @if($material->description)
+                <p class="text-base text-gray-500 mt-2 leading-relaxed">{{ $material->description }}</p>
+            @endif
+
             <div class="flex items-center gap-4 mt-3 text-sm text-gray-400">
                 @if($material->studyLabel())
                     <span class="flex items-center gap-1.5">
@@ -39,7 +43,7 @@
 
         <article class="prose prose-sm max-w-none bg-white border border-gray-200 rounded-xl p-6">
             @if($material->body)
-                {!! $material->body !!}
+                {!! $material->bodyWithVideos() !!}
             @else
                 <p class="text-gray-400">Материал пока без содержимого.</p>
             @endif

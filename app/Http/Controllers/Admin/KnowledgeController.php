@@ -110,6 +110,7 @@ class KnowledgeController extends Controller
     {
         $data = $request->validate([
             'title'         => ['required', 'string', 'max:255'],
+            'description'   => ['nullable', 'string', 'max:2000'],
             'type'          => ['required', Rule::in(array_keys(Material::TYPES))],
             'study_minutes' => ['nullable', 'integer', 'min:1', 'max:1000'],
             'body'          => ['nullable', 'string'],

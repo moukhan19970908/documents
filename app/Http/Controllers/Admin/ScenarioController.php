@@ -24,16 +24,34 @@ class ScenarioController extends Controller
 {
     public function __construct(private AuditService $auditService) {}
 
-    public function index()
+    public function index(Request $request)
     {
-        $scenarios = Workflow::with(['owner', 'parameters', 'subtypes.type', 'versions'])
+        $directions  = Department::whereNull('parent_id')->orderBy('name')->get();
+        $directionId = $request->integer('direction') ?: null;
+
+        $query = Workflow::with(['owner', 'parameters', 'subtypes.type', 'versions'])
             ->withCount('stages')
             ->where('is_system', false)
             ->where('is_version', false)   // версии-копии — это история публикаций, а не отдельные сценарии
-            ->orderByDesc('id')
-            ->get();
+            ->orderByDesc('id');
 
-        return view('admin.scenarios.index', compact('scenarios'));
+        // Фильтр по направлению: сценарии, запускаемые отделами выбранного направления.
+        if ($directionId) {
+            $deptIds = array_map('intval', Department::getDescendantIds($directionId));
+
+            $matchingIds = Workflow::where('is_system', false)->where('is_version', false)
+                ->whereNotNull('allowed_departments')
+                ->pluck('allowed_departments', 'id')
+                ->filter(fn ($depts) => array_intersect($deptIds, array_map('intval', (array) $depts)) !== [])
+                ->keys()
+                ->all();
+
+            $query->whereIn('id', $matchingIds ?: [0]);
+        }
+
+        $scenarios = $query->paginate(9)->withQueryString();
+
+        return view('admin.scenarios.index', compact('scenarios', 'directions', 'directionId'));
     }
 
     public function create()

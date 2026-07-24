@@ -110,7 +110,9 @@
                                 </div>
 
                                 <h3 class="font-semibold text-gray-900 leading-snug">{{ $m->title }}</h3>
-                                @if($m->body)
+                                @if($m->description)
+                                    <p class="text-sm text-gray-500 mt-1 line-clamp-2">{{ $m->description }}</p>
+                                @elseif($m->body)
                                     <p class="text-sm text-gray-500 mt-1 line-clamp-2">{{ \Illuminate\Support\Str::limit(strip_tags($m->body), 90) }}</p>
                                 @endif
 

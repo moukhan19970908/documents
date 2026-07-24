@@ -23,14 +23,31 @@ class DocumentTypeController extends Controller
 {
     public function __construct(private AuditService $auditService) {}
 
-    public function index()
+    public function index(Request $request)
     {
-        $documentTypes = DocumentType::with(['numerator', 'fields', 'subtypes'])
-            ->withCount('documents')
-            ->orderBy('name')
-            ->get();
+        $directions  = Department::whereNull('parent_id')->orderBy('name')->get();
+        $directionId = $request->integer('direction') ?: null;
 
-        return view('admin.document-types.index', compact('documentTypes'));
+        $query = DocumentType::with(['numerator', 'fields', 'subtypes'])
+            ->withCount('documents')
+            ->orderBy('name');
+
+        // Фильтр по направлению: типы, доступные отделам выбранного направления.
+        if ($directionId) {
+            $deptIds = array_map('intval', Department::getDescendantIds($directionId));
+
+            $matchingIds = DocumentType::whereNotNull('allowed_departments')
+                ->pluck('allowed_departments', 'id')
+                ->filter(fn ($depts) => array_intersect($deptIds, array_map('intval', (array) $depts)) !== [])
+                ->keys()
+                ->all();
+
+            $query->whereIn('id', $matchingIds ?: [0]);
+        }
+
+        $documentTypes = $query->paginate(9)->withQueryString();
+
+        return view('admin.document-types.index', compact('documentTypes', 'directions', 'directionId'));
     }
 
     public function create()

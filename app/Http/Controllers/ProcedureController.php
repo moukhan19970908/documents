@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Procedure;
 use App\Models\ProcedureFile;
+use App\Models\ProcedureTask;
 use App\Models\ProcedureTemplate;
 use App\Models\User;
 use App\Services\ProcedureService;
@@ -20,23 +21,50 @@ class ProcedureController extends Controller
         $tab  = $request->query('tab', 'mine');
         $canViewAll = $user->isAdmin() || $user->hasMatrixPermission('procedures.view_all');
 
+        // Задачи по процедурам — отдельная вкладка на этой же странице.
+        $myTasks = $reviewTasks = collect();
+        if ($tab === 'tasks') {
+            $myTasks = ProcedureTask::query()
+                ->with('procedure', 'assignee')
+                ->where(function ($q) use ($user) {
+                    $q->where('assignee_id', $user->id);
+                    if ($user->isAdmin()) {
+                        $q->orWhereNull('assignee_id');
+                    }
+                })
+                ->orderByRaw("FIELD(status,'returned','pending','in_progress','submitted','done')")
+                ->latest('id')
+                ->get();
+
+            $reviewTasks = ProcedureTask::query()
+                ->with('procedure', 'assignee', 'files')
+                ->where('status', 'submitted')
+                ->whereHas('procedure', fn ($q) => $q->where('initiator_id', $user->id))
+                ->latest('submitted_at')
+                ->get();
+        }
+
         $query = Procedure::query()->with('template', 'initiator')->latest('id');
 
         if ($tab === 'all' && $canViewAll) {
             // все процедуры
         } elseif ($tab === 'inbox') {
             $query->whereHas('runs', fn ($q) => $q->where('status', 'active')->where('executor_id', $user->id));
-        } else {
+        } elseif ($tab !== 'tasks') {
             $tab = 'mine';
             $query->where('initiator_id', $user->id);
         }
 
         return view('procedures.index', [
-            'procedures' => $query->paginate(20)->withQueryString(),
-            'tab'        => $tab,
-            'canViewAll' => $canViewAll,
-            'canStart'   => $this->canStart($user),
-            'inboxCount' => Procedure::whereHas('runs', fn ($q) => $q->where('status', 'active')->where('executor_id', $user->id))->count(),
+            'procedures'  => $query->paginate(20)->withQueryString(),
+            'tab'         => $tab,
+            'canViewAll'  => $canViewAll,
+            'canStart'    => $this->canStart($user),
+            'inboxCount'  => Procedure::whereHas('runs', fn ($q) => $q->where('status', 'active')->where('executor_id', $user->id))->count(),
+            'taskCount'   => ProcedureTask::where('assignee_id', $user->id)->whereIn('status', ['pending', 'returned'])->count()
+                + ProcedureTask::where('status', 'submitted')->whereHas('procedure', fn ($q) => $q->where('initiator_id', $user->id))->count(),
+            'myTasks'     => $myTasks,
+            'reviewTasks' => $reviewTasks,
         ]);
     }
 

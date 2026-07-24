@@ -77,8 +77,9 @@ class DocumentController extends Controller
             $query->whereDate('created_at', '<=', $dateTo);
         }
 
-        if ($department = $request->get('department')) {
-            $deptIds = Department::getDescendantIds((int) $department);
+        if ($direction = $request->get('direction')) {
+            // Направление — корневой департамент; фильтруем по всему его поддереву.
+            $deptIds = Department::getDescendantIds((int) $direction);
             $query->whereHas('initiator', fn($q) => $q->whereIn('department_id', $deptIds));
         }
 
@@ -162,17 +163,19 @@ class DocumentController extends Controller
 
         $approverCandidates = $approversQuery->get(['id', 'name', 'department_id']);
 
+        // Направления — корневые департаменты (без родителя).
         if ($user->isAdmin() || $docAccess === 'full') {
-            $departments = Department::all();
+            $directions = Department::whereNull('parent_id')->orderBy('name')->get();
         } elseif ($docAccess === 'department' && $user->department_id) {
-            $departments = Department::whereIn('id', Department::visibleScopeIds($user->department_id))->get();
+            $rootId = Department::directionRootId($user->department_id);
+            $directions = Department::whereNull('parent_id')->where('id', $rootId)->get();
         } else {
-            $departments = collect();
+            $directions = collect();
         }
 
         $processMeta = $this->processMeta($process);
 
-        return view('documents.index', compact('documents', 'documentTypes', 'departments', 'approverCandidates', 'processMeta'));
+        return view('documents.index', compact('documents', 'documentTypes', 'directions', 'approverCandidates', 'processMeta'));
     }
 
     /** Сценарии без указанного процесса относятся к общему документообороту (legacy). */

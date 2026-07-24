@@ -8,8 +8,6 @@
                 <p class="text-sm text-gray-500 mt-1">Сценарные процедуры с этапами, чек-листом и задачами</p>
             </div>
             <div class="flex items-center gap-2">
-                <a href="{{ route('procedures.tasks.index') }}"
-                   class="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">Задачи процедур</a>
                 @if($canStart)
                     <a href="{{ route('procedures.create') }}"
                        class="px-4 py-2 bg-[#5B4FE8] text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">+ Запустить процедуру</a>
@@ -23,6 +21,7 @@
         @php
             $tabs = ['mine' => 'Мои', 'inbox' => 'Требуют действия'];
             if ($canViewAll) $tabs['all'] = 'Все';
+            $tabs['tasks'] = 'Задачи процедур';
         @endphp
         <div class="flex gap-1 mb-4 border-b border-gray-200">
             @foreach($tabs as $key => $label)
@@ -33,41 +32,48 @@
                     @if($key === 'inbox' && $inboxCount > 0)
                         <span class="ml-1 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 text-xs font-bold rounded-full bg-[#5B4FE8] text-white">{{ $inboxCount }}</span>
                     @endif
+                    @if($key === 'tasks' && $taskCount > 0)
+                        <span class="ml-1 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 text-xs font-bold rounded-full bg-[#5B4FE8] text-white">{{ $taskCount }}</span>
+                    @endif
                 </a>
             @endforeach
         </div>
 
-        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <table class="w-full text-sm">
-                <thead class="text-xs text-gray-500 uppercase tracking-wider bg-gray-50">
-                    <tr>
-                        <th class="text-left px-5 py-3 font-semibold">Номер</th>
-                        <th class="text-left px-5 py-3 font-semibold">Название</th>
-                        <th class="text-left px-5 py-3 font-semibold">Сценарий</th>
-                        <th class="text-left px-5 py-3 font-semibold">Инициатор</th>
-                        <th class="text-left px-5 py-3 font-semibold">Статус</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-50">
-                    @forelse($procedures as $p)
-                        <tr class="hover:bg-gray-50/50 transition-colors cursor-pointer" onclick="window.location='{{ route('procedures.show', $p) }}'">
-                            <td class="px-5 py-3.5 font-mono text-xs text-gray-500">{{ $p->number ?? '—' }}</td>
-                            <td class="px-5 py-3.5"><span class="font-medium text-gray-900">{{ $p->title }}</span></td>
-                            <td class="px-5 py-3.5 text-gray-600">{{ $p->template?->name ?? '—' }}</td>
-                            <td class="px-5 py-3.5 text-gray-600">{{ $p->initiator?->name }}</td>
-                            <td class="px-5 py-3.5">
-                                <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium {{ $p->statusColor() }}">{{ $p->statusLabel() }}</span>
-                            </td>
+        @if($tab === 'tasks')
+            @include('procedures._tasks')
+        @else
+            <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead class="text-xs text-gray-500 uppercase tracking-wider bg-gray-50">
+                        <tr>
+                            <th class="text-left px-5 py-3 font-semibold">Номер</th>
+                            <th class="text-left px-5 py-3 font-semibold">Название</th>
+                            <th class="text-left px-5 py-3 font-semibold">Сценарий</th>
+                            <th class="text-left px-5 py-3 font-semibold">Инициатор</th>
+                            <th class="text-left px-5 py-3 font-semibold">Статус</th>
                         </tr>
-                    @empty
-                        <tr><td colspan="5" class="px-5 py-10 text-center text-gray-400">Процедур нет.</td></tr>
-                    @endforelse
-                </tbody>
-            </table>
-        </div>
+                    </thead>
+                    <tbody class="divide-y divide-gray-50">
+                        @forelse($procedures as $p)
+                            <tr class="hover:bg-gray-50/50 transition-colors cursor-pointer" onclick="window.location='{{ route('procedures.show', $p) }}'">
+                                <td class="px-5 py-3.5 font-mono text-xs text-gray-500">{{ $p->number ?? '—' }}</td>
+                                <td class="px-5 py-3.5"><span class="font-medium text-gray-900">{{ $p->title }}</span></td>
+                                <td class="px-5 py-3.5 text-gray-600">{{ $p->template?->name ?? '—' }}</td>
+                                <td class="px-5 py-3.5 text-gray-600">{{ $p->initiator?->name }}</td>
+                                <td class="px-5 py-3.5">
+                                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium {{ $p->statusColor() }}">{{ $p->statusLabel() }}</span>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="5" class="px-5 py-10 text-center text-gray-400">Процедур нет.</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
 
-        @if($procedures->hasPages())
-            <div class="mt-4">{{ $procedures->links() }}</div>
+            @if($procedures->hasPages())
+                <div class="mt-4">{{ $procedures->links() }}</div>
+            @endif
         @endif
     </div>
 </x-app-layout>

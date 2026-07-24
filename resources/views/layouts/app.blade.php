@@ -84,14 +84,11 @@
                 @if(auth()->user()->canSeeMenu('menu.processes'))
                 {{-- Процессы (collapsible group) --}}
                 @php
-                    $procTaskBadge = \App\Models\ProcedureTask::where('assignee_id', auth()->id())->whereIn('status', ['pending', 'returned'])->count()
-                        + \App\Models\ProcedureTask::where('status', 'submitted')->whereHas('procedure', fn ($q) => $q->where('initiator_id', auth()->id()))->count();
                     $processItems = array_filter([
                         ['key' => 'menu.processes.documents', 'label' => 'Документооборот', 'route' => 'documents.index', 'url' => route('documents.index')],
                         ['key' => 'menu.processes.orders', 'label' => 'Приказы', 'route' => 'orders', 'url' => route('orders.index')],
                         ['key' => 'menu.processes.assignments', 'label' => 'Поручения', 'route' => 'assignments', 'url' => route('assignments.index')],
                         ['key' => 'menu.processes.procedures', 'label' => 'Процедуры', 'route' => 'procedures', 'url' => route('procedures.index')],
-                        ['key' => 'menu.processes.procedure_tasks', 'label' => 'Задачи процедур', 'route' => 'procedures.tasks', 'url' => route('procedures.tasks.index'), 'badge' => $procTaskBadge],
                         ['key' => 'menu.processes.requests', 'label' => 'Заявки', 'route' => 'requests', 'url' => route('requests.index')],
                         ['key' => 'menu.processes.credit_committee', 'label' => 'Кредитный комитет', 'route' => 'credit-committee', 'url' => route('credit-committee.index')],
                         ['key' => 'menu.processes.jobs', 'label' => 'Задания', 'url' => '#'],
@@ -190,7 +187,7 @@
                 @endif
 
                 {{-- Trips --}}
-                @if(auth()->user()->canSeeMenu('menu.trips'))
+                <!-- @if(auth()->user()->canSeeMenu('menu.trips'))
                 <div class="pt-3 pb-1">
                     <p class="px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Командировки</p>
                 </div>
@@ -255,7 +252,7 @@
                         @endif
                     </a>
                 @endif
-                @endif
+                @endif -->
             </nav>
 
             {{-- Bottom links --}}
