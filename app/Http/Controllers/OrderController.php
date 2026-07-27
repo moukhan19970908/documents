@@ -8,6 +8,7 @@ use App\Models\DocumentType;
 use App\Models\Order;
 use App\Models\Task;
 use App\Models\User;
+use App\Services\ArchiveService;
 use App\Services\AuditService;
 use App\Services\Bitrix24Service;
 use App\Services\NotificationService;
@@ -28,6 +29,7 @@ class OrderController extends Controller
         private NotificationService $notifications,
         private AuditService $audit,
         private Bitrix24Service $bitrix,
+        private ArchiveService $archive,
     ) {}
 
     public function index(Request $request)
@@ -213,6 +215,15 @@ class OrderController extends Controller
             $ack->update(['acknowledged_at' => now()]);
             $this->closeOrderTasks($order, auth()->id(), 'completed');
             $this->audit->log('order_acknowledged', $order);
+
+            // Дело завершено — все адресаты ознакомились: кладём приказ в архив.
+            if ($order->ackCompleted()) {
+                try {
+                    $this->archive->archiveOrder($order);
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::error("Archive: приказ {$order->id} не заархивирован: {$e->getMessage()}");
+                }
+            }
         }
 
         return back()->with('success', 'Вы ознакомились с приказом.');
@@ -257,12 +268,16 @@ class OrderController extends Controller
 
     public function destroy(Order $order)
     {
-        abort_unless($order->isDraft() && $order->initiator_id === auth()->id(), 403);
+        abort_unless($order->canBeDeletedBy(auth()->user()), 403);
+
+        if ($order->file_path && Storage::exists($order->file_path)) {
+            Storage::delete($order->file_path);
+        }
 
         $this->audit->log('order_deleted', $order);
         $order->delete();
 
-        return redirect()->route('orders.index')->with('success', 'Черновик удалён.');
+        return redirect()->route('orders.index')->with('success', 'Приказ удалён.');
     }
 
     // ── helpers ──────────────────────────────────────────────────────────

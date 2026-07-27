@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Department;
 use App\Models\DocumentCounter;
 use App\Models\DocumentType;
 use App\Models\Numerator;
@@ -16,7 +17,7 @@ class NumberingController extends Controller
 {
     public function __construct(private AuditService $auditService) {}
 
-    public function index()
+    public function index(Request $request)
     {
         $numerators = Numerator::whereIn('key', array_keys(Numerator::KEYS))
             ->orderByRaw("FIELD(`key`, 'document', 'order', 'assignment', 'credit_committee')")
@@ -42,6 +43,41 @@ class NumberingController extends Controller
                 return $n;
             });
 
+        // Фильтр направление → отдел (применяется к пользовательским нумераторам).
+        $directions   = Department::whereNull('parent_id')->orderBy('name')->get();
+        $directionId  = $request->integer('direction') ?: null;
+        $departmentId = $request->integer('department') ?: null;
+
+        $departments = collect();
+        if ($directionId) {
+            $childIds = array_values(array_diff(Department::getDescendantIds($directionId), [$directionId]));
+            $departments = Department::whereIn('id', $childIds)->orderBy('name')->get();
+
+            if ($departmentId && ! in_array($departmentId, $childIds, true)) {
+                $departmentId = null;
+            }
+
+            $scopeIds = array_map('intval', $departmentId
+                ? Department::getDescendantIds($departmentId)
+                : Department::getDescendantIds($directionId));
+
+            $custom = $custom->filter(fn (Numerator $n) => ! empty($n->allowed_departments)
+                && array_intersect($scopeIds, array_map('intval', (array) $n->allowed_departments)) !== [])
+                ->values();
+        } else {
+            $departmentId = null;
+        }
+
+        // Отделы, сгруппированные по направлению — для чекбоксов в форме нумерации.
+        $allDepts = Department::orderBy('name')->get();
+        $deptGroups = $directions->map(fn ($dir) => [
+            'direction'   => $dir,
+            'departments' => $allDepts->whereIn(
+                'id',
+                array_diff(Department::getDescendantIds($dir->id), [$dir->id])
+            )->values(),
+        ])->filter(fn ($g) => $g['departments']->isNotEmpty())->values();
+
         $types      = DocumentType::with('subtypes')->orderBy('name')->get();
         $orderKinds = Order::KINDS;
 
@@ -66,7 +102,8 @@ class NumberingController extends Controller
         }
 
         return view('admin.numbering.index', compact(
-            'numerators', 'custom', 'types', 'orderKinds', 'classifierLabels', 'boundTokens'
+            'numerators', 'custom', 'types', 'orderKinds', 'classifierLabels', 'boundTokens',
+            'directions', 'directionId', 'departments', 'departmentId', 'deptGroups'
         ));
     }
 
@@ -95,10 +132,11 @@ class NumberingController extends Controller
         $data = $this->validateCustom($request);
 
         $numerator = Numerator::create([
-            'key'            => null,
-            'name'           => $data['name'],
-            'mask'           => $data['mask'],
-            'scope'          => [],
+            'key'                 => null,
+            'name'                => $data['name'],
+            'mask'                => $data['mask'],
+            'scope'               => [],
+            'allowed_departments' => $data['allowed_departments'] ?? [],
             'shared_counter' => $data['shared_counter'] ?? false,
             'reset_period'   => $data['reset_period'],
             'padding'        => $data['padding'],
@@ -121,8 +159,9 @@ class NumberingController extends Controller
         $data = $this->validateCustom($request);
 
         $numerator->update([
-            'name'           => $data['name'],
-            'mask'           => $data['mask'],
+            'name'                => $data['name'],
+            'mask'                => $data['mask'],
+            'allowed_departments' => $data['allowed_departments'] ?? [],
             'shared_counter' => $data['shared_counter'] ?? false,
             'reset_period'   => $data['reset_period'],
             'padding'        => $data['padding'],
@@ -159,9 +198,11 @@ class NumberingController extends Controller
             'padding'         => ['required', 'integer', 'min:1', 'max:10'],
             'start_value'     => ['required', 'integer', 'min:0'],
             'assign_moment'   => ['required', Rule::in(['on_launch', 'on_registration', 'on_approval'])],
-            'shared_counter'  => ['nullable', 'boolean'],
-            'classifiers'     => ['required', 'array', 'min:1'],
-            'classifiers.*'   => ['string', Rule::in($this->allowedClassifierTokens())],
+            'shared_counter'        => ['nullable', 'boolean'],
+            'classifiers'           => ['required', 'array', 'min:1'],
+            'classifiers.*'         => ['string', Rule::in($this->allowedClassifierTokens())],
+            'allowed_departments'   => ['nullable', 'array'],
+            'allowed_departments.*' => ['integer', 'exists:departments,id'],
         ]);
     }
 

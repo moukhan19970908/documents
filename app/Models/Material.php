@@ -109,7 +109,7 @@ class Material extends Model
     public static function videoPlayerHtml(?string $link): ?string
     {
         if ($embed = static::videoEmbedUrl($link)) {
-            return '<div class="my-4 aspect-video rounded-xl overflow-hidden border border-gray-200 bg-black">'
+            return '<div class="my-4 rounded-xl overflow-hidden border border-gray-200 bg-black" style="height:65vh;min-height:420px">'
                 . '<iframe src="' . e($embed) . '" class="w-full h-full" frameborder="0" '
                 . 'allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" '
                 . 'allowfullscreen></iframe></div>';
@@ -117,7 +117,7 @@ class Material extends Model
 
         if (static::isDirectVideoLink($link)) {
             return '<div class="my-4 rounded-xl overflow-hidden border border-gray-200 bg-black">'
-                . '<video src="' . e($link) . '" controls class="w-full"></video></div>';
+                . '<video src="' . e($link) . '" controls class="w-full bg-black" style="height:65vh;min-height:420px;object-fit:contain"></video></div>';
         }
 
         return null;

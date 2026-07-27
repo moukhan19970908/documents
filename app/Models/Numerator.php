@@ -8,15 +8,16 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Numerator extends Model
 {
     protected $fillable = [
-        'key', 'name', 'mask', 'scope', 'shared_counter', 'reset_period', 'padding',
+        'key', 'name', 'mask', 'scope', 'allowed_departments', 'shared_counter', 'reset_period', 'padding',
         'start_value', 'assign_moment', 'allow_manual', 'manual_roles',
     ];
 
     protected $casts = [
-        'scope'          => 'array',
-        'manual_roles'   => 'array',
-        'allow_manual'   => 'boolean',
-        'shared_counter' => 'boolean',
+        'scope'               => 'array',
+        'allowed_departments' => 'array',
+        'manual_roles'        => 'array',
+        'allow_manual'        => 'boolean',
+        'shared_counter'      => 'boolean',
     ];
 
     /** Глобальные потоки нумерации, настраиваемые на вкладке «Нумерация». */

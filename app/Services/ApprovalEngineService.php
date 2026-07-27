@@ -28,6 +28,7 @@ class ApprovalEngineService
         private Bitrix24Service $bitrix24,
         private DocumentNumberService $numberService,
         private DocumentNamingService $namingService,
+        private ArchiveService $archiveService,
     ) {}
 
     public function startAdHocApproval(Document $doc, array $approverIds): DocumentApproval
@@ -628,6 +629,14 @@ class ApprovalEngineService
         event(new DocumentApproved($document));
 
         $this->auditService->log('document_approved', $document);
+
+        // Процесс завершён (все звенья, включая ознакомление/приём, отработали) —
+        // кладём неизменяемую копию в архив. Сбой архивации не должен ломать согласование.
+        try {
+            $this->archiveService->archiveDocument($document);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error("Archive: не удалось заархивировать документ {$document->id}: {$e->getMessage()}");
+        }
     }
 
     /** Текст задачи по фазе звена (тексты задач документооборота — согласование/утверждение/ознакомление/приём). */

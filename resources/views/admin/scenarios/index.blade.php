@@ -12,12 +12,12 @@
         </a>
     </div>
 
-    {{-- Фильтр по направлениям --}}
+    {{-- Фильтр по направлениям и отделам --}}
     @if($directions->isNotEmpty())
         <form method="GET" class="mb-5 flex items-end gap-3">
             <div class="w-64">
                 <label class="text-xs text-gray-500 font-medium block mb-1">Направление</label>
-                <select name="direction" onchange="this.form.submit()"
+                <select name="direction" onchange="this.form.querySelector('[name=department]')?.remove(); this.form.submit()"
                         class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
                     <option value="">Все направления</option>
                     @foreach($directions as $dir)
@@ -25,6 +25,18 @@
                     @endforeach
                 </select>
             </div>
+            @if($directionId && $departments->isNotEmpty())
+                <div class="w-64">
+                    <label class="text-xs text-gray-500 font-medium block mb-1">Отдел</label>
+                    <select name="department" onchange="this.form.submit()"
+                            class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                        <option value="">Все отделы направления</option>
+                        @foreach($departments as $dept)
+                            <option value="{{ $dept->id }}" {{ $departmentId === $dept->id ? 'selected' : '' }}>{{ $dept->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+            @endif
             @if($directionId)
                 <a href="{{ route('admin.scenarios.index') }}" class="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-50">Сбросить</a>
             @endif

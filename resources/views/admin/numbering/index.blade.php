@@ -23,7 +23,7 @@
         <div class="mb-4 max-w-3xl rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">{{ $errors->first() }}</div>
     @endif
 
-    <div class="space-y-4 max-w-3xl">
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         @foreach($numerators as $n)
             <form method="POST" action="{{ route('admin.numbering.update', $n) }}"
                   x-data="{
@@ -56,8 +56,8 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                    <div class="md:col-span-2">
+                <div class="grid grid-cols-1 gap-3 mt-4">
+                    <div>
                         <label class="text-xs text-gray-500 block mb-1">Маска номера</label>
                         <input type="text" name="mask" x-model="mask"
                                class="w-full font-mono text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
@@ -125,6 +125,37 @@
             </button>
         </div>
 
+        {{-- Фильтр по направлениям и отделам --}}
+        @if($directions->isNotEmpty())
+            <form method="GET" class="mb-4 flex items-end gap-3">
+                <div class="w-56">
+                    <label class="text-xs text-gray-500 font-medium block mb-1">Направление</label>
+                    <select name="direction" onchange="this.form.querySelector('[name=department]')?.remove(); this.form.submit()"
+                            class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                        <option value="">Все направления</option>
+                        @foreach($directions as $dir)
+                            <option value="{{ $dir->id }}" {{ $directionId === $dir->id ? 'selected' : '' }}>{{ $dir->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                @if($directionId && $departments->isNotEmpty())
+                    <div class="w-56">
+                        <label class="text-xs text-gray-500 font-medium block mb-1">Отдел</label>
+                        <select name="department" onchange="this.form.submit()"
+                                class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                            <option value="">Все отделы направления</option>
+                            @foreach($departments as $dept)
+                                <option value="{{ $dept->id }}" {{ $departmentId === $dept->id ? 'selected' : '' }}>{{ $dept->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                @endif
+                @if($directionId)
+                    <a href="{{ route('admin.numbering.index') }}" class="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-50">Сбросить</a>
+                @endif
+            </form>
+        @endif
+
         {{-- Форма создания --}}
         <div x-show="creating" x-cloak class="bg-white border border-[#5B4FE8]/30 rounded-xl p-5 mb-4">
             <h3 class="font-semibold text-gray-900 mb-4">Новая нумерация</h3>
@@ -137,6 +168,7 @@
         </div>
 
         {{-- Список пользовательских нумераторов --}}
+        @php $deptLabels = collect($deptGroups)->flatMap(fn ($g) => $g['departments'])->keyBy('id'); @endphp
         <div class="space-y-4">
             @forelse($custom as $n)
                 <div x-data="{ editing: false }" class="bg-white border border-gray-200 rounded-xl p-5">
@@ -159,6 +191,15 @@
                                     <span class="text-xs text-amber-600">Не привязана ни к одному классификатору</span>
                                 @endforelse
                             </div>
+                            @if(! empty($n->allowed_departments))
+                                <div class="mt-1.5 flex flex-wrap gap-1.5">
+                                    @foreach($n->allowed_departments as $depId)
+                                        @if($deptLabels->has($depId))
+                                            <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">{{ $deptLabels[$depId]->name }}</span>
+                                        @endif
+                                    @endforeach
+                                </div>
+                            @endif
                         </div>
                         <div class="flex items-center gap-2 shrink-0">
                             <button type="button" @click="editing = !editing" class="text-sm text-gray-500 hover:text-[#5B4FE8]">Изменить</button>
@@ -181,7 +222,11 @@
                 </div>
             @empty
                 <p class="text-sm text-gray-400 bg-gray-50 border border-dashed border-gray-200 rounded-xl px-4 py-6 text-center">
-                    Пока нет отдельных нумераций. Все документы и приказы используют общие потоки выше.
+                    @if($directionId)
+                        Нет нумераций для выбранного {{ $departmentId ? 'отдела' : 'направления' }}.
+                    @else
+                        Пока нет отдельных нумераций. Все документы и приказы используют общие потоки выше.
+                    @endif
                 </p>
             @endforelse
         </div>

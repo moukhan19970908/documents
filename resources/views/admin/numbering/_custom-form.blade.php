@@ -2,6 +2,7 @@
     /** @var \App\Models\Numerator|null $numerator */
     $n = $numerator ?? null;
     $selected = $n ? $n->bindings->map(fn ($b) => $b->classifier_type . ':' . $b->classifier_id)->all() : [];
+    $selectedDepts = $n && $n->allowed_departments ? array_map('intval', $n->allowed_departments) : [];
     $curMask  = $n->mask ?? '{код_типа}-{YYYY}-{N}';
     $curReset = $n->reset_period ?? 'yearly';
     $curPad   = $n->padding ?? 4;
@@ -144,6 +145,29 @@
         </div>
         <p class="text-xs text-gray-400 mt-1">Классификатор можно привязать только к одной нумерации — выбор перенесёт его сюда.</p>
     </div>
+
+    @if(($deptGroups ?? collect())->isNotEmpty())
+        <div class="mt-4">
+            <label class="text-xs text-gray-500 block mb-2">Отделы (для фильтра по направлениям)</label>
+            <div class="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-72 overflow-y-auto">
+                @foreach($deptGroups as $group)
+                    <div class="px-3 py-2">
+                        <p class="text-sm font-medium text-gray-800 mb-1.5">{{ $group['direction']->name }}</p>
+                        <div class="ml-0 grid grid-cols-1 sm:grid-cols-2 gap-1">
+                            @foreach($group['departments'] as $dept)
+                                <label class="flex items-center gap-2 text-sm text-gray-600">
+                                    <input type="checkbox" name="allowed_departments[]" value="{{ $dept->id }}"
+                                           @checked(in_array($dept->id, $selectedDepts)) class="rounded text-[#5B4FE8] focus:ring-[#5B4FE8]">
+                                    {{ $dept->name }}
+                                </label>
+                            @endforeach
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+            <p class="text-xs text-gray-400 mt-1">Необязательно. Влияет только на фильтр «Направление → Отдел» на этой странице, не на присвоение номера.</p>
+        </div>
+    @endif
 
     <div class="flex justify-end mt-4">
         <button type="submit" class="px-5 py-2 bg-[#5B4FE8] text-white rounded-lg text-sm font-medium hover:bg-indigo-700">{{ $submitLabel ?? 'Сохранить' }}</button>

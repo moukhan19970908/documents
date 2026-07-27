@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\BlankTemplate;
 use App\Models\DocumentType;
+use App\Models\User;
 use App\Services\AuditService;
 use App\Services\DocumentNamingService;
 use Illuminate\Http\Request;
@@ -18,14 +19,59 @@ class BlankTemplateController extends Controller
         private DocumentNamingService $namingService,
     ) {}
 
-    public function index()
+    public function index(Request $request)
     {
-        $templates = BlankTemplate::with(['type', 'subtype', 'author'])
-            ->orderBy('document_type_id')
-            ->orderBy('name')
-            ->get();
+        $search    = trim((string) $request->get('search'));
+        $typeId    = $request->integer('type') ?: null;
+        $subtypeId = $request->integer('subtype') ?: null;
+        $authorId  = $request->integer('author') ?: null;
+        $status    = $request->get('status'); // '', 'active', 'inactive'
 
-        return view('admin.blank-templates.index', compact('templates'));
+        // Подтипы выбранного типа — для зависимого фильтра. Без типа фильтр по подтипу не имеет смысла.
+        $subtypes = collect();
+        if ($typeId) {
+            $type = DocumentType::find($typeId);
+            $subtypes = $type ? $type->subtypes()->orderBy('name')->get(['id', 'name']) : collect();
+            if ($subtypeId && ! $subtypes->contains('id', $subtypeId)) {
+                $subtypeId = null;
+            }
+        } else {
+            $subtypeId = null;
+        }
+
+        $query = BlankTemplate::with(['type', 'subtype', 'author'])
+            ->orderBy('document_type_id')
+            ->orderBy('name');
+
+        if ($search !== '') {
+            $query->where(fn ($q) => $q->where('name', 'like', "%{$search}%")
+                ->orWhere('description', 'like', "%{$search}%"));
+        }
+        if ($typeId) {
+            $query->where('document_type_id', $typeId);
+        }
+        if ($subtypeId) {
+            $query->where('document_subtype_id', $subtypeId);
+        }
+        if ($authorId) {
+            $query->where('created_by', $authorId);
+        }
+        if ($status === 'active') {
+            $query->where('is_active', true);
+        } elseif ($status === 'inactive') {
+            $query->where('is_active', false);
+        }
+
+        $templates = $query->get();
+
+        $types   = DocumentType::orderBy('name')->get(['id', 'name']);
+        $authors = User::whereIn('id', BlankTemplate::query()->select('created_by')->whereNotNull('created_by'))
+            ->orderBy('name')->get(['id', 'name']);
+
+        return view('admin.blank-templates.index', compact(
+            'templates', 'types', 'subtypes', 'authors',
+            'search', 'typeId', 'subtypeId', 'authorId', 'status'
+        ));
     }
 
     public function create()

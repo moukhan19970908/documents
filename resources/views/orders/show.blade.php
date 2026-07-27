@@ -8,6 +8,7 @@
         $overdue = $order->ackOverdue();
         $myAck = $order->acknowledgments()->where('user_id', $user->id)->first();
         $canManage = $order->initiator_id === $user->id || $user->canIssueOrders();
+        $canDelete = $order->canBeDeletedBy($user);
         $statusColors = ['gray' => 'bg-gray-100 text-gray-600', 'blue' => 'bg-blue-50 text-blue-600', 'green' => 'bg-emerald-50 text-emerald-600'];
     @endphp
 
@@ -27,6 +28,18 @@
             @endif
             <span class="align-middle text-xs px-2 py-0.5 rounded-full {{ $statusColors[$order->statusColor()] }}">{{ $order->statusLabel() }}</span>
         </h1>
+
+        @if($order->isPublished() && $canDelete)
+            <form method="POST" action="{{ route('orders.destroy', $order) }}" class="shrink-0"
+                  onsubmit="return confirm('Удалить приказ {{ $order->number }}? Данные ознакомления будут потеряны.')">
+                @csrf @method('DELETE')
+                <button type="submit"
+                        class="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-red-500 hover:bg-red-50 hover:border-red-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    Удалить приказ
+                </button>
+            </form>
+        @endif
     </div>
     <p class="text-sm text-gray-500 mb-6">
         Инициатор: {{ $order->initiator->name }}@if($order->initiator->department), {{ $order->initiator->department->name }}@endif · {{ $order->kindLabel() }}
@@ -111,10 +124,12 @@
                             <button type="submit" class="w-full px-4 py-2.5 bg-[#5B4FE8] text-white rounded-lg text-sm font-medium hover:bg-indigo-700">Опубликовать приказ</button>
                         </form>
                         <a href="{{ route('orders.edit', $order) }}" class="block text-center w-full px-4 py-2.5 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-50">Редактировать</a>
-                        <form method="POST" action="{{ route('orders.destroy', $order) }}" onsubmit="return confirm('Удалить черновик?')">
-                            @csrf @method('DELETE')
-                            <button type="submit" class="w-full px-4 py-2.5 text-red-500 rounded-lg text-sm hover:bg-red-50">Удалить</button>
-                        </form>
+                        @if($canDelete)
+                            <form method="POST" action="{{ route('orders.destroy', $order) }}" onsubmit="return confirm('Удалить приказ?')">
+                                @csrf @method('DELETE')
+                                <button type="submit" class="w-full px-4 py-2.5 text-red-500 rounded-lg text-sm hover:bg-red-50">Удалить</button>
+                            </form>
+                        @endif
                     </div>
                 @endif
             </div>

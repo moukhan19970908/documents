@@ -40,6 +40,7 @@ return [
             ['key' => 'menu.archive',   'label' => 'Архив',     'except' => ['external', 'process_owner']],
             ['key' => 'menu.employees', 'label' => 'Сотрудники', 'except' => ['external', 'observer', 'linear', 'process_owner', 'registrar']],
             ['key' => 'menu.analytics', 'label' => 'Аналитика', 'narrow' => true, 'except' => ['external', 'observer', 'linear', 'registrar']],
+            ['key' => 'menu.feedback',  'label' => 'Обратная связь', 'except' => []],
 
             ['key' => 'menu.trips',            'label' => 'Командировки',    'except' => ['external', 'observer']],
             ['key' => 'menu.trips.my',         'label' => 'Мои заявки',      'depth' => 1, 'except' => ['external', 'observer']],
@@ -98,6 +99,16 @@ return [
             // Инициировать проверки — узкий круг: аппарат управления, ГД, контрольные органы.
             ['key' => 'inspections.issue',    'label' => 'Инициировать проверки',  'narrow' => true, 'only' => ['chief_of_staff', 'ceo', 'admin']],
             ['key' => 'inspections.view_all', 'label' => 'Видеть все проверки',     'only' => ['ceo', 'chief_of_staff', 'admin']],
+        ],
+    ],
+
+    [
+        'key'   => 'feedback',
+        'label' => 'Обратная связь',
+        'items' => [
+            // Обработка обращений — можно выдать выделенному специалисту поддержки (ТЗ 29).
+            ['key' => 'feedback.view_all', 'label' => 'Видеть все обращения', 'narrow' => true, 'only' => ['admin', 'chief_of_staff']],
+            ['key' => 'feedback.reply',    'label' => 'Отвечать на обращения', 'narrow' => true, 'only' => ['admin', 'chief_of_staff']],
         ],
     ],
 ];

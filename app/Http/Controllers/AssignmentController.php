@@ -7,6 +7,7 @@ use App\Models\AssignmentEvent;
 use App\Models\AssignmentFile;
 use App\Models\AssignmentSetting;
 use App\Models\User;
+use App\Services\ArchiveService;
 use App\Services\AssignmentNumberService;
 use App\Services\AssignmentService;
 use App\Services\AuditService;
@@ -24,6 +25,7 @@ class AssignmentController extends Controller
         private AssignmentNumberService $numberService,
         private NotificationService $notifications,
         private AuditService $audit,
+        private ArchiveService $archive,
     ) {}
 
     public function index(Request $request)
@@ -289,6 +291,17 @@ class AssignmentController extends Controller
 
         $this->event($assignment, 'accepted');
         $this->audit->log('assignment_accepted', $assignment);
+
+        // Корневое поручение принято — дело закрыто, кладём его в архив
+        // (подпоручения и файлы дела попадают снимком в метаданные).
+        if ($assignment->isRoot()) {
+            try {
+                $this->archive->archiveAssignment($assignment);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::error("Archive: поручение {$assignment->id} не заархивировано: {$e->getMessage()}");
+            }
+        }
+
         $this->notifications->notify($assignment->executor, 'assignment_accepted', [
             'title' => $assignment->title, 'assignment_id' => $assignment->id,
         ]);

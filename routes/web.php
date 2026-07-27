@@ -3,7 +3,9 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\BitrixSocialiteController;
+use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\ApprovalController;
@@ -61,6 +63,15 @@ Route::middleware('auth')->group(function () {
 Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRestriction::class])->group(function () {
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/analytics', [AnalyticsController::class, 'index'])->name('analytics.index');
+
+    // Обратная связь (ТЗ 29)
+    Route::get('/feedback', [FeedbackController::class, 'index'])->name('feedback.index');
+    Route::get('/feedback/create', [FeedbackController::class, 'create'])->name('feedback.create');
+    Route::post('/feedback', [FeedbackController::class, 'store'])->name('feedback.store');
+    Route::get('/feedback/{feedback}', [FeedbackController::class, 'show'])->name('feedback.show');
+    Route::post('/feedback/{feedback}/messages', [FeedbackController::class, 'reply'])->name('feedback.reply');
+    Route::patch('/feedback/{feedback}/status', [FeedbackController::class, 'updateStatus'])->name('feedback.status');
 
     // База знаний (чтение — всем авторизованным)
     Route::get('knowledge', [KnowledgeController::class, 'index'])->name('knowledge.index');
@@ -186,6 +197,9 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
 
     // Archive
     Route::get('/archive', [ArchiveController::class, 'index'])->name('archive.index');
+    Route::get('/archive/{archived}/file', [ArchiveController::class, 'file'])->name('archive.file');
+    Route::get('/archive/{archived}/sheet', [ArchiveController::class, 'sheet'])->name('archive.sheet');
+    Route::get('/archive/{archived}', [ArchiveController::class, 'show'])->name('archive.show');
 
     // Workflows
     Route::resource('workflows', WorkflowController::class);

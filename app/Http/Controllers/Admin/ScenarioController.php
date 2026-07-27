@@ -28,6 +28,21 @@ class ScenarioController extends Controller
     {
         $directions  = Department::whereNull('parent_id')->orderBy('name')->get();
         $directionId = $request->integer('direction') ?: null;
+        $departmentId = $request->integer('department') ?: null;
+
+        // Отделы выбранного направления — для доп. фильтра. Без направления фильтр по отделу не имеет смысла.
+        $departments = collect();
+        if ($directionId) {
+            $childIds = array_values(array_diff(Department::getDescendantIds($directionId), [$directionId]));
+            $departments = Department::whereIn('id', $childIds)->orderBy('name')->get();
+
+            // Отсекаем отдел, не относящийся к выбранному направлению.
+            if ($departmentId && ! in_array($departmentId, $childIds, true)) {
+                $departmentId = null;
+            }
+        } else {
+            $departmentId = null;
+        }
 
         $query = Workflow::with(['owner', 'parameters', 'subtypes.type', 'versions'])
             ->withCount('stages')
@@ -35,9 +50,12 @@ class ScenarioController extends Controller
             ->where('is_version', false)   // версии-копии — это история публикаций, а не отдельные сценарии
             ->orderByDesc('id');
 
-        // Фильтр по направлению: сценарии, запускаемые отделами выбранного направления.
+        // Фильтр по направлению/отделу: сценарии, запускаемые нужными отделами.
         if ($directionId) {
-            $deptIds = array_map('intval', Department::getDescendantIds($directionId));
+            // Выбран конкретный отдел — он и его подотделы; иначе все отделы направления.
+            $deptIds = $departmentId
+                ? array_map('intval', Department::getDescendantIds($departmentId))
+                : array_map('intval', Department::getDescendantIds($directionId));
 
             $matchingIds = Workflow::where('is_system', false)->where('is_version', false)
                 ->whereNotNull('allowed_departments')
@@ -51,7 +69,7 @@ class ScenarioController extends Controller
 
         $scenarios = $query->paginate(9)->withQueryString();
 
-        return view('admin.scenarios.index', compact('scenarios', 'directions', 'directionId'));
+        return view('admin.scenarios.index', compact('scenarios', 'directions', 'directionId', 'departments', 'departmentId'));
     }
 
     public function create()

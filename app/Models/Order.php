@@ -59,6 +59,12 @@ class Order extends Model
         return $this->status === 'published';
     }
 
+    /** Удалять приказ может админ (любой) или издающий его инициатор (свой, в любом статусе). */
+    public function canBeDeletedBy(User $user): bool
+    {
+        return $user->isAdmin() || $this->initiator_id === $user->id;
+    }
+
     public function kindLabel(): string
     {
         return self::KINDS[$this->kind] ?? $this->kind;
