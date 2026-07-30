@@ -101,6 +101,27 @@ class Workflow extends Model
         return $this->hasMany(WorkflowStage::class)->orderBy('sort_order');
     }
 
+    /** Узлы маршрута-графа — то, что рисует и сохраняет конструктор процессов. */
+    public function nodes(): HasMany
+    {
+        return $this->hasMany(WorkflowNode::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    /** Корневая цепочка маршрута: узлы, идущие сразу за «Началом». */
+    public function rootNodes(): HasMany
+    {
+        return $this->nodes()->whereNull('parent_id');
+    }
+
+    /**
+     * Маршрут исполняется как граф. Признак ставится при публикации: версии,
+     * опубликованные до перехода на граф, продолжают идти по своим звеньям.
+     */
+    public function isGraph(): bool
+    {
+        return (int) $this->engine_version >= 3;
+    }
+
     public function folders(): BelongsToMany
     {
         return $this->belongsToMany(WorkflowFolder::class, 'workflow_folder_workflow');

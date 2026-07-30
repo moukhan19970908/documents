@@ -14,8 +14,10 @@ class LoginController extends Controller
 
     public function show()
     {
+        // Именно на рабочий стол, а не на «/»: корень сам ведёт на /login,
+        // и авторизованный пользователь ходил бы по кругу до ERR_TOO_MANY_REDIRECTS.
         if (Auth::check()) {
-            return redirect('/');
+            return redirect('/dashboard');
         }
         return view('auth.login');
     }

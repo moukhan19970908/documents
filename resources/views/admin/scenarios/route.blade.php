@@ -1,310 +1,259 @@
 @php
-    $stagesData = old('stages', $scenario->stages->map(fn ($s) => [
-        'name'                 => $s->name,
-        'phase'                => $s->phase ?? 'approval',
-        'resolver'             => $s->resolver ?? 'user',
-        'approver_ids'         => $s->approvers->pluck('approver_id')->all(),
-        'group_department_ids' => $s->group_department_ids ?? array_filter([$s->group_department_id]),
-        'group_role'           => $s->group_role,
-        'policy'               => $s->policy ?? 'all',
-        'sla_days'             => $s->sla_days,
-        'is_blocking'          => (bool) $s->is_blocking,
-        'on_reject'            => $s->on_reject ?? 'return_initiator',
-        'condition_key'        => $s->condition_key,
-        'condition_operator'   => $s->condition_operator ?? '=',
-        'condition_value'      => $s->condition_value,
-        'branches'             => $s->branches->map(fn ($b) => [
-            'name'               => $b->name,
-            'condition_key'      => $b->condition_key,
-            'condition_operator' => $b->condition_operator ?? '=',
-            'condition_value'    => $b->condition_value,
-            'approver_ids'       => $b->approver_ids ?? [],
-            'department_ids'     => $b->department_ids ?? [],
-            'policy'             => $b->policy ?? 'all',
-        ])->values()->all(),
-    ])->values()->all());
+    use App\Models\WorkflowNode;
+    use App\Models\WorkflowStage;
 
-    $parametersForRoute = $scenario->parameters->map(fn ($p) => [
-        'key'     => $p->key,
-        'label'   => $p->label,
-        'options' => $p->options ?? [],
-        'type'    => $p->type,
-    ])->values();
+    // Плоский список узлов разворачивается в дерево: конструктор рисует именно его.
+    $nodesByChain = $scenario->nodes->groupBy(fn ($n) => $n->parent_id . '|' . $n->branch);
 
-    $usersForRoute = $users->map(fn ($u) => [
-        'id'       => $u->id,
-        'name'     => $u->name,
-        'position' => $u->position ?: ($u->department?->name ?? ''),
-    ])->values();
-    $departmentsForRoute = $departments->map(fn ($d) => ['id' => $d->id, 'name' => $d->name])->values();
-    // «Отделы» в резолвере = направления (корневые департаменты).
-    $directionsForRoute = ($directions ?? collect())->map(fn ($d) => ['id' => $d->id, 'name' => $d->name])->values();
+    $buildTree = function ($parentId, $branch) use (&$buildTree, $nodesByChain) {
+        return ($nodesByChain[$parentId . '|' . $branch] ?? collect())
+            ->sortBy([['sort_order', 'asc'], ['id', 'asc']])
+            ->map(fn ($n) => [
+                'type'   => $n->type,
+                'name'   => $n->name,
+                'config' => $n->config ?? [],
+                'yes'    => $buildTree($n->id, 'yes'),
+                'no'     => $buildTree($n->id, 'no'),
+            ])->values()->all();
+    };
+
+    // После ошибки валидации схема восстанавливается из того, что уже было отправлено.
+    $graphTree = old('graph') ? (json_decode(old('graph'), true) ?: []) : $buildTree(null, 'main');
+
+    $graphData = [
+        'nodes'      => $graphTree,
+        'types'      => WorkflowNode::TYPES,
+        'statuses'   => WorkflowNode::STATUSES,
+        'results'    => WorkflowNode::RESULTS,
+        'recipients' => WorkflowNode::RECIPIENTS,
+        'operators'  => WorkflowStage::OPERATORS,
+        'departmentOperators' => WorkflowNode::DEPARTMENT_OPERATORS,
+        'parameters' => $scenario->parameters->map(fn ($p) => [
+            'key' => $p->key, 'label' => $p->label, 'options' => $p->options ?? [],
+        ])->values(),
+        'users'      => $users->map(fn ($u) => [
+            'id' => $u->id, 'name' => $u->name, 'position' => $u->position ?: ($u->department?->name ?? ''),
+        ])->values(),
+        'directions' => ($directions ?? collect())->map(fn ($d) => ['id' => $d->id, 'name' => $d->name])->values(),
+        // Для условия по отделу инициатора — вся оргструктура, а не только направления.
+        'departments' => $departments->map(fn ($d) => ['id' => $d->id, 'name' => $d->name])->values(),
+        'roles'      => $roles->map(fn ($r) => ['code' => $r->code, 'name' => $r->name])->values(),
+    ];
+
+    // Иконка и цвет узла в палитре и на схеме.
+    $nodeIcons = [
+        'approval'  => ['icon' => 'approve',   'color' => 'indigo'],
+        'approve'   => ['icon' => 'confirm',   'color' => 'emerald'],
+        'opinion'   => ['icon' => 'opinions',  'color' => 'teal'],
+        'ack'       => ['icon' => 'ack',       'color' => 'amber'],
+        'intake'    => ['icon' => 'intake',    'color' => 'violet'],
+        'status'    => ['icon' => 'checklist', 'color' => 'sky'],
+        'notify'    => ['icon' => 'mail',      'color' => 'blue'],
+        'condition' => ['icon' => 'condition', 'color' => 'purple'],
+        'end'       => ['icon' => 'finish',    'color' => 'slate'],
+    ];
+
+    $nodeColors = [
+        'indigo'  => 'bg-indigo-50 text-indigo-500',
+        'emerald' => 'bg-emerald-50 text-emerald-500',
+        'teal'    => 'bg-teal-50 text-teal-500',
+        'amber'   => 'bg-amber-50 text-amber-500',
+        'violet'  => 'bg-violet-50 text-violet-500',
+        'sky'     => 'bg-sky-50 text-sky-500',
+        'blue'    => 'bg-blue-50 text-blue-500',
+        'purple'  => 'bg-purple-50 text-purple-500',
+        'slate'   => 'bg-slate-100 text-slate-500',
+    ];
 @endphp
 
-<div x-data="routeBuilder()" x-show="step === 'route'">
-    <form action="{{ route('admin.scenarios.route', $scenario) }}" method="POST">
-        @csrf @method('PUT')
+<div x-data="scenarioGraph(@js($graphData))" x-show="step === 'route'">
 
-        <div class="flex gap-5">
-            {{-- Палитра блоков --}}
-            @php
-                // Доступность блока зависит от типа процесса: `process` = null — блок общий.
-                // `enabled` = false — блок пока только в вёрстке, движок его не умеет.
-                $paletteBlocks = [
-                    ['label' => 'Звено согласования',  'icon' => 'approve',   'color' => 'indigo',  'phase' => 'approval', 'enabled' => true],
-                    ['label' => 'Звено утверждения',   'icon' => 'confirm',   'color' => 'emerald', 'phase' => 'approve',  'enabled' => true],
-                    ['label' => 'Группа заключений',   'icon' => 'opinions',  'color' => 'teal',    'phase' => 'opinion',  'enabled' => true],
-                    ['label' => 'Звено ознакомления',  'icon' => 'ack',       'color' => 'amber',   'phase' => 'ack',      'enabled' => true],
-                    ['label' => 'Звено приёма',        'icon' => 'intake',    'color' => 'violet',  'phase' => 'intake',   'enabled' => true],
-                    ['label' => 'Параллельная группа', 'icon' => 'parallel',  'color' => 'slate',   'phase' => 'parallel', 'enabled' => true],
-                    ['label' => 'Условие / развилка',  'icon' => 'condition', 'color' => 'purple',  'phase' => 'branch',   'enabled' => true],
-                    ['label' => 'Резолвер аудитории',  'icon' => 'audience',  'color' => 'green',   'process' => 'orders',      'for' => 'Приказов',   'enabled' => false],
-                    ['label' => 'Узел сборки в реестр','icon' => 'registry',  'color' => 'orange',  'process' => 'requests',    'for' => 'Заявок',     'enabled' => false],
-                    ['label' => 'Порождаемые задания', 'icon' => 'tasks',     'color' => 'pink',    'process' => 'assignments', 'for' => 'Поручений',  'enabled' => false],
-                    ['label' => 'Этап-чек-лист',       'icon' => 'checklist', 'color' => 'sky',     'process' => 'procedures',  'for' => 'Процедур',   'enabled' => false],
-                    ['label' => 'Правила дерева',      'icon' => 'tree',      'color' => 'lime',    'process' => 'assignments', 'for' => 'Поручений',  'enabled' => false],
-                ];
+    <div class="flex gap-4 items-start">
 
-                $blockColors = [
-                    'indigo'  => 'bg-indigo-50 text-indigo-500',
-                    'emerald' => 'bg-emerald-50 text-emerald-500',
-                    'teal'    => 'bg-teal-50 text-teal-500',
-                    'amber'   => 'bg-amber-50 text-amber-500',
-                    'violet'  => 'bg-violet-50 text-violet-500',
-                    'slate'   => 'bg-slate-100 text-slate-500',
-                    'purple'  => 'bg-purple-50 text-purple-500',
-                    'green'   => 'bg-green-50 text-green-600',
-                    'orange'  => 'bg-orange-50 text-orange-500',
-                    'pink'    => 'bg-pink-50 text-pink-500',
-                    'sky'     => 'bg-sky-50 text-sky-500',
-                    'lime'    => 'bg-lime-50 text-lime-600',
-                ];
-            @endphp
-
-            <div class="w-56 shrink-0">
-                <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Палитра блоков</p>
-                <p class="text-[11px] text-gray-400 mb-3">Доступность зависит от типа процесса</p>
-
-                <div class="space-y-2">
-                    @foreach($paletteBlocks as $block)
-                        @php
-                            $process = $block['process'] ?? null;
-                            // Блок чужого типа процесса показываем, но не даём положить в маршрут.
-                            $wrongProcess = $process && $process !== $scenario->process_type;
-                            $available = ($block['enabled'] ?? false) && !$wrongProcess;
-
-                            $title = $wrongProcess
-                                ? 'Доступен только для процессов «' . \App\Models\Workflow::PROCESS_TYPES[$process] . '»'
-                                : ($block['hint'] ?? ($available ? '' : 'Появится на следующем этапе'));
-                            $subtitle = $block['for'] ?? null;
-                        @endphp
-
-                        <button type="button"
-                                @if($available) @click="addStage('{{ $block['phase'] }}')" @else disabled @endif
-                                title="{{ $title }}"
-                                class="w-full flex items-center gap-2.5 bg-white border rounded-xl px-3 py-2.5 text-left transition-colors
-                                       {{ $available
-                                          ? 'border-gray-200 hover:border-[#5B4FE8] hover:bg-[#5B4FE8]/5 cursor-pointer'
-                                          : 'border-gray-100 opacity-50 cursor-not-allowed' }}">
-                            <span class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 {{ $blockColors[$block['color']] }}">
-                                @include('admin.partials.block-icon', ['icon' => $block['icon']])
-                            </span>
-                            <span class="min-w-0">
-                                <span class="block text-sm text-gray-700 leading-tight">{{ $block['label'] }}</span>
-                                @if($subtitle)
-                                    <span class="block text-[11px] text-gray-400 leading-tight mt-0.5">для {{ $subtitle }}</span>
-                                @endif
-                            </span>
-                        </button>
-                    @endforeach
-                </div>
-            </div>
-
-            {{-- Канвас --}}
-            @php
-                $phaseStyles = [
-                    'approval' => ['bg-[#5B4FE8]/5 border-[#5B4FE8]/20', 'text-[#5B4FE8]'],
-                    'approve'  => ['bg-emerald-50 border-emerald-100', 'text-emerald-600'],
-                    'opinion'  => ['bg-teal-50 border-teal-100', 'text-teal-600'],
-                    'ack'      => ['bg-amber-50 border-amber-100', 'text-amber-600'],
-                    'intake'   => ['bg-violet-50 border-violet-100', 'text-violet-600'],
-                    'branch'   => ['bg-purple-50 border-purple-100', 'text-purple-600'],
-                ];
-            @endphp
-
-            <div class="flex-1 bg-gray-50 border border-gray-200 rounded-xl p-5 space-y-5 min-h-[420px]">
-                @foreach(\App\Models\WorkflowStage::PHASES as $phase => $phaseLabel)
-                    <div x-show="stagesOf('{{ $phase }}').length > 0"
-                         class="border rounded-xl p-4 {{ $phaseStyles[$phase][0] }}">
-                        <p class="text-[10px] font-semibold uppercase tracking-widest mb-3 {{ $phaseStyles[$phase][1] }}">{{ $phaseLabel }}</p>
-
-                        <template x-for="stage in stagesOf('{{ $phase }}')" :key="stage.uid">
-                            <div class="mb-2">
-                                <div @click="selected = stage.uid"
-                                     :class="selected === stage.uid ? 'border-[#5B4FE8] ring-1 ring-[#5B4FE8]' : 'border-gray-200'"
-                                     class="bg-white border rounded-xl px-4 py-3 cursor-pointer">
-                                    <div class="flex items-center gap-2">
-                                        <span class="w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-[10px] font-semibold flex items-center justify-center"
-                                              x-text="stages.indexOf(stage) + 1"></span>
-                                        <span class="text-sm font-medium text-gray-800" x-text="stage.name || 'Без названия'"></span>
-                                        <span x-show="stage.condition_key" class="text-amber-500" title="Условное звено">⚡</span>
-                                        <button type="button" @click.stop="removeStage(stage)" class="ml-auto text-gray-300 hover:text-red-500">
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                                        </button>
-                                    </div>
-                                    <p class="text-xs text-gray-400 mt-1 ml-7" x-text="summary(stage)"></p>
-                                    <p x-show="stage.condition_key" class="text-xs text-amber-600 mt-0.5 ml-7"
-                                       x-text="'включается, если ' + stage.condition_key + ' ' + stage.condition_operator + ' ' + (stage.condition_value || '—')"></p>
-                                </div>
-                                <div class="text-center text-gray-300 text-xs">↓</div>
-                            </div>
-                        </template>
-                    </div>
-                @endforeach
-
-                <p x-show="stages.length === 0" class="text-sm text-gray-400 text-center py-16">
-                    Маршрут пуст — добавьте звено из палитры слева.
+        {{-- ── Схема процесса ─────────────────────────────────────────────── --}}
+        <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between mb-2">
+                <p class="text-sm font-semibold text-gray-800">Схема процесса</p>
+                <p class="text-xs text-gray-400">
+                    <template x-if="insertAt">
+                        <span class="text-[#5B4FE8] font-medium">Выберите блок справа — он встанет в отмеченную точку</span>
+                    </template>
+                    <template x-if="!insertAt">
+                        <span>Нажмите «+» на схеме, затем блок справа</span>
+                    </template>
                 </p>
             </div>
 
-            {{-- Свойства звена --}}
-            <div class="w-72 shrink-0">
-                <p class="text-sm font-semibold text-gray-800 mb-3">Свойства звена</p>
+            <div class="bg-[#F7F8FB] border border-gray-200 rounded-xl overflow-auto" style="max-height: 68vh">
+                <div class="relative" :style="`width:${layout.width}px; height:${layout.height}px; min-width:100%`">
 
-                <template x-if="!current()">
-                    <p class="text-xs text-gray-400">Выберите звено на схеме.</p>
-                </template>
+                    {{-- Соединители --}}
+                    <svg class="absolute top-0 left-0 pointer-events-none" :width="layout.width" :height="layout.height">
+                        <path :d="layout.linePath" fill="none" stroke="#c3cad8" stroke-width="1.5"></path>
+                        <path :d="layout.arrowPath" fill="#c3cad8"></path>
+                    </svg>
 
-                <template x-if="current()">
-                    <div class="space-y-3">
+                    {{-- Начало --}}
+                    <div class="absolute flex items-center justify-center bg-emerald-50 border border-emerald-300 rounded-lg text-sm font-medium text-emerald-700"
+                         :style="`left:${layout.startX}px; top:24px; width:140px; height:40px`">
+                        Начало
+                    </div>
+
+                    {{-- Точки вставки --}}
+                    <template x-for="(plus, i) in layout.pluses" :key="'p' + i">
+                        <button type="button"
+                                @click="aim({ parent: plus.parent, branch: plus.branch, index: plus.index })"
+                                :class="sameTarget({ parent: plus.parent, branch: plus.branch, index: plus.index })
+                                        ? 'bg-[#5B4FE8] text-white border-[#5B4FE8] scale-110'
+                                        : 'bg-white text-gray-400 border-gray-300 hover:border-[#5B4FE8] hover:text-[#5B4FE8]'"
+                                class="absolute w-5 h-5 rounded-full border flex items-center justify-center text-xs leading-none transition-all"
+                                :style="`left:${plus.x - 10}px; top:${plus.y - 10}px`"
+                                title="Добавить блок сюда">+</button>
+                    </template>
+
+                    {{-- Узлы --}}
+                    <template x-for="card in layout.cards" :key="card.uid">
+                        <div class="absolute bg-white border rounded-lg shadow-sm select-none"
+                             :class="editing && editing.uid === card.uid ? 'border-[#5B4FE8] ring-1 ring-[#5B4FE8]' : 'border-gray-200'"
+                             :style="`left:${card.x}px; top:${card.y}px; width:248px; height:56px`">
+
+                            {{-- Заголовок с кнопками, как в конструкторе бизнес-процессов --}}
+                            <div class="flex items-center gap-1 px-2 h-[18px] bg-[#FCE8C3]/70 border-b border-amber-200/60 rounded-t-lg">
+                                <span class="text-[9px] text-amber-800/70 truncate" x-text="types[card.node.type].label"></span>
+                                <button type="button" @click="openNode(card.uid)" class="ml-auto text-amber-800/60 hover:text-amber-900" title="Настроить">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M10.3 4.3a1 1 0 011.4 0l.9.9a7 7 0 011.8.7l1.2-.3a1 1 0 011.2.5l.7 1.2a1 1 0 01-.2 1.3l-.9.8a7 7 0 010 1.9l.9.8a1 1 0 01.2 1.3l-.7 1.2a1 1 0 01-1.2.5l-1.2-.3a7 7 0 01-1.8.7l-.9.9a1 1 0 01-1.4 0l-.9-.9a7 7 0 01-1.8-.7l-1.2.3a1 1 0 01-1.2-.5l-.7-1.2a1 1 0 01.2-1.3l.9-.8a7 7 0 010-1.9l-.9-.8a1 1 0 01-.2-1.3l.7-1.2a1 1 0 011.2-.5l1.2.3a7 7 0 011.8-.7l.9-.9z"/><circle cx="12" cy="12" r="2.5"/></svg>
+                                </button>
+                                <button type="button" @click="removeNode(card.uid)" class="text-amber-800/60 hover:text-red-600" title="Удалить">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                                </button>
+                            </div>
+
+                            <div class="flex items-center gap-2 px-2.5 py-1.5 cursor-pointer" @click="openNode(card.uid)">
+                                {{-- Метки выходов ветвящегося узла --}}
+                                <template x-if="card.branching">
+                                    <span class="absolute -bottom-4 left-1 text-[10px] font-semibold text-emerald-600">Да</span>
+                                </template>
+                                <template x-if="card.branching">
+                                    <span class="absolute -bottom-4 right-1 text-[10px] font-semibold text-red-500">Нет</span>
+                                </template>
+
+                                <span class="w-6 h-6 rounded shrink-0 flex items-center justify-center"
+                                      :class="{
+                                        @foreach($nodeIcons as $type => $meta)
+                                        '{{ $nodeColors[$meta['color']] }}': card.node.type === '{{ $type }}',
+                                        @endforeach
+                                      }">
+                                    @foreach($nodeIcons as $type => $meta)
+                                        <template x-if="card.node.type === '{{ $type }}'">
+                                            <span>@include('admin.partials.block-icon', ['icon' => $meta['icon']])</span>
+                                        </template>
+                                    @endforeach
+                                </span>
+
+                                <span class="min-w-0">
+                                    <span class="block text-[13px] leading-tight text-gray-800 truncate" x-text="card.node.name"></span>
+                                    <span class="block text-[11px] leading-tight text-gray-400 truncate" x-text="summary(card.node)"></span>
+                                </span>
+                            </div>
+                        </div>
+                    </template>
+
+                    <template x-if="nodes.length === 0">
+                        <p class="absolute left-0 right-0 text-xs text-gray-400 text-center" :style="`top:${layout.height - 40}px`">
+                            Маршрут пуст — нажмите «+» и выберите блок справа.
+                        </p>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        {{-- ── Палитра блоков ─────────────────────────────────────────────── --}}
+        <div class="w-64 shrink-0 space-y-4">
+            @foreach(WorkflowNode::GROUPS as $group => $groupLabel)
+                <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                    <p class="px-3 py-2 bg-gray-50 border-b border-gray-100 text-[11px] font-semibold text-gray-600 uppercase tracking-wide">
+                        {{ $groupLabel }}
+                    </p>
+                    <div class="divide-y divide-gray-50">
+                        @foreach(WorkflowNode::TYPES as $type => $meta)
+                            @continue($meta['group'] !== $group)
+                            <button type="button" @click="addNode('{{ $type }}')"
+                                    class="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#5B4FE8]/5">
+                                <span class="w-6 h-6 rounded flex items-center justify-center shrink-0 {{ $nodeColors[$nodeIcons[$type]['color']] }}">
+                                    @include('admin.partials.block-icon', ['icon' => $nodeIcons[$type]['icon']])
+                                </span>
+                                <span class="text-[13px] text-gray-700 leading-tight">{{ $meta['label'] }}</span>
+                            </button>
+                        @endforeach
+                    </div>
+                </div>
+            @endforeach
+
+            <p class="text-[11px] text-gray-400 leading-relaxed">
+                У согласования, утверждения и условия два выхода: «Да» и «Нет».
+                Когда ветка заканчивается, процесс продолжается тем, что нарисовано ниже развилки.
+            </p>
+        </div>
+    </div>
+
+    {{-- ── Настройки узла ─────────────────────────────────────────────────── --}}
+    <div x-show="editing" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/40" @click="editing = null"></div>
+
+        <div class="relative bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-y-auto" x-show="editing">
+            <template x-if="editing">
+                <div>
+                    <div class="flex items-center justify-between px-5 py-3 border-b border-gray-100 sticky top-0 bg-white rounded-t-xl">
+                        <p class="text-sm font-semibold text-gray-800" x-text="types[editing.type].label"></p>
+                        <button type="button" @click="editing = null" class="text-gray-400 hover:text-gray-600">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+
+                    <div class="p-5 space-y-4">
                         <div>
-                            <label class="text-xs text-gray-500 block mb-1">Название звена</label>
-                            <input type="text" x-model="current().name"
+                            <label class="text-xs text-gray-500 block mb-1">Название блока</label>
+                            <input type="text" x-model="editing.name"
                                    class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
                         </div>
 
-                        <div>
-                            <label class="text-xs text-gray-500 block mb-1">Тип действия</label>
-                            <select x-model="current().phase" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
-                                @foreach(\App\Models\WorkflowStage::PHASES as $phase => $phaseLabel)
-                                    <option value="{{ $phase }}">{{ str_replace('Фаза ', '', $phaseLabel) }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-
-                        {{-- Какие кнопки увидит участник — задаётся видом звена --}}
-                        <div x-show="current().phase !== 'branch'" class="bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
-                            <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Кнопки участника</p>
-                            <div class="flex flex-wrap gap-1">
-                                <template x-for="action in actionsOf(current().phase)" :key="action">
-                                    <span class="bg-white border border-gray-200 text-gray-600 text-xs px-2 py-0.5 rounded" x-text="actionLabels[action]"></span>
-                                </template>
-                            </div>
-                            <p x-show="current().phase === 'intake'" class="text-xs text-gray-400 mt-1.5">«Исполнено» появится после принятия к исполнению.</p>
-                            <p x-show="current().phase === 'opinion'" class="text-xs text-gray-400 mt-1.5">Решение фиксируется, но маршрут не останавливает.</p>
-                        </div>
-
-                        {{-- ===== Развилка ===== --}}
-                        <template x-if="current().phase === 'branch'">
-                            <div class="space-y-3">
-                                <p class="text-xs text-gray-400">Сработает первая ветка, чьё условие истинно. У каждой ветки — свой состав согласующих.</p>
-
-                                <template x-for="(branch, bIndex) in current().branches" :key="bIndex">
-                                    <div class="border border-gray-200 rounded-lg p-3 space-y-2">
-                                        <div class="flex items-center gap-2">
-                                            <input type="text" x-model="branch.name" placeholder="Название ветки"
-                                                   class="flex-1 text-sm border border-gray-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#5B4FE8]">
-                                            <button type="button" @click="current().branches.splice(bIndex, 1)" class="text-gray-300 hover:text-red-500">
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                                            </button>
-                                        </div>
-
-                                        <div class="flex gap-1.5">
-                                            <select x-model="branch.condition_key" class="flex-1 text-xs border border-gray-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#5B4FE8]">
-                                                <option value="">без условия (иначе)</option>
-                                                <template x-for="p in parameters" :key="p.key">
-                                                    <option :value="p.key" x-text="p.label"></option>
-                                                </template>
-                                            </select>
-                                            <select x-model="branch.condition_operator" class="w-28 text-xs border border-gray-200 rounded px-1 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#5B4FE8]">
-                                                @foreach(\App\Models\WorkflowStage::OPERATORS as $value => $label)
-                                                    <option value="{{ $value }}">{{ $label }}</option>
-                                                @endforeach
-                                            </select>
-                                        </div>
-
-                                        <template x-if="optionsOf(branch.condition_key).length > 0">
-                                            <select x-model="branch.condition_value" class="w-full text-xs border border-gray-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#5B4FE8]">
-                                                <template x-for="option in optionsOf(branch.condition_key)" :key="option">
-                                                    <option :value="option" x-text="option"></option>
-                                                </template>
-                                            </select>
-                                        </template>
-                                        <template x-if="optionsOf(branch.condition_key).length === 0">
-                                            <input type="text" x-model="branch.condition_value" placeholder="значение"
-                                                   class="w-full text-xs border border-gray-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#5B4FE8]">
-                                        </template>
-
-                                        <div>
-                                            <label class="text-[11px] text-gray-500 block mb-1">Согласующие ветки</label>
-                                            <select multiple size="4" x-model.number="branch.approver_ids"
-                                                    class="w-full text-xs border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[#5B4FE8]">
-                                                <template x-for="u in allUsers" :key="u.id">
-                                                    <option :value="u.id" x-text="u.name"></option>
-                                                </template>
-                                            </select>
-                                        </div>
-
-                                        <select x-model="branch.policy" class="w-full text-xs border border-gray-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#5B4FE8]">
-                                            <option value="all">Согласуют все</option>
-                                            <option value="any">Достаточно одного</option>
-                                        </select>
-                                    </div>
-                                </template>
-
-                                <button type="button" @click="addBranch()"
-                                        class="w-full text-xs font-medium text-[#5B4FE8] border border-dashed border-[#5B4FE8]/40 rounded-lg py-2 hover:bg-[#5B4FE8]/5">
-                                    + Добавить ветку
-                                </button>
-                            </div>
-                        </template>
-
-                        {{-- ===== Обычное звено ===== --}}
-                        <template x-if="current().phase !== 'branch'">
-                            <div class="space-y-3">
+                        {{-- Задания --}}
+                        <template x-if="types[editing.type].task">
+                            <div class="space-y-4">
                                 <div>
-                                    <label class="text-xs text-gray-500 block mb-1.5">Резолвер исполнителя</label>
-                                    <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer py-0.5">
-                                        <input type="radio" value="user" x-model="current().resolver" class="border-gray-300 text-[#5B4FE8] focus:ring-[#5B4FE8]">
-                                        Конкретные сотрудники
-                                    </label>
-                                    <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer py-0.5">
-                                        <input type="radio" value="group" x-model="current().resolver" class="border-gray-300 text-[#5B4FE8] focus:ring-[#5B4FE8]">
-                                        Роль / группа
-                                    </label>
+                                    <label class="text-xs text-gray-500 block mb-1.5">Кто исполняет</label>
+                                    <div class="flex gap-4">
+                                        <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                                            <input type="radio" value="user" x-model="editing.config.resolver" class="border-gray-300 text-[#5B4FE8] focus:ring-[#5B4FE8]">
+                                            Сотрудники
+                                        </label>
+                                        <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                                            <input type="radio" value="group" x-model="editing.config.resolver" class="border-gray-300 text-[#5B4FE8] focus:ring-[#5B4FE8]">
+                                            Роль / группа
+                                        </label>
+                                    </div>
                                 </div>
 
-                                <div class="max-w-[15rem]">
+                                <div>
                                     <label class="text-xs text-gray-500 block mb-1">Сотрудники</label>
                                     <input type="text" x-model="userSearch" placeholder="Поиск по имени…"
                                            class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-1.5 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
-                                    <div class="border border-gray-200 rounded-lg divide-y divide-gray-50" style="max-height: 7.5rem; overflow-y: auto;">
-                                        <template x-for="u in allUsers.filter(u => !userSearch || u.name.toLowerCase().includes(userSearch.toLowerCase()))" :key="u.id">
+                                    <div class="border border-gray-200 rounded-lg divide-y divide-gray-50 max-h-40 overflow-y-auto">
+                                        <template x-for="u in filteredUsers()" :key="u.id">
                                             <label class="flex items-center gap-2 px-2.5 py-1.5 hover:bg-gray-50 cursor-pointer">
-                                                <input type="checkbox" :value="u.id" x-model.number="current().approver_ids"
+                                                <input type="checkbox" :checked="editing.config.approver_ids.includes(u.id)"
+                                                       @change="toggleId(editing.config.approver_ids, u.id)"
                                                        class="rounded border-gray-300 text-[#5B4FE8] focus:ring-[#5B4FE8]">
                                                 <span class="text-sm text-gray-800" x-text="u.name"></span>
                                                 <span class="ml-auto text-xs text-gray-400 truncate" x-text="u.position"></span>
                                             </label>
                                         </template>
-                                        <p x-show="allUsers.filter(u => !userSearch || u.name.toLowerCase().includes(userSearch.toLowerCase())).length === 0"
-                                           class="text-xs text-gray-400 px-2.5 py-2">Ничего не найдено</p>
                                     </div>
-                                    <div class="flex flex-wrap gap-1 mt-1.5" x-show="current().approver_ids.length > 0">
-                                        <template x-for="id in current().approver_ids" :key="id">
-                                            <span class="inline-flex items-center gap-1 bg-[#5B4FE8]/8 text-[#5B4FE8] border border-[#5B4FE8]/20 rounded-full px-2 py-0.5 text-xs">
-                                                <span x-text="(allUsers.find(u => u.id === id) || {}).name"></span>
-                                                <button type="button" @click="current().approver_ids = current().approver_ids.filter(x => x !== id)" class="hover:text-red-500">×</button>
+                                    <div class="flex flex-wrap gap-1 mt-1.5">
+                                        <template x-for="id in editing.config.approver_ids" :key="id">
+                                            <span class="inline-flex items-center gap-1 bg-[#5B4FE8]/10 text-[#5B4FE8] border border-[#5B4FE8]/20 rounded-full px-2 py-0.5 text-xs">
+                                                <span x-text="userName(id)"></span>
+                                                <button type="button" @click="toggleId(editing.config.approver_ids, id)" class="hover:text-red-500">×</button>
                                             </span>
                                         </template>
                                     </div>
@@ -312,148 +261,224 @@
 
                                 <div>
                                     <label class="text-xs text-gray-500 block mb-1">Направления</label>
-                                    <select multiple size="4" x-model.number="current().group_department_ids"
-                                            class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
-                                        <template x-for="d in allDirections" :key="d.id">
-                                            <option :value="d.id" x-text="d.name"></option>
+                                    <div class="border border-gray-200 rounded-lg divide-y divide-gray-50 max-h-32 overflow-y-auto">
+                                        <template x-for="d in directions" :key="d.id">
+                                            <label class="flex items-center gap-2 px-2.5 py-1.5 hover:bg-gray-50 cursor-pointer">
+                                                <input type="checkbox" :checked="editing.config.group_department_ids.includes(d.id)"
+                                                       @change="toggleId(editing.config.group_department_ids, d.id)"
+                                                       class="rounded border-gray-300 text-[#5B4FE8] focus:ring-[#5B4FE8]">
+                                                <span class="text-sm text-gray-800" x-text="d.name"></span>
+                                            </label>
                                         </template>
-                                    </select>
-                                    <p class="text-xs text-gray-400 mt-1">Направление разворачивается во всех сотрудников его отделов при публикации. Можно совмещать с сотрудниками — это и есть параллельная группа.</p>
+                                    </div>
+                                    <p class="text-xs text-gray-400 mt-1">Направление разворачивается в сотрудников его отделов при публикации.</p>
                                 </div>
 
-                                <div x-show="current().resolver === 'group'">
+                                <div x-show="editing.config.resolver === 'group'">
                                     <label class="text-xs text-gray-500 block mb-1">Роль</label>
-                                    <select x-model="current().group_role"
+                                    <select x-model="editing.config.group_role"
                                             class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
                                         <option value="">— любая —</option>
-                                        @foreach($roles as $r)
-                                            <option value="{{ $r->code }}">{{ $r->name }}</option>
-                                        @endforeach
+                                        <template x-for="r in roles" :key="r.code">
+                                            <option :value="r.code" x-text="r.name"></option>
+                                        </template>
                                     </select>
                                 </div>
 
-                                <div>
-                                    <label class="text-xs text-gray-500 block mb-1">Политика</label>
-                                    <select x-model="current().policy" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
-                                        <option value="any">Достаточно одного</option>
-                                        <option value="all">Решают все (параллельно)</option>
-                                    </select>
-                                </div>
-
-                                <div>
-                                    <label class="text-xs text-gray-500 block mb-1">Срок (SLA)</label>
-                                    <div class="flex items-center gap-2">
-                                        <input type="number" min="1" max="365" x-model.number="current().sla_days"
-                                               class="w-16 text-sm border border-gray-200 rounded-lg px-2 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
-                                        <span class="text-xs text-gray-500">рабочих дней</span>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="text-xs text-gray-500 block mb-1">Политика</label>
+                                        <select x-model="editing.config.policy"
+                                                class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                                            <option value="any">Достаточно одного</option>
+                                            <option value="all">Решают все</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-500 block mb-1">Срок, рабочих дней</label>
+                                        <input type="number" min="1" max="365" x-model.number="editing.config.sla_days"
+                                               class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
                                     </div>
                                 </div>
 
-                                {{-- Пропустить звено вправе только совещательное: у согласования,
-                                     утверждения и приёма маршрут ждёт решения всегда. --}}
-                                <div x-show="['ack', 'opinion'].includes(current().phase)" class="space-y-2">
+                                <div x-show="['ack', 'opinion'].includes(editing.type)">
                                     <label class="flex items-center justify-between text-sm text-gray-700 cursor-pointer">
                                         Блокирующее звено
-                                        <input type="checkbox" x-model="current().is_blocking" class="rounded border-gray-300 text-[#5B4FE8] focus:ring-[#5B4FE8]">
+                                        <input type="checkbox" x-model="editing.config.is_blocking" class="rounded border-gray-300 text-[#5B4FE8] focus:ring-[#5B4FE8]">
                                     </label>
-                                    <p x-show="!current().is_blocking" class="text-xs text-gray-400">Не держит маршрут: участники получают задачу, документ идёт дальше.</p>
+                                    <p x-show="!editing.config.is_blocking" class="text-xs text-gray-400 mt-1">
+                                        Не держит маршрут: участники получают задачу, документ идёт дальше.
+                                    </p>
                                 </div>
 
-                                <div class="border-t border-gray-100 pt-3">
-                                    <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer mb-2">
-                                        <input type="checkbox" :checked="!!current().condition_key"
-                                               @change="toggleCondition($event.target.checked)"
-                                               class="rounded border-gray-300 text-[#5B4FE8] focus:ring-[#5B4FE8]">
-                                        Условное звено
-                                    </label>
-
-                                    <div x-show="current().condition_key" class="space-y-2">
-                                        <template x-if="parameters.length === 0">
-                                            <p class="text-xs text-amber-600">Сначала добавьте параметр на шаге 3 — условию не на что ссылаться.</p>
-                                        </template>
-
-                                        <div class="flex gap-2">
-                                            <select x-model="current().condition_key" class="flex-1 text-sm border border-gray-200 rounded-lg px-2 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
-                                                <template x-for="p in parameters" :key="p.key">
-                                                    <option :value="p.key" x-text="p.label"></option>
-                                                </template>
-                                            </select>
-                                            <select x-model="current().condition_operator" class="w-28 text-sm border border-gray-200 rounded-lg px-1 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
-                                                @foreach(\App\Models\WorkflowStage::OPERATORS as $value => $label)
-                                                    <option value="{{ $value }}">{{ $label }}</option>
-                                                @endforeach
-                                            </select>
-                                        </div>
-
-                                        <template x-if="conditionOptions().length > 0">
-                                            <select x-model="current().condition_value" class="w-full text-sm border border-gray-200 rounded-lg px-2 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
-                                                <template x-for="option in conditionOptions()" :key="option">
-                                                    <option :value="option" x-text="option"></option>
-                                                </template>
-                                            </select>
-                                        </template>
-                                        <template x-if="conditionOptions().length === 0">
-                                            <input type="text" x-model="current().condition_value" placeholder="значение"
-                                                   class="w-full text-sm border border-gray-200 rounded-lg px-2 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
-                                        </template>
-                                    </div>
+                                <div x-show="types[editing.type].branching">
+                                    <label class="text-xs text-gray-500 block mb-1">Если ветка «Нет» пуста</label>
+                                    <select x-model="editing.config.on_reject"
+                                            class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                                        @foreach(WorkflowStage::ON_REJECT as $value => $label)
+                                            <option value="{{ $value }}">{{ $label }}</option>
+                                        @endforeach
+                                    </select>
+                                    <p class="text-xs text-gray-400 mt-1">Когда в ветке «Нет» есть блоки, документ идёт по ней.</p>
                                 </div>
+                            </div>
+                        </template>
 
-                                {{-- Отклонение решает судьбу документа только на согласовании и утверждении --}}
-                                <div x-show="['approval', 'approve'].includes(current().phase)">
-                                    <label class="text-xs text-gray-500 block mb-1">При отклонении</label>
-                                    <select x-model="current().on_reject" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
-                                        @foreach(\App\Models\WorkflowStage::ON_REJECT as $value => $label)
+                        {{-- Условие --}}
+                        <template x-if="editing.type === 'condition'">
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="text-xs text-gray-500 block mb-1">Проверять</label>
+                                    <select x-model="editing.config.source"
+                                            @change="editing.config.condition_operator = editing.config.source === 'initiator_department' ? 'in' : '='"
+                                            class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                                        @foreach(WorkflowNode::CONDITION_SOURCES as $value => $label)
                                             <option value="{{ $value }}">{{ $label }}</option>
                                         @endforeach
                                     </select>
                                 </div>
+
+                                {{-- Отдел инициатора: разные авторы — разные цепочки согласования --}}
+                                <template x-if="editing.config.source === 'initiator_department'">
+                                    <div class="space-y-2">
+                                        <select x-model="editing.config.condition_operator"
+                                                class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                                            @foreach(WorkflowNode::DEPARTMENT_OPERATORS as $value => $label)
+                                                <option value="{{ $value }}">Инициатор {{ $label }} к отделу</option>
+                                            @endforeach
+                                        </select>
+
+                                        <div class="border border-gray-200 rounded-lg divide-y divide-gray-50 max-h-48 overflow-y-auto">
+                                            <template x-for="d in departments" :key="d.id">
+                                                <label class="flex items-center gap-2 px-2.5 py-1.5 hover:bg-gray-50 cursor-pointer">
+                                                    <input type="checkbox" :checked="editing.config.department_ids.includes(d.id)"
+                                                           @change="toggleId(editing.config.department_ids, d.id)"
+                                                           class="rounded border-gray-300 text-[#5B4FE8] focus:ring-[#5B4FE8]">
+                                                    <span class="text-sm text-gray-800" x-text="d.name"></span>
+                                                </label>
+                                            </template>
+                                        </div>
+                                        <p class="text-xs text-gray-400">
+                                            Направление включает все свои отделы. Выход «Да» — инициатор из выбранных подразделений,
+                                            «Нет» — из любых других.
+                                        </p>
+                                    </div>
+                                </template>
+
+                                <template x-if="editing.config.source !== 'initiator_department'">
+                                    <div class="space-y-3">
+                                <template x-if="parameters.length === 0">
+                                    <p class="text-xs text-amber-600">Сначала добавьте параметр на шаге 3 — условию не на что ссылаться.</p>
+                                </template>
+
+                                <div class="flex gap-2">
+                                    <select x-model="editing.config.condition_key"
+                                            class="flex-1 text-sm border border-gray-200 rounded-lg px-2 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                                        <option value="">— выберите параметр —</option>
+                                        <template x-for="p in parameters" :key="p.key">
+                                            <option :value="p.key" x-text="p.label"></option>
+                                        </template>
+                                    </select>
+                                    <select x-model="editing.config.condition_operator"
+                                            class="w-32 text-sm border border-gray-200 rounded-lg px-1 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                                        @foreach(WorkflowStage::OPERATORS as $value => $label)
+                                            <option value="{{ $value }}">{{ $label }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+
+                                <template x-if="conditionOptions(editing.config.condition_key).length > 0">
+                                    <select x-model="editing.config.condition_value"
+                                            class="w-full text-sm border border-gray-200 rounded-lg px-2 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                                        <template x-for="option in conditionOptions(editing.config.condition_key)" :key="option">
+                                            <option :value="option" x-text="option"></option>
+                                        </template>
+                                    </select>
+                                </template>
+                                <template x-if="conditionOptions(editing.config.condition_key).length === 0">
+                                    <input type="text" x-model="editing.config.condition_value" placeholder="значение"
+                                           class="w-full text-sm border border-gray-200 rounded-lg px-2 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                                </template>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+
+                        {{-- Статус документа --}}
+                        <template x-if="editing.type === 'status'">
+                            <div>
+                                <label class="text-xs text-gray-500 block mb-1">Перевести документ в статус</label>
+                                <select x-model="editing.config.status"
+                                        class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                                    @foreach(WorkflowNode::STATUSES as $value => $label)
+                                        <option value="{{ $value }}">{{ $label }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                        </template>
+
+                        {{-- Почтовое сообщение --}}
+                        <template x-if="editing.type === 'notify'">
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="text-xs text-gray-500 block mb-1">Кому</label>
+                                    <select x-model="editing.config.recipients"
+                                            class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                                        @foreach(WorkflowNode::RECIPIENTS as $value => $label)
+                                            <option value="{{ $value }}">{{ $label }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+
+                                <div x-show="editing.config.recipients === 'users'">
+                                    <label class="text-xs text-gray-500 block mb-1">Сотрудники</label>
+                                    <div class="border border-gray-200 rounded-lg divide-y divide-gray-50 max-h-40 overflow-y-auto">
+                                        <template x-for="u in users" :key="u.id">
+                                            <label class="flex items-center gap-2 px-2.5 py-1.5 hover:bg-gray-50 cursor-pointer">
+                                                <input type="checkbox" :checked="editing.config.user_ids.includes(u.id)"
+                                                       @change="toggleId(editing.config.user_ids, u.id)"
+                                                       class="rounded border-gray-300 text-[#5B4FE8] focus:ring-[#5B4FE8]">
+                                                <span class="text-sm text-gray-800" x-text="u.name"></span>
+                                            </label>
+                                        </template>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="text-xs text-gray-500 block mb-1">Текст сообщения</label>
+                                    <textarea x-model="editing.config.text" rows="3" placeholder="Если пусто — уйдёт название документа"
+                                              class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]"></textarea>
+                                </div>
+                            </div>
+                        </template>
+
+                        {{-- Завершение --}}
+                        <template x-if="editing.type === 'end'">
+                            <div>
+                                <label class="text-xs text-gray-500 block mb-1">Чем завершить процесс</label>
+                                <select x-model="editing.config.result"
+                                        class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                                    @foreach(WorkflowNode::RESULTS as $value => $label)
+                                        <option value="{{ $value }}">{{ $label }}</option>
+                                    @endforeach
+                                </select>
                             </div>
                         </template>
                     </div>
-                </template>
-            </div>
-        </div>
 
-        {{-- Скрытые поля: источник истины — массив stages --}}
-        <template x-for="(stage, index) in stages" :key="stage.uid">
-            <div class="hidden">
-                <input type="hidden" :name="`stages[${index}][name]`" :value="stage.name">
-                <input type="hidden" :name="`stages[${index}][phase]`" :value="stage.phase">
-                <input type="hidden" :name="`stages[${index}][resolver]`" :value="stage.resolver">
-                <input type="hidden" :name="`stages[${index}][group_role]`" :value="stage.group_role ?? ''">
-                <input type="hidden" :name="`stages[${index}][policy]`" :value="stage.policy">
-                <input type="hidden" :name="`stages[${index}][sla_days]`" :value="stage.sla_days ?? ''">
-                <input type="hidden" :name="`stages[${index}][is_blocking]`" :value="stage.is_blocking ? 1 : 0">
-                <input type="hidden" :name="`stages[${index}][on_reject]`" :value="stage.on_reject">
-                <input type="hidden" :name="`stages[${index}][condition_key]`" :value="stage.condition_key ?? ''">
-                <input type="hidden" :name="`stages[${index}][condition_operator]`" :value="stage.condition_operator ?? '='">
-                <input type="hidden" :name="`stages[${index}][condition_value]`" :value="stage.condition_value ?? ''">
-
-                <template x-for="userId in stage.approver_ids" :key="userId">
-                    <input type="hidden" :name="`stages[${index}][approver_ids][]`" :value="userId">
-                </template>
-                <template x-for="deptId in stage.group_department_ids" :key="deptId">
-                    <input type="hidden" :name="`stages[${index}][group_department_ids][]`" :value="deptId">
-                </template>
-
-                <template x-for="(branch, bIndex) in stage.branches" :key="bIndex">
-                    <div>
-                        <input type="hidden" :name="`stages[${index}][branches][${bIndex}][name]`" :value="branch.name ?? ''">
-                        <input type="hidden" :name="`stages[${index}][branches][${bIndex}][condition_key]`" :value="branch.condition_key ?? ''">
-                        <input type="hidden" :name="`stages[${index}][branches][${bIndex}][condition_operator]`" :value="branch.condition_operator ?? '='">
-                        <input type="hidden" :name="`stages[${index}][branches][${bIndex}][condition_value]`" :value="branch.condition_value ?? ''">
-                        <input type="hidden" :name="`stages[${index}][branches][${bIndex}][policy]`" :value="branch.policy ?? 'all'">
-                        <template x-for="userId in branch.approver_ids" :key="userId">
-                            <input type="hidden" :name="`stages[${index}][branches][${bIndex}][approver_ids][]`" :value="userId">
-                        </template>
-                        <template x-for="deptId in branch.department_ids" :key="deptId">
-                            <input type="hidden" :name="`stages[${index}][branches][${bIndex}][department_ids][]`" :value="deptId">
-                        </template>
+                    <div class="px-5 py-3 border-t border-gray-100 flex justify-end sticky bottom-0 bg-white rounded-b-xl">
+                        <button type="button" @click="editing = null"
+                                class="px-5 py-2 bg-[#5B4FE8] text-white rounded-lg text-sm font-medium hover:bg-indigo-700">Готово</button>
                     </div>
-                </template>
-            </div>
-        </template>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    {{-- ── Сохранение маршрута ────────────────────────────────────────────── --}}
+    <form action="{{ route('admin.scenarios.route', $scenario) }}" method="POST" @submit="$refs.graphInput.value = serialize()">
+        @csrf @method('PUT')
+        <input type="hidden" name="graph" x-ref="graphInput" value="[]">
 
         <div class="flex items-center justify-between mt-6">
             <button type="button" @click="step = 'parameters'" class="px-6 py-2.5 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-50">← Назад</button>
@@ -492,127 +517,6 @@
         </div>
 
         @error('stages')<p class="text-xs text-red-500 mt-2">{{ $message }}</p>@enderror
+        @error('graph')<p class="text-xs text-red-500 mt-2">{{ $message }}</p>@enderror
     </div>
 </div>
-
-<script>
-function routeBuilder() {
-    return {
-        stages: @json($stagesData).map((s, i) => ({ ...s, uid: 'st' + i })),
-        parameters: @json($parametersForRoute),
-        allUsers: @json($usersForRoute),
-        allDepartments: @json($departmentsForRoute),
-        allDirections: @json($directionsForRoute),
-        userSearch: '',
-        actionsByKind: @json(\App\Models\WorkflowStage::ACTIONS),
-        actionLabels: @json(\App\Models\WorkflowStage::ACTION_LABELS),
-        selected: null,
-
-        actionsOf(phase) {
-            return this.actionsByKind[phase] || this.actionsByKind['approval'];
-        },
-
-        optionsOf(key) {
-            const parameter = this.parameters.find(p => p.key === key);
-            return parameter ? (parameter.options || []) : [];
-        },
-
-        addBranch() {
-            const stage = this.current();
-            if (!stage) return;
-
-            stage.branches.push({
-                name: '', condition_key: '', condition_operator: '=', condition_value: '',
-                approver_ids: [], department_ids: [], policy: 'all',
-            });
-        },
-
-        current() {
-            return this.stages.find(s => s.uid === this.selected) || null;
-        },
-
-        stagesOf(phase) {
-            return this.stages.filter(s => s.phase === phase);
-        },
-
-        /**
-         * «Параллельная группа» — не отдельный вид звена, а звено согласования, где решают все:
-         * несколько сотрудников и/или отделов сразу. Развилка — контейнер веток.
-         */
-        addStage(kind) {
-            const isParallel = kind === 'parallel';
-            const phase = isParallel ? 'approval' : kind;
-
-            const stage = {
-                uid: 'st' + Date.now(),
-                name: isParallel ? 'Параллельная группа' : '',
-                phase,
-                resolver: isParallel ? 'group' : 'user',
-                approver_ids: [],
-                group_department_ids: [],
-                group_role: '',
-                policy: 'all',
-                sla_days: 2,
-                is_blocking: true,
-                on_reject: 'return_initiator',
-                condition_key: '', condition_operator: '=', condition_value: '',
-                branches: kind === 'branch'
-                    ? [{ name: 'Ветка 1', condition_key: '', condition_operator: '=', condition_value: '',
-                         approver_ids: [], department_ids: [], policy: 'all' }]
-                    : [],
-            };
-
-            this.stages.push(stage);
-            this.selected = stage.uid;
-        },
-
-        removeStage(stage) {
-            this.stages = this.stages.filter(s => s.uid !== stage.uid);
-            if (this.selected === stage.uid) this.selected = null;
-        },
-
-        /** A condition needs a parameter to point at — without one it cannot exist. */
-        toggleCondition(enabled) {
-            const stage = this.current();
-            if (!stage) return;
-
-            if (!enabled) {
-                stage.condition_key = '';
-                stage.condition_value = '';
-                return;
-            }
-
-            stage.condition_key = this.parameters.length ? this.parameters[0].key : '';
-            stage.condition_operator = '=';
-            stage.condition_value = this.conditionOptions()[0] ?? '';
-        },
-
-        conditionOptions() {
-            const stage = this.current();
-            if (!stage) return [];
-            const parameter = this.parameters.find(p => p.key === stage.condition_key);
-            return parameter ? (parameter.options || []) : [];
-        },
-
-        summary(stage) {
-            if (stage.phase === 'branch') {
-                return stage.branches.length + ' веток · сработает первая подходящая';
-            }
-
-            const people = stage.approver_ids
-                .map(id => (this.allUsers.find(u => u.id === id) || {}).name)
-                .filter(Boolean);
-
-            const departments = (stage.group_department_ids || [])
-                .map(id => (this.allDepartments.find(d => d.id === id) || {}).name)
-                .filter(Boolean);
-
-            const who = [...people, ...departments].join(', ');
-            const policy = stage.policy === 'any' ? 'достаточно одного' : 'решают все';
-            const sla = stage.sla_days ? ` · ${stage.sla_days} р.д.` : '';
-
-            return (who || 'исполнитель не назначен') + ' · ' + policy + sla + (stage.is_blocking ? '' : ' · не блокирует');
-        },
-    };
-}
-</script>

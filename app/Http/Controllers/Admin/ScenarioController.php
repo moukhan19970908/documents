@@ -7,14 +7,12 @@ use App\Models\BlankTemplate;
 use App\Models\Department;
 use App\Models\Role;
 use App\Models\DocumentApproval;
-use App\Models\DocumentApprovalStage;
 use App\Models\DocumentType;
 use App\Models\User;
 use App\Models\Workflow;
 use App\Models\WorkflowParameter;
-use App\Models\WorkflowStage;
-use App\Models\WorkflowStageApprover;
 use App\Services\AuditService;
+use App\Services\RouteGraphService;
 use App\Services\ScenarioPublisher;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -105,7 +103,7 @@ class ScenarioController extends Controller
 
     public function edit(Workflow $scenario)
     {
-        $scenario->load(['parameters', 'subtypes.type', 'owner', 'stages.approvers', 'stages.branches', 'blankTemplates']);
+        $scenario->load(['parameters', 'subtypes.type', 'owner', 'nodes', 'blankTemplates']);
 
         return view('admin.scenarios.wizard', $this->formData($scenario));
     }
@@ -136,117 +134,23 @@ class ScenarioController extends Controller
         return in_array($step, ['basic', 'classifier', 'parameters', 'route', 'rights'], true) ? $step : 'basic';
     }
 
-    /** Step 4 — the route. Stages are rewritten wholesale: the template is not what running processes use. */
-    public function updateRoute(Request $request, Workflow $scenario)
+    /**
+     * Шаг 4 — маршрут. Конструктор присылает схему целиком, поэтому граф
+     * переписывается заново: шаблон — это не то, по чему идут запущенные процессы.
+     */
+    public function updateRoute(Request $request, Workflow $scenario, RouteGraphService $graph)
     {
-        $operators = array_keys(WorkflowStage::OPERATORS);
-
         $validated = $request->validate([
-            'stages'                          => ['nullable', 'array'],
-            'stages.*.name'                   => ['required', 'string', 'max:255'],
-            'stages.*.phase'                  => ['required', Rule::in(array_keys(WorkflowStage::PHASES))],
-            'stages.*.resolver'               => ['required', Rule::in(['user', 'group'])],
-            'stages.*.approver_ids'           => ['nullable', 'array'],
-            'stages.*.approver_ids.*'         => ['integer', 'exists:users,id'],
-            'stages.*.group_department_ids'   => ['nullable', 'array'],
-            'stages.*.group_department_ids.*' => ['integer', 'exists:departments,id'],
-            'stages.*.group_role'             => ['nullable', 'string'],
-            'stages.*.policy'                 => ['required', Rule::in(['any', 'all'])],
-            'stages.*.is_blocking'            => ['nullable', 'boolean'],
-            'stages.*.sla_days'               => ['nullable', 'integer', 'min:1', 'max:365'],
-            'stages.*.on_reject'              => ['required', Rule::in(array_keys(WorkflowStage::ON_REJECT))],
-            'stages.*.condition_key'          => ['nullable', 'string', 'max:64'],
-            'stages.*.condition_operator'     => ['nullable', Rule::in($operators)],
-            'stages.*.condition_value'        => ['nullable', 'string', 'max:255'],
-
-            // Ветки развилки: у каждой своё условие и свой состав согласующих.
-            'stages.*.branches'                        => ['nullable', 'array'],
-            'stages.*.branches.*.name'                 => ['nullable', 'string', 'max:255'],
-            'stages.*.branches.*.condition_key'        => ['nullable', 'string', 'max:64'],
-            'stages.*.branches.*.condition_operator'   => ['nullable', Rule::in($operators)],
-            'stages.*.branches.*.condition_value'      => ['nullable', 'string', 'max:255'],
-            'stages.*.branches.*.approver_ids'         => ['nullable', 'array'],
-            'stages.*.branches.*.approver_ids.*'       => ['integer', 'exists:users,id'],
-            'stages.*.branches.*.department_ids'       => ['nullable', 'array'],
-            'stages.*.branches.*.department_ids.*'     => ['integer', 'exists:departments,id'],
-            'stages.*.branches.*.policy'               => ['nullable', Rule::in(['any', 'all'])],
+            'graph' => ['required', 'string'],
         ]);
 
-        DB::transaction(function () use ($scenario, $validated, $request) {
-            foreach ($scenario->stages as $stage) {
-                // По звену уже шли согласования (запуски по шаблону) — физически удалить
-                // нельзя: на него ссылается история. Убираем из маршрута мягко, состав
-                // участников оставляем, иначе история согласований потеряет подписантов.
-                if (DocumentApprovalStage::where('workflow_stage_id', $stage->id)->exists()) {
-                    $stage->delete();
-                    continue;
-                }
+        $tree = json_decode($validated['graph'], true);
 
-                $stage->approvers()->delete();
-                $stage->forceDelete();
-            }
+        if (! is_array($tree)) {
+            return back()->with('error', 'Схема маршрута повреждена — сохранить не удалось.');
+        }
 
-            foreach (array_values($validated['stages'] ?? []) as $i => $data) {
-                $data += [
-                    'group_department_ids' => [],
-                    'group_role'           => null,
-                    'sla_days'             => null,
-                    'condition_key'        => null,
-                    'condition_operator'   => null,
-                    'condition_value'      => null,
-                    'branches'             => [],
-                ];
-
-                $stage = WorkflowStage::create([
-                    'workflow_id'          => $scenario->id,
-                    'name'                 => $data['name'],
-                    'phase'                => $data['phase'],
-                    'stage_type'           => $data['policy'] === 'any' ? 'sequential' : 'parallel',
-                    'resolver'             => $data['resolver'],
-                    'group_department_ids' => $data['group_department_ids'] ?: null,
-                    'group_role'           => $data['resolver'] === 'group' ? ($data['group_role'] ?: null) : null,
-                    'policy'               => $data['policy'],
-                    'sla_days'             => $data['sla_days'] ?? null,
-                    // Не держать маршрут может только звено, чьё решение ни на что не влияет:
-                    // ознакомление и заключения. Согласование, утверждение и приём держат его всегда —
-                    // иначе документ проскакивает маршрут и согласуется сам.
-                    'is_blocking'          => in_array($data['phase'], ['ack', 'opinion'], true)
-                        ? (bool) ($data['is_blocking'] ?? true)
-                        : true,
-                    'on_reject'            => $data['on_reject'],
-                    'condition_key'        => $data['condition_key'] ?: null,
-                    'condition_operator'   => $data['condition_key'] ? ($data['condition_operator'] ?: '=') : null,
-                    'condition_value'      => $data['condition_key'] ? ($data['condition_value'] ?: null) : null,
-                    'sort_order'           => $i,
-                ]);
-
-                foreach ($data['approver_ids'] ?? [] as $userId) {
-                    WorkflowStageApprover::create([
-                        'workflow_stage_id' => $stage->id,
-                        'approver_type'     => 'user',
-                        'approver_id'       => $userId,
-                        'is_required'       => true,
-                        'participant_type'  => 'signatory',
-                    ]);
-                }
-
-                foreach (array_values($data['branches']) as $j => $branch) {
-                    $stage->branches()->create([
-                        'name'               => $branch['name'] ?? null,
-                        'condition_key'      => $branch['condition_key'] ?: null,
-                        'condition_operator' => $branch['condition_key'] ? ($branch['condition_operator'] ?: '=') : null,
-                        'condition_value'    => $branch['condition_key'] ? ($branch['condition_value'] ?: null) : null,
-                        'approver_ids'       => $branch['approver_ids'] ?? [],
-                        'department_ids'     => $branch['department_ids'] ?? [],
-                        'policy'             => $branch['policy'] ?? 'all',
-                        'sort_order'         => $j,
-                    ]);
-                }
-            }
-
-            // Editing a published scenario produces a new draft state until it is published again.
-            $scenario->update(['engine_version' => 2]);
-        });
+        $graph->save($scenario, $tree);
 
         $this->auditService->log('scenario_route_updated', $scenario);
 

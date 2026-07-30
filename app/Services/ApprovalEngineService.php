@@ -11,7 +11,9 @@ use App\Models\DocumentApproval;
 use App\Models\DocumentApprovalDecision;
 use App\Models\DocumentApprovalStage;
 use App\Models\User;
+use App\Models\Chat;
 use App\Models\Workflow;
+use App\Models\WorkflowNode;
 use App\Models\WorkflowStage;
 use App\Models\WorkflowStageApprover;
 use App\Models\Task;
@@ -29,6 +31,7 @@ class ApprovalEngineService
         private DocumentNumberService $numberService,
         private DocumentNamingService $namingService,
         private ArchiveService $archiveService,
+        private RouteGraphService $graph,
     ) {}
 
     public function startAdHocApproval(Document $doc, array $approverIds): DocumentApproval
@@ -70,11 +73,15 @@ class ApprovalEngineService
      *                               ['код_роли' => id пользователя]
      */
     public function startApproval(Document $doc, Workflow $workflow, array $parameterValues = [], array $adhoc = [], array $rolePicks = []): DocumentApproval    {
-        // v2 runs off an immutable published version, so editing the scenario never rewrites a
-        // route that is already in flight. v1 keeps running off its live stages, as before.
-        $definition = $workflow->isV2() && !$workflow->is_version
+        // v2 and the graph run off an immutable published version, so editing the scenario never
+        // rewrites a route that is already in flight. v1 keeps running off its live stages, as before.
+        $definition = ($workflow->isV2() || $workflow->isGraph()) && !$workflow->is_version
             ? $this->publishedVersionOrFail($workflow)
             : $workflow;
+
+        if ($definition->isGraph()) {
+            return $this->startGraphApproval($doc, $definition, $parameterValues, $adhoc, $rolePicks);
+        }
 
         // Добавленные участники и выбор исполнителя для роли — свойство этого документа, а не
         // сценария. Поэтому маршрут форкается в копию, которую видит только он: общая версия
@@ -246,7 +253,287 @@ class ApprovalEngineService
             throw new \RuntimeException("Сценарий «{$workflow->name}» не опубликован — запускать нечего.");
         }
 
-        return $version->load('stages.approvers');
+        return $version->load('stages.approvers', 'nodes');
+    }
+
+    // ─── Маршрут-граф ────────────────────────────────────────────────────────
+    //
+    // Граф нельзя разложить в звенья заранее: какая ветка сработает, известно
+    // только по ходу процесса. Поэтому движок идёт по узлам и материализует в
+    // звено (workflow_stages + document_approval_stages) тот узел, до которого
+    // дошёл. Всё, что читает звенья — задачи, экран документа, лист согласования,
+    // сроки, — продолжает работать без изменений.
+
+    /**
+     * @param array $adhoc     участники, добавленные инициатором: ['ack' => [id...], 'intake' => [id...]]
+     * @param array $rolePicks выбранный исполнитель для звена на роли: ['код_роли' => id]
+     */
+    private function startGraphApproval(
+        Document $doc,
+        Workflow $definition,
+        array $parameterValues,
+        array $adhoc,
+        array $rolePicks
+    ): DocumentApproval {
+        return DB::transaction(function () use ($doc, $definition, $parameterValues, $adhoc, $rolePicks) {
+            $this->registerDocument($doc, 'on_launch');
+            $this->closeReworkTasks($doc);
+
+            $approval = DocumentApproval::create([
+                'document_id'      => $doc->id,
+                'workflow_id'      => $this->createRuntimeContainer($definition, $doc)->id,
+                'parameter_values' => $parameterValues ?: null,
+                'runtime_data'     => [
+                    'graph_workflow_id' => $definition->id,
+                    'adhoc'             => $adhoc,
+                    'role_picks'        => $rolePicks,
+                ],
+                'started_at'       => now(),
+                'status'           => 'in_progress',
+            ]);
+
+            $doc->update(['status' => 'in_review']);
+
+            $this->auditService->log('approval_started', $doc, null, [
+                'workflow_id'      => $definition->id,
+                'parameter_values' => $parameterValues,
+            ]);
+
+            // Чат процесса заводится сразу, а участники добавляются по мере того,
+            // как маршрут доходит до их звена.
+            $this->chatService->createForProcess($approval);
+
+            $this->enterNode($approval, $this->graph->firstNode($definition));
+
+            return $approval;
+        });
+    }
+
+    /**
+     * Копия сценария под один документ: она владеет звеньями, которые движок
+     * материализует по ходу маршрута. Общая версия остаётся чистой — иначе звенья
+     * одного документа попали бы в предпросмотр и историю всех остальных.
+     */
+    private function createRuntimeContainer(Workflow $definition, Document $doc): Workflow
+    {
+        $container = $definition->replicate(['published_at']);
+        $container->is_version         = true;
+        $container->is_active          = false;
+        $container->parent_workflow_id = $definition->id;
+        $container->version_label      = 'документ #' . $doc->id;
+        $container->published_at       = null;
+        $container->save();
+
+        return $container;
+    }
+
+    /**
+     * Идёт по графу от узла $node, выполняя всё, что не требует людей (условия,
+     * смена статуса, уведомления), пока не упрётся в звено или конец маршрута.
+     */
+    private function enterNode(DocumentApproval $approval, ?WorkflowNode $node): void
+    {
+        // Страховка от кольца в схеме: маршрут длиннее этого — ошибка проектирования.
+        $steps = 0;
+
+        while ($node && ++$steps <= 200) {
+            $approval->update(['current_node_id' => $node->id]);
+
+            if ($node->isTask()) {
+                $this->activateGraphNode($approval, $node);
+                return;
+            }
+
+            if ($node->type === 'end') {
+                $this->finishGraph($approval, $node->cfg('result', 'approved'));
+                return;
+            }
+
+            $node = match ($node->type) {
+                'condition' => $this->graph->nextNode(
+                    $node,
+                    $node->passesCondition($approval->parameter_values ?? [], $approval->document->initiator) ? 'yes' : 'no',
+                ),
+                'status' => $this->applyStatusNode($approval, $node),
+                'notify' => $this->applyNotifyNode($approval, $node),
+                default  => $this->graph->nextNode($node),
+            };
+        }
+
+        $this->finishGraph($approval);
+    }
+
+    /** Узел-задание становится настоящим звеном — дальше работает обычный движок. */
+    private function activateGraphNode(DocumentApproval $approval, WorkflowNode $node): void
+    {
+        $approverIds = $this->graphApproverIds($approval, $node);
+
+        // Исполнителей не осталось (например, отдел расформирован) — держать на
+        // таком звене документ нельзя, идём дальше по ветке «Да».
+        if (! $approverIds) {
+            $this->enterNode($approval, $this->graph->nextNode($node));
+            return;
+        }
+
+        $stage = WorkflowStage::create([
+            'workflow_id'          => $approval->workflow_id,
+            'name'                 => $node->name,
+            'phase'                => $node->type,
+            'stage_type'           => $node->cfg('policy', 'all') === 'any' ? 'sequential' : 'parallel',
+            'resolver'             => $node->cfg('resolver', 'user'),
+            'group_department_ids' => $node->cfg('group_department_ids') ?: null,
+            'group_role'           => $node->cfg('group_role'),
+            'policy'               => $node->cfg('policy', 'all'),
+            'sla_days'             => $node->cfg('sla_days'),
+            'is_blocking'          => (bool) $node->cfg('is_blocking', true),
+            'on_reject'            => $node->cfg('on_reject', 'return_initiator'),
+            'sort_order'           => (int) WorkflowStage::where('workflow_id', $approval->workflow_id)->max('sort_order') + 1,
+        ]);
+
+        foreach ($approverIds as $userId) {
+            WorkflowStageApprover::create([
+                'workflow_stage_id' => $stage->id,
+                'approver_type'     => 'user',
+                'approver_id'       => $userId,
+                'is_required'       => true,
+                'participant_type'  => 'signatory',
+            ]);
+        }
+
+        $documentStage = DocumentApprovalStage::create([
+            'document_approval_id' => $approval->id,
+            'workflow_stage_id'    => $stage->id,
+            'workflow_node_id'     => $node->id,
+            'status'               => 'pending',
+            'deadline_at'          => $node->cfg('sla_days') ? now()->addWeekdays((int) $node->cfg('sla_days')) : null,
+        ]);
+
+        if ($chat = Chat::where('document_approval_id', $approval->id)->first()) {
+            $this->chatService->addParticipants($chat, $approverIds);
+        }
+
+        $this->activateStage($documentStage->load('workflowStage.approvers'), $approval);
+    }
+
+    /**
+     * Состав звена: развёрнутый при публикации список плюс участники, которых
+     * инициатор добавил при запуске. Звено на роли сужается до выбранного им
+     * исполнителя.
+     *
+     * @return int[]
+     */
+    private function graphApproverIds(DocumentApproval $approval, WorkflowNode $node): array
+    {
+        $runtime = $approval->runtime_data ?? [];
+        $ids = $node->resolvedApproverIds();
+
+        if (in_array($node->type, ['ack', 'intake'], true)) {
+            $ids = array_merge($ids, array_filter($runtime['adhoc'][$node->type] ?? []));
+        }
+
+        $pick = (int) ($runtime['role_picks'][$node->cfg('group_role')] ?? 0);
+
+        if ($node->cfg('resolver') === 'group' && $node->cfg('group_role') && $pick && in_array($pick, $ids, true)) {
+            return [$pick];
+        }
+
+        return array_values(array_unique(array_map('intval', $ids)));
+    }
+
+    /** Узел «Статус документа» — перевод документа в заданное состояние. */
+    private function applyStatusNode(DocumentApproval $approval, WorkflowNode $node): ?WorkflowNode
+    {
+        $approval->document->update(['status' => $node->cfg('status', 'in_review')]);
+
+        return $this->graph->nextNode($node);
+    }
+
+    /** Узел «Почтовое сообщение» — уведомление тем, кого выбрали в настройках узла. */
+    private function applyNotifyNode(DocumentApproval $approval, WorkflowNode $node): ?WorkflowNode
+    {
+        $document = $approval->document;
+
+        $userIds = match ($node->cfg('recipients', 'initiator')) {
+            'users'        => $node->cfg('user_ids', []) ?: [],
+            'participants' => DocumentApprovalStage::where('document_approval_id', $approval->id)
+                ->whereNotNull('completed_at')
+                ->orderByDesc('completed_at')
+                ->first()?->workflowStage?->approvers->pluck('approver_id')->all() ?? [],
+            default        => [$document->initiator_id],
+        };
+
+        foreach (User::whereIn('id', array_filter($userIds))->get() as $user) {
+            $this->notificationService->notify($user, 'new_document', [
+                'title'       => $node->cfg('text') ?: $document->title,
+                'document_id' => $document->id,
+            ]);
+        }
+
+        return $this->graph->nextNode($node);
+    }
+
+    /** Переход к следующему узлу после решения по звену. */
+    private function advanceGraph(DocumentApproval $approval, DocumentApprovalStage $stage, string $outcome): void
+    {
+        $node = $stage->workflowNode;
+
+        $this->enterNode($approval, $node ? $this->graph->nextNode($node, $outcome) : null);
+    }
+
+    /**
+     * Отрицательный исход ведёт в ветку «Нет», если она нарисована в схеме.
+     * Нет ветки — работают прежние правила звена (вернуть инициатору / отклонить).
+     */
+    private function hasNegativeBranch(DocumentApprovalStage $stage): bool
+    {
+        return $stage->workflow_node_id
+            && $stage->workflowNode?->isBranching()
+            && $stage->workflowNode->children()->where('branch', 'no')->exists();
+    }
+
+    private function takeNegativeBranch(DocumentApprovalStage $stage, DocumentApproval $approval, string $status): void
+    {
+        $stage->update(['status' => $status, 'completed_at' => now()]);
+        $this->cancelTasksForStage($stage);
+        event(new ApprovalStageChanged($stage));
+
+        $this->advanceGraph($approval, $stage, 'no');
+    }
+
+    /** Маршрут кончился: чем именно — говорит узел «Завершение» или состояние документа. */
+    private function finishGraph(DocumentApproval $approval, ?string $result = null): void
+    {
+        $document = $approval->document;
+
+        $result ??= match ($document->status) {
+            'requires_changes' => 'requires_changes',
+            'rejected'         => 'rejected',
+            default            => 'approved',
+        };
+
+        if ($result === 'approved') {
+            $this->completeApproval($approval);
+            return;
+        }
+
+        $approval->update(['status' => $result, 'completed_at' => now()]);
+        $document->update(['status' => $result]);
+
+        $this->notificationService->notify($document->initiator, $result === 'rejected' ? 'document_rejected' : 'document_requires_changes', [
+            'title'       => $document->title,
+            'document_id' => $document->id,
+        ]);
+
+        if ($result === 'requires_changes') {
+            $text = $this->reworkTaskText($document, null);
+            Task::create([
+                'document_id' => $document->id,
+                'assignee_id' => $document->initiator_id,
+                'title'       => $text['title'],
+                'description' => $text['description'],
+                'status'      => 'pending',
+            ]);
+        }
     }
 
     public function processDecision(
@@ -323,7 +610,7 @@ class ApprovalEngineService
             $stage->update(['status' => 'approved', 'completed_at' => now()]);
             $this->completeTasksForStage($stage);
             event(new ApprovalStageChanged($stage));
-            $this->moveToNextStage($approval);
+            $this->moveToNextStage($approval, $stage);
         }
     }
 
@@ -345,7 +632,7 @@ class ApprovalEngineService
         $stage->update(['status' => 'approved', 'completed_at' => now()]);
         $this->completeTasksForStage($stage);
         event(new ApprovalStageChanged($stage));
-        $this->moveToNextStage($approval);
+        $this->moveToNextStage($approval, $stage);
     }
 
     /** Приём в два шага: сначала «принять к исполнению», и только потом «исполнено». */
@@ -360,7 +647,7 @@ class ApprovalEngineService
         $stage->update(['status' => 'approved', 'completed_at' => now()]);
         $this->completeTasksForStage($stage);
         event(new ApprovalStageChanged($stage));
-        $this->moveToNextStage($approval);
+        $this->moveToNextStage($approval, $stage);
     }
 
     private function handleReject(
@@ -370,6 +657,12 @@ class ApprovalEngineService
         User $user,
         ?string $comment
     ): void {
+        // В схеме у звена нарисован выход «Нет» — дальше решает она, а не правило звена.
+        if ($this->hasNegativeBranch($stage)) {
+            $this->takeNegativeBranch($stage, $approval, 'rejected');
+            return;
+        }
+
         // v2 stages may choose to send the document back for revision instead of killing it.
         // v1 stages default to 'reject', so their behaviour is unchanged.
         if ($stage->workflowStage->on_reject === 'return_initiator') {
@@ -406,6 +699,11 @@ class ApprovalEngineService
         User $user,
         ?string $comment
     ): void {
+        if ($this->hasNegativeBranch($stage)) {
+            $this->takeNegativeBranch($stage, $approval, 'requires_changes');
+            return;
+        }
+
         $stage->update(['status' => 'requires_changes', 'completed_at' => now()]);
         $this->cancelTasksForStage($stage);
         $approval->update(['status' => 'requires_changes']);
@@ -458,7 +756,7 @@ class ApprovalEngineService
             $stage->update(['status' => 'approved', 'completed_at' => now()]);
             $this->completeTasksForStage($stage);
             event(new ApprovalStageChanged($stage));
-            $this->moveToNextStage($approval);
+            $this->moveToNextStage($approval, $stage);
         }
     }
 
@@ -494,8 +792,18 @@ class ApprovalEngineService
         }
     }
 
-    private function moveToNextStage(DocumentApproval $approval): void
+    /**
+     * @param DocumentApprovalStage|null $completed звено, решение по которому только что принято
+     * @param string                     $outcome   исход звена: выход «Да» или «Нет» в схеме
+     */
+    private function moveToNextStage(DocumentApproval $approval, ?DocumentApprovalStage $completed = null, string $outcome = 'yes'): void
     {
+        // Маршрут-граф не знает следующего звена заранее — его выбирает схема.
+        if ($completed?->workflow_node_id) {
+            $this->advanceGraph($approval, $completed, $outcome);
+            return;
+        }
+
         $currentStage = $approval->stages()->where('status', 'in_progress')->first();
         $nextStage = $approval->stages()
             ->where('status', 'pending')
@@ -565,7 +873,7 @@ class ApprovalEngineService
         // ждут решения даже если флаг в данных говорит обратное.
         if (!$stage->workflowStage->is_blocking && $stage->workflowStage->isAdvisory()) {
             $stage->update(['status' => 'approved', 'completed_at' => now()]);
-            $this->moveToNextStage($approval);
+            $this->moveToNextStage($approval, $stage);
         }
     }
 

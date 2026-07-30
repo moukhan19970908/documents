@@ -715,7 +715,16 @@
                 @endphp
 
                 <div class="bg-white rounded-xl border border-gray-200 p-6">
-                    <h2 class="text-sm font-semibold text-gray-800 mb-8">Процесс согласования</h2>
+                    <div class="flex items-center gap-2 mb-8">
+                        <h2 class="text-sm font-semibold text-gray-800">Процесс согласования</h2>
+                        {{-- Чем закончился круг: доработка — свой исход, а не отклонение. --}}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-medium {{ $approval->statusColor() }}">
+                            {{ $approval->statusLabel() }}
+                        </span>
+                        @if($approval->completed_at)
+                            <span class="text-[11px] text-gray-400">{{ $approval->completed_at->format('d.m.Y') }}</span>
+                        @endif
+                    </div>
 
                     <div class="flex items-center flex-wrap gap-0 overflow-x-auto pb-2">
 

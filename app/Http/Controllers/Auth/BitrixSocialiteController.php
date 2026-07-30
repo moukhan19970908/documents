@@ -82,7 +82,6 @@ class BitrixSocialiteController extends Controller
 
             return redirect('/dashboard');
         } catch (\Exception $e) {
-            dd($e->getMessage());
             Log::error('Bitrix24 OAuth callback failed: ' . $e->getMessage());
             return redirect('/login')->with('error', 'Ошибка авторизации через Bitrix24.');
         }

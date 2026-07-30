@@ -12,7 +12,7 @@ class DocumentApprovalStage extends Model
     use HasFactory;
 
     protected $fillable = [
-        'document_approval_id', 'workflow_stage_id', 'status',
+        'document_approval_id', 'workflow_stage_id', 'workflow_node_id', 'status',
         'is_overdue', 'started_at', 'completed_at', 'deadline_at',
     ];
 
@@ -32,6 +32,12 @@ class DocumentApprovalStage extends Model
     public function workflowStage(): BelongsTo
     {
         return $this->belongsTo(WorkflowStage::class)->withTrashed();
+    }
+
+    /** Узел маршрута-графа, породивший звено: по нему движок ищет, куда идти дальше. */
+    public function workflowNode(): BelongsTo
+    {
+        return $this->belongsTo(WorkflowNode::class, 'workflow_node_id');
     }
 
     public function decisions(): HasMany

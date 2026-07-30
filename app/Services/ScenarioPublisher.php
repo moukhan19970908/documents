@@ -18,11 +18,18 @@ use Illuminate\Validation\ValidationException;
  */
 class ScenarioPublisher
 {
-    public function __construct(private AuditService $auditService) {}
+    public function __construct(
+        private AuditService $auditService,
+        private RouteGraphService $graph,
+    ) {}
 
     public function publish(Workflow $scenario): Workflow
     {
-        $scenario->load(['stages.approvers', 'stages.branches', 'parameters']);
+        $scenario->load(['stages.approvers', 'stages.branches', 'parameters', 'nodes']);
+
+        if ($scenario->nodes->isNotEmpty()) {
+            return $this->publishGraph($scenario);
+        }
 
         $this->assertPublishable($scenario);
 
@@ -74,6 +81,82 @@ class ScenarioPublisher
         ]);
 
         return $version;
+    }
+
+    /**
+     * Публикация маршрута-графа: узлы копируются в версию с уже развёрнутым составом
+     * участников, и по ним же собирается плоский след в звеньях — им пользуются
+     * предпросмотр маршрута и карточка сценария.
+     */
+    private function publishGraph(Workflow $scenario): Workflow
+    {
+        $this->assertGraphPublishable($scenario);
+
+        $version = DB::transaction(function () use ($scenario) {
+            $version = $scenario->replicate(['parent_workflow_id', 'version_label', 'published_at']);
+            $version->is_version         = true;
+            $version->parent_workflow_id = $scenario->id;
+            $version->version_label      = $this->nextVersionLabel($scenario);
+            $version->published_at       = now();
+            $version->is_active          = false;
+            $version->status             = 'published';
+            $version->engine_version     = 3;
+            $version->save();
+
+            $this->graph->copyTo($scenario, $version);
+            $this->graph->compileStages($version->refresh());
+
+            $scenario->update([
+                'status'         => 'published',
+                'is_active'      => true,
+                'published_at'   => now(),
+                'engine_version' => 3,
+            ]);
+
+            return $version;
+        });
+
+        $this->auditService->log('scenario_published', $scenario, null, [
+            'version_id'    => $version->id,
+            'version_label' => $version->version_label,
+        ]);
+
+        return $version;
+    }
+
+    /** Узел без исполнителя или условие на несуществующий параметр остановят процесс — не публикуем. */
+    private function assertGraphPublishable(Workflow $scenario): void
+    {
+        $parameters = $scenario->parameters->keyBy('key');
+
+        foreach ($scenario->nodes as $node) {
+            if ($node->isTask() && empty($node->resolvedApproverIds())) {
+                throw ValidationException::withMessages([
+                    'stages' => "Узел «{$node->name}»: не назначен ни один исполнитель.",
+                ]);
+            }
+
+            if ($node->type === 'condition') {
+                if ($node->cfg('source', 'parameter') === 'initiator_department') {
+                    if (! $node->cfg('department_ids')) {
+                        throw ValidationException::withMessages([
+                            'stages' => "Условие «{$node->name}»: не выбран ни один отдел.",
+                        ]);
+                    }
+
+                    continue;
+                }
+
+                if (! $node->cfg('condition_key')) {
+                    throw ValidationException::withMessages([
+                        'stages' => "Условие «{$node->name}»: не выбран параметр, по которому оно проверяется.",
+                    ]);
+                }
+
+                $this->assertCondition($parameters, $node->cfg('condition_key'), $node->cfg('condition_operator'),
+                    $node->cfg('condition_value'), "Условие «{$node->name}»");
+            }
+        }
     }
 
     /** @param int[] $approverIds */
