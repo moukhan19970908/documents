@@ -85,14 +85,13 @@
                 {{-- Процессы (collapsible group) --}}
                 @php
                     $processItems = array_filter([
-                        ['key' => 'menu.processes.documents', 'label' => 'Документооборот', 'route' => 'documents.index', 'url' => route('documents.index')],
-                        ['key' => 'menu.processes.orders', 'label' => 'Приказы', 'route' => 'orders', 'url' => route('orders.index')],
-                        ['key' => 'menu.processes.assignments', 'label' => 'Поручения', 'route' => 'assignments', 'url' => route('assignments.index')],
-                        ['key' => 'menu.processes.procedures', 'label' => 'Процедуры', 'route' => 'procedures', 'url' => route('procedures.index')],
-                        ['key' => 'menu.processes.requests', 'label' => 'Заявки', 'route' => 'requests', 'url' => route('requests.index')],
-                        ['key' => 'menu.processes.credit_committee', 'label' => 'Кредитный комитет', 'route' => 'credit-committee', 'url' => route('credit-committee.index')],
-                        ['key' => 'menu.processes.jobs', 'label' => 'Задания', 'url' => '#'],
-                        ['key' => 'menu.processes.audits', 'label' => 'Проверки', 'route' => 'inspections', 'url' => route('inspections.index')],
+                        ['key' => 'menu.processes.documents', 'label' => 'Документооборот', 'route' => 'documents.index', 'url' => route('documents.index'), 'badge' => $menuPendingApprovals ?? 0],
+                        ['key' => 'menu.processes.orders', 'label' => 'Приказы', 'route' => 'orders', 'url' => route('orders.index'), 'badge' => $menuOrderAcks ?? 0],
+                        ['key' => 'menu.processes.assignments', 'label' => 'Поручения', 'route' => 'assignments', 'url' => route('assignments.index'), 'badge' => $menuAssignments ?? 0],
+                        ['key' => 'menu.processes.procedures', 'label' => 'Процедуры', 'route' => 'procedures', 'url' => route('procedures.index'), 'badge' => $menuProcedures ?? 0],
+                        ['key' => 'menu.processes.requests', 'label' => 'Заявки', 'route' => 'requests', 'url' => route('requests.index'), 'badge' => $menuRequests ?? 0],
+                        ['key' => 'menu.processes.credit_committee', 'label' => 'Кредитный комитет', 'route' => 'credit-committee', 'url' => route('credit-committee.index'), 'badge' => $menuCreditCommittee ?? 0],
+                        ['key' => 'menu.processes.audits', 'label' => 'Проверки', 'route' => 'inspections', 'url' => route('inspections.index'), 'badge' => $menuInspections ?? 0],
                     ], fn ($proc) => auth()->user()->canSeeMenu($proc['key']));
                 @endphp
                 <div x-data="{ open: true }">
@@ -273,10 +272,6 @@
                    class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium {{ $knowledgeActive ? 'bg-[#5B4FE8] text-white' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
                     @include('partials.nav-icon', ['icon' => 'knowledge', 'active' => $knowledgeActive])
                     База знаний
-                </a>
-                <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900">
-                    @include('partials.nav-icon', ['icon' => 'feedback', 'active' => false])
-                    Обратная связь
                 </a>
             </div>
         </aside>
