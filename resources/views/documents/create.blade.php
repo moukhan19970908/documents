@@ -187,7 +187,8 @@
                                 <span class="block font-semibold text-gray-900 text-sm pr-6" x-text="scenario.name"></span>
                                 <span class="block text-xs text-gray-500 mt-1 leading-relaxed" x-text="scenario.description || 'Без описания'"></span>
                                 <span class="flex items-center gap-2 mt-3">
-                                    <span class="text-[11px] bg-gray-100 text-gray-600 rounded px-2 py-0.5" x-text="scenario.type_name"></span>
+                                    {{-- Классификатор показываем так же, как конструктор: [код типа] подтип --}}
+                                    <span class="text-[11px] bg-gray-100 text-gray-600 rounded px-2 py-0.5" x-text="classifierLabel(scenario)"></span>
                                     <span class="text-[11px] text-gray-400" x-text="scenario.stages.length + ' ' + stagePlural(scenario.stages.length)"></span>
                                 </span>
                             </button>
@@ -782,6 +783,12 @@
 
             initials(name) {
                 return (name || '').split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+            },
+
+            /** Ярлык классификатора, идентичный конструктору: «[код типа] подтип», иначе — имя типа. */
+            classifierLabel(scenario) {
+                if (!scenario.subtype_name) return scenario.type_name;
+                return (scenario.type_code ? '[' + scenario.type_code + '] ' : '') + scenario.subtype_name;
             },
 
             stagePlural(count) {
