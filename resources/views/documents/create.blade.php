@@ -83,10 +83,11 @@
                 continue;
             }
 
-            // Тип без подтипов идёт со своим сценарием по умолчанию.
+            // Тип без подтипов идёт со своим сценарием по умолчанию; без него —
+            // показывать нечего (иначе тип склеился бы со всеми сценариями подряд).
             $fallback = $type->default_workflow_id
                 ? $workflows->where('id', $type->default_workflow_id)
-                : $workflows;
+                : collect();
 
             foreach ($fallback as $workflow) {
                 $scenarios->push(array_merge([
