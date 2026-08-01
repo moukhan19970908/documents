@@ -12,7 +12,7 @@ class OrderSeeder extends Seeder
     {
         // Тип «Приказ» существует, чтобы к нему привязать бланки приказа.
         $type = DocumentType::firstOrCreate(
-            ['slug' => 'order'],
+            ['slug' => DocumentType::ORDER_SLUG],
             ['name' => 'Приказ', 'code' => 'ПРК', 'icon' => 'order', 'is_active' => true]
         );
 

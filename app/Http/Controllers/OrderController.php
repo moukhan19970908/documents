@@ -498,7 +498,7 @@ class OrderController extends Controller
 
     private function formData(): array
     {
-        $type = DocumentType::where('slug', 'order')->first();
+        $type = DocumentType::where('slug', DocumentType::ORDER_SLUG)->first();
         $blanks = $type
             ? BlankTemplate::where('document_type_id', $type->id)->where('is_active', true)->get(['id', 'name', 'content'])
             : collect();

@@ -34,6 +34,9 @@ class DocumentType extends Model
 
     public const ICONS = ['document', 'contract', 'order', 'letter'];
 
+    /** Slug of the singleton type that owns order (приказ) blanks and numbering. */
+    public const ORDER_SLUG = 'order';
+
     public function defaultWorkflow(): BelongsTo
     {
         return $this->belongsTo(Workflow::class, 'default_workflow_id');

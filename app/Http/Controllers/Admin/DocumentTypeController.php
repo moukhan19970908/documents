@@ -94,7 +94,11 @@ class DocumentTypeController extends Controller
         }
 
         DB::transaction(function () use ($request, $validated, $documentType) {
-            $documentType->update($this->typeAttributes($validated));
+            // Slug is load-bearing — it binds the order type (DocumentType::ORDER_SLUG),
+            // filters documents and lives in URLs. Fixed at creation, never regenerated on edit.
+            $attributes = $this->typeAttributes($validated);
+            unset($attributes['slug']);
+            $documentType->update($attributes);
 
             $this->syncNumerator($documentType, $validated['numbering'] ?? []);
             $this->syncFields($documentType, null, $request->input('fields', []));
