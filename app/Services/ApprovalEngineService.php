@@ -245,6 +245,102 @@ class ApprovalEngineService
         });
     }
 
+    /**
+     * Запуск по маршруту, собранному инициатором (composed-сценарий отдела). Сам сценарий
+     * звеньев не несёт — маршрут набирается при запуске из фаз и участников. Как и добавленные
+     * при обычном запуске люди, эта сборка — свойство одного документа, поэтому живёт в форке;
+     * дальше документ идёт по звеньям штатным движком.
+     *
+     * @param array<int, array{phase:string, participants:int[]}> $route фазы в порядке исполнения
+     */
+    public function startComposedApproval(Document $doc, Workflow $scenario, array $route): DocumentApproval
+    {
+        $fork = $this->forkFromComposition($scenario, $doc, $route);
+
+        return $this->startApproval($doc, $fork);
+    }
+
+    /**
+     * Форк-копия под один документ, звенья которой построены из собранного инициатором
+     * маршрута. Копия помечена как версия и неактивна — в списках сценариев не появляется.
+     *
+     * @param array<int, array{phase:string, participants:int[]}> $route
+     */
+    private function forkFromComposition(Workflow $scenario, Document $doc, array $route): Workflow
+    {
+        return DB::transaction(function () use ($scenario, $doc, $route) {
+            $fork = $scenario->replicate(['published_at']);
+            $fork->is_version         = true;
+            $fork->is_active          = false;
+            $fork->parent_workflow_id = $scenario->id;
+            $fork->version_label      = 'документ #' . $doc->id;
+            $fork->published_at       = null;
+            // Форк исполняется как обычный маршрут по звеньям, а не как composed-сценарий.
+            $fork->launch_mode        = 'fixed';
+            $fork->save();
+
+            $this->buildComposedStages($fork, $route);
+
+            return $fork->load('stages.approvers');
+        });
+    }
+
+    /**
+     * Строит звенья маршрута из собранной инициатором сборки на переданном workflow.
+     * Общий код для сценария отдела (форк) и «своего сценария» (ад-хок).
+     *
+     * @param array<int, array{phase:string, participants:int[]}> $route
+     */
+    private function buildComposedStages(Workflow $target, array $route): void
+    {
+        $names = [
+            'approval' => 'Согласование',
+            'approve'  => 'Утверждение',
+            'ack'      => 'Ознакомление',
+            'intake'   => 'Приём',
+        ];
+
+        $order = 0;
+
+        foreach ($route as $block) {
+            $phase = $block['phase'] ?? 'approval';
+
+            if (!isset($names[$phase])) {
+                continue; // неизвестная фаза в маршрут не входит
+            }
+
+            $participants = array_values(array_unique(array_filter(
+                array_map('intval', $block['participants'] ?? [])
+            )));
+
+            if (!$participants) {
+                continue; // фаза без участников звена не создаёт
+            }
+
+            $stage = WorkflowStage::create([
+                'workflow_id' => $target->id,
+                'name'        => $names[$phase],
+                'phase'       => $phase,
+                'stage_type'  => 'parallel',
+                'policy'      => 'all',
+                'resolver'    => 'user',
+                // Ознакомление не держит маршрут — участники читают в своё время; остальные фазы ждут решения.
+                'is_blocking' => $phase !== 'ack',
+                'sort_order'  => $order++,
+            ]);
+
+            foreach ($participants as $userId) {
+                WorkflowStageApprover::create([
+                    'workflow_stage_id' => $stage->id,
+                    'approver_type'     => 'user',
+                    'approver_id'       => $userId,
+                    'is_required'       => true,
+                    'participant_type'  => 'signatory',
+                ]);
+            }
+        }
+    }
+
     private function publishedVersionOrFail(Workflow $workflow): Workflow
     {
         $version = $workflow->publishedVersion();

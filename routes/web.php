@@ -136,6 +136,11 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
         Route::delete('/{inspection}', [InspectionController::class, 'destroy'])->name('destroy');
     });
 
+    // Личные заготовки маршрута для индивидуальных процессов (composed-сценарии)
+    Route::get('route-presets', [\App\Http\Controllers\RoutePresetController::class, 'index'])->name('route-presets.index');
+    Route::post('route-presets', [\App\Http\Controllers\RoutePresetController::class, 'store'])->name('route-presets.store');
+    Route::delete('route-presets/{routePreset}', [\App\Http\Controllers\RoutePresetController::class, 'destroy'])->name('route-presets.destroy');
+
     // Documents
     Route::resource('documents', DocumentController::class);
     Route::put('documents/{document}/blank', [DocumentController::class, 'updateBlank'])->name('documents.blank.update');

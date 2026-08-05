@@ -17,6 +17,7 @@ class Workflow extends Model
         'approval_type', 'allowed_departments', 'allowed_users', 'process_fields',
         'process_type', 'icon', 'owner_id', 'status', 'allow_file_upload',
         'engine_version', 'is_version', 'parent_workflow_id', 'version_label', 'published_at',
+        'launch_mode',
     ];
 
     protected $casts = [
@@ -73,6 +74,16 @@ class Workflow extends Model
     public function isDraft(): bool
     {
         return $this->status === 'draft';
+    }
+
+    /**
+     * Composed-сценарий не несёт заранее собранного маршрута: инициатор набирает
+     * фазы при запуске. Один такой процесс выделяется отделу под его индивидуальные
+     * согласования, чтобы не плодить сценарии в конструкторе.
+     */
+    public function isComposed(): bool
+    {
+        return $this->launch_mode === 'composed';
     }
 
     /** v2 scenarios run from immutable published copies, so editing never touches live processes. */

@@ -342,19 +342,28 @@ class DocumentController extends Controller
         if ($document->workflow_id) {
             $workflow = Workflow::with('stages.approvers')->find($document->workflow_id);
             if ($workflow) {
-                // Answers to the launch parameters decide which stages join this document's route;
-                // adhoc — участники ознакомления и приёма, добавленные инициатором при запуске.
-                $this->approvalEngine->startApproval(
-                    $document,
-                    $workflow,
-                    $request->input('parameters', []),
-                    $request->input('adhoc', []),
-                    array_filter($request->input('role_picks', [])),
-                );
+                if ($workflow->isComposed()) {
+                    // Индивидуальный процесс отдела: маршрут инициатор собрал при запуске.
+                    $this->approvalEngine->startComposedApproval(
+                        $document,
+                        $workflow,
+                        $request->input('route', []),
+                    );
+                } else {
+                    // Answers to the launch parameters decide which stages join this document's route;
+                    // adhoc — участники ознакомления и приёма, добавленные инициатором при запуске.
+                    $this->approvalEngine->startApproval(
+                        $document,
+                        $workflow,
+                        $request->input('parameters', []),
+                        $request->input('adhoc', []),
+                        array_filter($request->input('role_picks', [])),
+                    );
+                }
                 $this->auditService->log(auth()->user()->name . ' начал процесс «' . $document->title . '»', $document);
             }
         } elseif ($request->filled('approvers') && is_array($request->approvers)) {
-            // Legacy ad-hoc fallback
+            // Legacy ad-hoc fallback (плоский список согласующих — модалка внешних участников)
             $this->approvalEngine->startAdHocApproval($document, $request->approvers);
             $this->auditService->log(auth()->user()->name . ' начал процесс «' . $document->title . '»', $document);
         }

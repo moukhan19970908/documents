@@ -6,6 +6,7 @@ use App\Models\DocumentSubtype;
 use App\Models\DocumentType;
 use App\Models\Workflow;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 class StoreDocumentRequest extends FormRequest
@@ -39,6 +40,11 @@ class StoreDocumentRequest extends FormRequest
             'adhoc.intake.*'      => ['integer', 'exists:users,id'],
             'role_picks'          => ['nullable', 'array'],
             'role_picks.*'        => ['nullable', 'integer', 'exists:users,id'],
+            // Маршрут, собранный инициатором для composed-сценария: упорядоченные фазы с участниками.
+            'route'                  => ['nullable', 'array'],
+            'route.*.phase'          => ['required_with:route', Rule::in(['approval', 'approve', 'ack', 'intake'])],
+            'route.*.participants'   => ['required_with:route', 'array', 'min:1'],
+            'route.*.participants.*' => ['integer', 'exists:users,id'],
             'file'                => ['nullable', 'file', 'max:51200'], // 50MB
             'approvers'           => ['nullable', 'array'],
             'approvers.*'         => ['integer', 'exists:users,id'],
@@ -105,6 +111,23 @@ class StoreDocumentRequest extends FormRequest
 
                 if ($workflow && !$workflow->isLaunchableBy($this->user())) {
                     $validator->errors()->add('workflow_id', 'У вас нет прав на запуск этого сценария.');
+                }
+            },
+
+            // Индивидуальный процесс отдела (composed-сценарий): при запуске нужен собранный
+            // маршрут. Тип/подтип берутся из сценария. Черновик можно сохранить и без маршрута.
+            function (Validator $validator) {
+                $workflow = $this->workflow_id ? Workflow::find($this->workflow_id) : null;
+
+                if (!$workflow || !$workflow->isComposed() || $this->input('action') !== 'launch') {
+                    return;
+                }
+
+                $hasStage = collect($this->input('route', []))
+                    ->contains(fn ($block) => !empty(array_filter($block['participants'] ?? [])));
+
+                if (!$hasStage) {
+                    $validator->errors()->add('route', 'Соберите маршрут: добавьте хотя бы одну фазу с участником.');
                 }
             },
 

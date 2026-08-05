@@ -122,6 +122,7 @@
 
             <input type="hidden" name="icon" :value="icon">
             <input type="hidden" name="process_type" :value="processType">
+            <input type="hidden" name="launch_mode" :value="launchMode">
             {{-- Куда вернуться после сохранения --}}
             <input type="hidden" name="step" x-ref="stepInput" value="basic">
 
@@ -160,6 +161,24 @@
                         @endforeach
                     </div>
                     @error('process_type')<p class="text-xs text-red-500 mt-2">{{ $message }}</p>@enderror
+                </div>
+
+                {{-- Индивидуальный процесс отдела: маршрут собирает инициатор при запуске --}}
+                <div class="bg-white rounded-xl border border-gray-200 p-6">
+                    <label class="flex items-start gap-3 cursor-pointer">
+                        <input type="checkbox" :checked="launchMode === 'composed'"
+                               @change="launchMode = $event.target.checked ? 'composed' : 'fixed'"
+                               class="mt-0.5 rounded border-gray-300 text-[#5B4FE8] focus:ring-[#5B4FE8]">
+                        <span>
+                            <span class="text-sm font-semibold text-gray-800">Индивидуальный процесс отдела</span>
+                            <span class="block text-xs text-gray-400 mt-1 leading-relaxed">
+                                Маршрут не задаётся заранее — инициатор сам собирает фазы (согласование,
+                                утверждение, ознакомление, приём) и участников при запуске. Один такой процесс
+                                выделяется отделу, чтобы не плодить сценарии. Тип документа и нумерация
+                                выбираются при создании документа.
+                            </span>
+                        </span>
+                    </label>
                 </div>
 
                 <div class="bg-white rounded-xl border border-gray-200 p-6 flex gap-8">
@@ -491,7 +510,26 @@
 
         {{-- Шаг 4: маршрут (свой form — вложенные формы недопустимы) --}}
         @if($scenario)
-            @include('admin.scenarios.route')
+            <div x-show="launchMode !== 'composed'">
+                @include('admin.scenarios.route')
+            </div>
+
+            {{-- composed-сценарий не несёт фиксированного маршрута — собирать нечего --}}
+            <div x-show="step === 'route' && launchMode === 'composed'"
+                 class="bg-white rounded-xl border border-gray-200 p-8 text-center">
+                <div class="w-11 h-11 rounded-full bg-[#5B4FE8]/8 text-[#5B4FE8] flex items-center justify-center mx-auto mb-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+                </div>
+                <p class="text-sm font-semibold text-gray-800">Маршрут собирает инициатор при запуске</p>
+                <p class="text-xs text-gray-400 mt-1.5 max-w-md mx-auto leading-relaxed">
+                    Это индивидуальный процесс отдела — фиксированный маршрут ему не нужен. Осталось задать
+                    отдел на шаге «Права». Не забудьте сохранить.
+                </p>
+                <button type="button" @click="step = 'rights'"
+                        class="mt-4 px-5 py-2 bg-[#5B4FE8] text-white rounded-lg text-sm font-medium hover:bg-indigo-700">
+                    Перейти к правам →
+                </button>
+            </div>
         @endif
     </div>
 
@@ -502,6 +540,7 @@
             name: @json(old('name', $scenario->name ?? '')),
             icon: @json(old('icon', $scenario->icon ?? 'document')),
             processType: @json(old('process_type', $scenario->process_type ?? 'document_flow')),
+            launchMode: @json(old('launch_mode', $scenario->launch_mode ?? 'fixed')),
 
             types: @json($typesData),
             typeId: @json($selectedTypeId ? (int) $selectedTypeId : null),

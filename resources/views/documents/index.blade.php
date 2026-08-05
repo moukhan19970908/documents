@@ -12,12 +12,19 @@
                 <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
                 Создать
             </a>
-        @else
+        @elseif(auth()->user()->isExternal())
+            {{-- Внешние участники не попадают на страницу создания — им остаётся модалка ад-хок. --}}
             <button type="button" @click="open = true" class="flex items-center gap-2 bg-[#5B4FE8] text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
                 Свой сценарий
             </button>
             @include('documents.partials.custom-scenario-modal')
+        @else
+            {{-- «Свой сценарий» открывает полноценный конструктор маршрута (как «Создать документ»). --}}
+            <a href="{{ route('documents.create', ['own' => 1]) }}" class="flex items-center gap-2 bg-[#5B4FE8] text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                Свой сценарий
+            </a>
         @endif
     </div>
 

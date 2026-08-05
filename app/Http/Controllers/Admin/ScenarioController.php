@@ -79,12 +79,16 @@ class ScenarioController extends Controller
     {
         $validated = $this->validateScenario($request);
 
-        $scenario = DB::transaction(function () use ($request, $validated) {
+        // composed-сценарий не публикуется (маршрут собирается при запуске), поэтому
+        // становится доступным для запуска сразу после сохранения — без шага «Маршрут».
+        $composed = ($validated['launch_mode'] ?? 'fixed') === 'composed';
+
+        $scenario = DB::transaction(function () use ($request, $validated, $composed) {
             $scenario = Workflow::create($this->scenarioAttributes($validated) + [
                 'created_by'     => auth()->id(),
                 'is_system'      => false,
-                'is_active'      => false,   // a draft is not offered for launch yet
-                'status'         => 'draft',
+                'is_active'      => $composed,               // a fixed draft is not offered for launch yet
+                'status'         => $composed ? 'published' : 'draft',
                 'engine_version' => 2,       // everything from the new builder runs on v2
             ]);
 
@@ -113,7 +117,15 @@ class ScenarioController extends Controller
         $validated = $this->validateScenario($request, $scenario);
 
         DB::transaction(function () use ($request, $validated, $scenario) {
-            $scenario->update($this->scenarioAttributes($validated));
+            $attributes = $this->scenarioAttributes($validated);
+
+            // composed-сценарий живёт без публикации — держим его активным и опубликованным.
+            if (($attributes['launch_mode'] ?? 'fixed') === 'composed') {
+                $attributes['is_active'] = true;
+                $attributes['status']   = 'published';
+            }
+
+            $scenario->update($attributes);
 
             $this->syncSubtypes($scenario, $validated['subtypes'] ?? []);
             $this->syncParameters($scenario, $request->input('parameters', []));
@@ -205,6 +217,7 @@ class ScenarioController extends Controller
             'name'                  => ['required', 'string', 'max:255'],
             'description'           => ['nullable', 'string'],
             'process_type'          => ['required', Rule::in(array_keys(Workflow::PROCESS_TYPES))],
+            'launch_mode'           => ['nullable', Rule::in(['fixed', 'composed'])],
             'icon'                  => ['nullable', Rule::in(Workflow::ICONS)],
             'owner_id'              => ['nullable', 'exists:users,id'],
 
@@ -240,6 +253,7 @@ class ScenarioController extends Controller
             'name'              => $validated['name'],
             'description'       => $validated['description'] ?? null,
             'process_type'      => $validated['process_type'],
+            'launch_mode'       => $validated['launch_mode'] ?? 'fixed',
             'icon'              => $validated['icon'] ?? 'document',
             'owner_id'          => $validated['owner_id'] ?? auth()->id(),
             'document_type_id'  => $validated['document_type_id'] ?? null,

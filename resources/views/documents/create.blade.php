@@ -63,6 +63,10 @@
             if ($type->subtypes->isNotEmpty()) {
                 foreach ($type->subtypes as $subtype) {
                     foreach ($subtype->workflows as $workflow) {
+                        // composed-сценарии показываются отдельной карточкой — не по типу/подтипу.
+                        if ($workflow->launch_mode === 'composed') {
+                            continue;
+                        }
                         $scenarios->push(array_merge([
                             'id'            => $workflow->id,
                             'name'          => $workflow->name,
@@ -90,6 +94,9 @@
                 : collect();
 
             foreach ($fallback as $workflow) {
+                if ($workflow->launch_mode === 'composed') {
+                    continue;
+                }
                 $scenarios->push(array_merge([
                     'id'            => $workflow->id,
                     'name'          => $workflow->name,
@@ -106,6 +113,54 @@
                     'fields'        => $typeFields,
                 ], $mapWorkflow($workflow)));
             }
+        }
+
+        // Индивидуальный процесс отдела (composed): маршрут собирает инициатор при запуске,
+        // а тип и подтип берутся из сценария (классификатор конструктора) — инициатор их не выбирает.
+        $allowManualFor = fn ($numerator) => (bool) $numerator?->allowsManualFor($user);
+
+        // Классификатор composed-сценариев берём из их настроек — подгружаем разом.
+        $workflows->loadMissing(['documentType.numerator', 'documentType.fields', 'subtypes.fields']);
+
+        foreach ($workflows as $workflow) {
+            if ($workflow->launch_mode !== 'composed') {
+                continue;
+            }
+
+            $type    = $workflow->documentType;              // тип из классификатора сценария
+            $subtype = $workflow->subtypes->first();          // подтип из классификатора сценария
+
+            $composedFields = collect();
+            if ($type)    $composedFields = $composedFields->concat($mapFields($type->fields));
+            if ($subtype) $composedFields = $composedFields->concat($mapFields($subtype->fields));
+
+            // Нумерация — по подтипу (если задан), иначе по типу.
+            $numerator = $subtype?->effectiveNumerator() ?? $type?->numerator;
+
+            $scenarios->push([
+                'id'            => $workflow->id,
+                'name'          => $workflow->name,
+                'description'   => $workflow->description,
+                'composed'      => true,
+                'type_id'       => $type?->id,
+                'type_code'     => $type?->code,
+                'type_name'     => $type?->name,
+                'subtype_id'    => $subtype?->id,
+                'subtype_code'  => $subtype?->code,
+                'subtype_name'  => $subtype?->name,
+                'name_template' => $subtype?->name_template ?: $type?->name_template,
+                'allow_manual'  => $allowManualFor($numerator),
+                'allow_file'    => $workflow->allowsFileUpload(),
+                'fields'        => $composedFields->values(),
+                'blanks'        => [],
+                'parameters'    => [],
+                'stages'        => [],
+            ]);
+        }
+
+        // Вход «Свой сценарий» показывает только индивидуальные процессы из конструктора.
+        if (request()->boolean('own')) {
+            $scenarios = $scenarios->where('composed', true)->values();
         }
 
         $referenceOptions = [
@@ -168,10 +223,10 @@
         <form action="{{ route('documents.store') }}" method="POST" enctype="multipart/form-data">
             @csrf
 
-            {{-- Классификатор берётся из выбранного сценария --}}
+            {{-- Классификатор берётся из выбранного сценария (у composed — из его настроек конструктора) --}}
             <input type="hidden" name="workflow_id" :value="scenarioId">
-            <input type="hidden" name="document_type_id" :value="current()?.type_id ?? ''">
-            <input type="hidden" name="document_subtype_id" :value="current()?.subtype_id ?? ''">
+            <input type="hidden" name="document_type_id" :value="cls()?.type_id ?? ''">
+            <input type="hidden" name="document_subtype_id" :value="cls()?.subtype_id ?? ''">
             <input type="hidden" name="title" :value="title">
 
             {{-- ─────────────── Шаг 1: сценарий и маршрут ─────────────── --}}
@@ -190,7 +245,8 @@
                                 <span class="flex items-center gap-2 mt-3">
                                     {{-- Классификатор показываем так же, как конструктор: [код типа] подтип --}}
                                     <span class="text-[11px] bg-gray-100 text-gray-600 rounded px-2 py-0.5" x-text="classifierLabel(scenario)"></span>
-                                    <span class="text-[11px] text-gray-400" x-text="scenario.stages.length + ' ' + stagePlural(scenario.stages.length)"></span>
+                                    <span x-show="!scenario.composed" class="text-[11px] text-gray-400" x-text="scenario.stages.length + ' ' + stagePlural(scenario.stages.length)"></span>
+                                    <span x-show="scenario.composed" class="text-[11px] text-[#5B4FE8]">маршрут при запуске</span>
                                 </span>
                             </button>
                         </template>
@@ -236,8 +292,8 @@
                     </div>
                 </div>
 
-                {{-- Маршрут: собирается движком из сценария и ответов --}}
-                <div x-show="scenarioId">
+                {{-- Маршрут: собирается движком из сценария и ответов (фиксированный сценарий) --}}
+                <div x-show="scenarioId && !current()?.composed">
                     <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">
                         Маршрут согласования — собран автоматически
                     </p>
@@ -341,6 +397,105 @@
                     </p>
                 </div>
 
+                {{-- ─────── Индивидуальный процесс: сборка маршрута (тип/подтип — из сценария) ─────── --}}
+                <div x-show="scenarioId && current()?.composed" class="space-y-6">
+
+                    {{-- Тип и подтип берутся из сценария (классификатор конструктора) — не выбираются --}}
+                    <div>
+                        <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Тип документа</p>
+                        <div class="bg-white border border-gray-200 rounded-xl p-5">
+                            <div class="flex items-center gap-2 text-sm">
+                                <span class="text-[11px] font-mono font-semibold text-amber-500" x-text="cls()?.type_code ? '[' + cls()?.type_code + ']' : ''"></span>
+                                <span class="font-medium text-gray-900" x-text="cls()?.type_name || '— тип не задан в сценарии —'"></span>
+                                <span x-show="cls()?.subtype_name" class="text-gray-400">·</span>
+                                <span x-show="cls()?.subtype_name" class="text-gray-600" x-text="cls()?.subtype_name"></span>
+                            </div>
+                            <p class="text-[11px] text-gray-400 mt-1.5">Тип, подтип и нумерация заданы в сценарии.</p>
+                        </div>
+                    </div>
+
+                    {{-- Маршрут: инициатор собирает фазы --}}
+                    <div>
+                        <div class="flex items-center justify-between mb-3">
+                            <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest">Маршрут — соберите фазы</p>
+                            <div class="flex items-center gap-2">
+                                <select x-show="presets.length > 0" @change="applyPreset($event.target.value); $event.target.value = ''"
+                                        class="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 text-gray-600 focus:outline-none">
+                                    <option value="">Применить заготовку…</option>
+                                    <template x-for="p in presets" :key="p.id">
+                                        <option :value="p.id" x-text="p.name"></option>
+                                    </template>
+                                </select>
+                                <button type="button" @click="savePreset()" x-show="composedRoute.some(b => b.participants.length > 0)"
+                                        class="text-xs font-medium text-[#5B4FE8] border border-[#5B4FE8]/40 rounded-lg px-2.5 py-1.5 hover:bg-[#5B4FE8]/5">
+                                    Сохранить как заготовку
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="space-y-3">
+                            <template x-for="(block, index) in composedRoute" :key="index">
+                                <div class="bg-white border border-gray-200 rounded-xl px-4 py-3">
+                                    <div class="flex items-center gap-2 mb-2.5">
+                                        <span class="w-2 h-2 rounded-full" :class="phaseDot(block.phase)"></span>
+                                        <span class="text-sm font-semibold text-gray-900" x-text="phaseLabel(block.phase)"></span>
+                                        <span class="text-[11px] text-gray-400" x-text="'#' + (index + 1)"></span>
+                                        <button type="button" @click="removePhase(index)" class="ml-auto text-gray-300 hover:text-red-500" title="Убрать фазу">
+                                            <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                        </button>
+                                    </div>
+
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <template x-for="pid in block.participants" :key="pid">
+                                            <span class="inline-flex items-center gap-1.5 bg-indigo-50 border border-indigo-100 text-gray-700 text-sm rounded-lg px-2.5 py-1.5">
+                                                <span class="w-5 h-5 rounded-full bg-indigo-100 text-[#5B4FE8] text-[10px] font-semibold flex items-center justify-center" x-text="initials(personName(pid))"></span>
+                                                <span x-text="personName(pid)"></span>
+                                                <button type="button" @click="removeParticipant(index, pid)" class="text-gray-400 hover:text-red-500">×</button>
+                                            </span>
+                                        </template>
+                                        <select @change="addParticipant(index, $event.target.value); $event.target.value = ''"
+                                                class="text-sm border border-dashed border-[#5B4FE8] text-[#5B4FE8] rounded-lg px-3 py-1.5 bg-white focus:outline-none">
+                                            <option value="">+ Добавить участника</option>
+                                            <template x-for="person in people" :key="person.id">
+                                                <option :value="person.id" x-text="person.name"></option>
+                                            </template>
+                                        </select>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <p x-show="composedRoute.length === 0" class="text-sm text-gray-400 border border-dashed border-gray-200 rounded-xl py-6 text-center">
+                                Маршрут пуст — добавьте фазу ниже.
+                            </p>
+                        </div>
+
+                        <div class="flex flex-wrap gap-2 mt-3">
+                            <template x-for="ph in phaseChoices" :key="ph.key">
+                                <button type="button" @click="addPhase(ph.key)"
+                                        class="text-sm font-medium text-gray-600 border border-dashed border-gray-300 rounded-lg px-3 py-1.5 hover:border-[#5B4FE8] hover:text-[#5B4FE8]"
+                                        x-text="'+ ' + ph.label"></button>
+                            </template>
+                        </div>
+
+                        <p class="text-xs text-gray-400 mt-3">
+                            Фазы идут в порядке добавления. Согласование, утверждение и приём ждут решения участников;
+                            ознакомление рассылается для чтения и не задерживает маршрут.
+                        </p>
+                    </div>
+
+                    {{-- Скрытые поля собранного маршрута --}}
+                    <template x-for="(block, index) in composedRoute" :key="'rh' + index">
+                        <div>
+                            <template x-if="block.participants.length > 0">
+                                <input type="hidden" :name="`route[${index}][phase]`" :value="block.phase">
+                            </template>
+                            <template x-for="pid in block.participants" :key="'rp' + index + '-' + pid">
+                                <input type="hidden" :name="`route[${index}][participants][]`" :value="pid">
+                            </template>
+                        </div>
+                    </template>
+                </div>
+
                 <div class="flex items-center justify-between pt-2">
                     <a href="{{ route($backRoute) }}" class="px-6 py-2.5 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-50">Отмена</a>
                     <button type="button" @click="step = 2" :disabled="!canLeaveStep1()"
@@ -400,13 +555,13 @@
 
                         <div>
                             <label class="text-xs text-gray-500 block mb-1">Тип документа</label>
-                            <input type="text" :value="current()?.type_name ?? ''" readonly
+                            <input type="text" :value="cls()?.type_name ?? ''" readonly
                                    class="w-full text-sm bg-gray-50 text-gray-600 border border-gray-200 rounded-lg px-3 py-2.5">
                         </div>
 
-                        <div x-show="current()?.subtype_name">
+                        <div x-show="cls()?.subtype_name">
                             <label class="text-xs text-gray-500 block mb-1">Подтип</label>
-                            <input type="text" :value="current()?.subtype_name ?? ''" readonly
+                            <input type="text" :value="cls()?.subtype_name ?? ''" readonly
                                    class="w-full text-sm bg-gray-50 text-gray-600 border border-gray-200 rounded-lg px-3 py-2.5">
                         </div>
 
@@ -505,9 +660,9 @@
                     </div>
                     <div class="min-w-0">
                         <div class="flex items-center gap-2 mb-2">
-                            <span class="text-[11px] bg-indigo-50 text-[#5B4FE8] rounded px-2 py-0.5" x-text="current()?.type_name ?? ''"></span>
-                            <span x-show="current()?.subtype_name" class="text-[11px] text-gray-400"
-                                  x-text="'Подтип: ' + (current()?.subtype_name ?? '')"></span>
+                            <span class="text-[11px] bg-indigo-50 text-[#5B4FE8] rounded px-2 py-0.5" x-text="cls()?.type_name ?? ''"></span>
+                            <span x-show="cls()?.subtype_name" class="text-[11px] text-gray-400"
+                                  x-text="'Подтип: ' + (cls()?.subtype_name ?? '')"></span>
                         </div>
                         <p x-show="counterparty()" class="text-sm text-gray-600 mb-1.5" x-text="'Контрагент: ' + counterparty()"></p>
                         <p class="text-base font-semibold text-gray-900" x-text="title || '— название не собрано —'"></p>
@@ -613,27 +768,48 @@
             rolePicks: @json(old('role_picks', (object) [])),
             adhoc: { ack: [], intake: [] },
 
+            // Индивидуальный процесс (composed): инициатор собирает только маршрут; тип/подтип — из сценария.
+            composedRoute: [],
+            presets: [],
+            oldRoute: @json(old('route', [])),
+            phaseChoices: [
+                { key: 'approval', label: 'Согласование' },
+                { key: 'approve',  label: 'Утверждение' },
+                { key: 'ack',      label: 'Ознакомление' },
+                { key: 'intake',   label: 'Приём' },
+            ],
+
             init() {
                 this.$watch('values', () => this.syncTitle(), { deep: true });
 
                 // После ошибки валидации возвращаем пользователя к тому, что он уже выбрал.
                 if (this.scenarioId) {
-                    this.syncRolePicks();
-                    this.resetSource();
-                    this.step = 2;
+                    if (this.current()?.composed) {
+                        this.loadPresets();
+                        this.composedRoute = (this.oldRoute || []).map(block => ({
+                            phase: block.phase,
+                            participants: (block.participants || []).map(Number),
+                        }));
+                        this.resetSource();
+                        // Ошибка чаще всего в маршруте — возвращаем к его сборке.
+                        this.step = 1;
+                    } else {
+                        this.syncRolePicks();
+                        this.resetSource();
+                        this.step = 2;
+                    }
                 }
             },
 
             current() {
-                const id = Number(this.scenarioId);
-                if (!id) return null;
+                if (this.scenarioId === '' || this.scenarioId === null || this.scenarioId === undefined) return null;
 
-                return this.scenarios.find(s => s.id === id
+                return this.scenarios.find(s => String(s.id) === String(this.scenarioId)
                     && (!this.subtypeId || Number(s.subtype_id) === Number(this.subtypeId))) ?? null;
             },
 
             isPicked(scenario) {
-                return Number(this.scenarioId) === scenario.id
+                return String(this.scenarioId) === String(scenario.id)
                     && Number(this.subtypeId || 0) === Number(scenario.subtype_id || 0);
             },
 
@@ -644,9 +820,97 @@
                 this.answers = {};
                 this.rolePicks = {};
                 this.adhoc = { ack: [], intake: [] };
+                this.composedRoute = [];
+                if (scenario.composed) {
+                    this.loadPresets();
+                }
                 this.syncRolePicks();
                 this.resetSource();
                 this.syncTitle();
+            },
+
+            /** Классификатор документа. У composed-сценария тип/подтип заданы сценарием,
+             *  поэтому берутся так же, как у фиксированного, — из самой карточки. */
+            cls() {
+                return this.current();
+            },
+
+            phaseLabel(phase) {
+                return { approval: 'Согласование', approve: 'Утверждение', ack: 'Ознакомление', intake: 'Приём' }[phase] ?? phase;
+            },
+
+            phaseDot(phase) {
+                return { approval: 'bg-blue-500', approve: 'bg-emerald-500', ack: 'bg-amber-500', intake: 'bg-purple-500' }[phase] ?? 'bg-gray-400';
+            },
+
+            addPhase(phase) {
+                this.composedRoute.push({ phase, participants: [] });
+            },
+
+            removePhase(index) {
+                this.composedRoute.splice(index, 1);
+            },
+
+            addParticipant(index, userId) {
+                const id = Number(userId);
+                const block = this.composedRoute[index];
+                if (!id || !block || block.participants.includes(id)) return;
+                block.participants.push(id);
+            },
+
+            removeParticipant(index, userId) {
+                const block = this.composedRoute[index];
+                if (block) block.participants = block.participants.filter(p => p !== userId);
+            },
+
+            personById(id) {
+                return this.people.find(p => p.id === Number(id)) ?? null;
+            },
+
+            personName(id) {
+                return this.personById(id)?.name ?? '';
+            },
+
+            loadPresets() {
+                fetch('{{ route('route-presets.index') }}', { headers: { 'Accept': 'application/json' } })
+                    .then(response => response.ok ? response.json() : [])
+                    .then(data => { this.presets = data; })
+                    .catch(() => {});
+            },
+
+            applyPreset(id) {
+                const preset = this.presets.find(p => String(p.id) === String(id));
+                if (!preset) return;
+
+                // Глубокая копия — правки маршрута не должны менять саму заготовку.
+                this.composedRoute = (preset.config ?? []).map(block => ({
+                    phase: block.phase,
+                    participants: [...(block.participants ?? [])].map(Number),
+                }));
+            },
+
+            savePreset() {
+                const name = window.prompt('Название заготовки маршрута:');
+                if (!name) return;
+
+                const config = this.composedRoute
+                    .filter(block => block.participants.length > 0)
+                    .map(block => ({ phase: block.phase, participants: block.participants }));
+
+                if (config.length === 0) return;
+
+                fetch('{{ route('route-presets.store') }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    },
+                    body: JSON.stringify({ name, config }),
+                })
+                .then(response => response.ok ? response.json() : Promise.reject())
+                .then(preset => { this.presets.push(preset); })
+                .catch(() => {});
             },
 
             /** Готовит выбор исполнителей для звеньев на роли: единственного кандидата ставим сразу,
@@ -679,6 +943,18 @@
 
             /** Повторяет WorkflowStage::passesCondition() — то же правило, что применит движок. */
             routeStages() {
+                // Индивидуальный процесс: маршрут — то, что собрал инициатор.
+                if (this.current()?.composed) {
+                    return this.composedRoute
+                        .filter(block => block.participants.length > 0)
+                        .map(block => ({
+                            phase: block.phase,
+                            resolver: 'user',
+                            role_code: null,
+                            approvers: block.participants.map(id => this.personById(id)).filter(Boolean),
+                        }));
+                }
+
                 return (this.current()?.stages ?? []).filter(stage => {
                     if (!stage.key) return true;
 
@@ -766,15 +1042,15 @@
             },
 
             fields() {
-                return this.current()?.fields ?? [];
+                return this.cls()?.fields ?? [];
             },
 
             template() {
-                return this.current()?.name_template ?? '';
+                return this.cls()?.name_template ?? '';
             },
 
             allowsManual() {
-                return this.current()?.allow_manual ?? false;
+                return this.cls()?.allow_manual ?? false;
             },
 
             counterparty() {
@@ -788,8 +1064,9 @@
 
             /** Ярлык классификатора, идентичный конструктору: «[код типа] подтип», иначе — имя типа. */
             classifierLabel(scenario) {
-                if (!scenario.subtype_name) return scenario.type_name;
-                return (scenario.type_code ? '[' + scenario.type_code + '] ' : '') + scenario.subtype_name;
+                if (scenario.subtype_name) return (scenario.type_code ? '[' + scenario.type_code + '] ' : '') + scenario.subtype_name;
+                if (scenario.type_name) return scenario.type_name;
+                return scenario.composed ? 'Индивидуальный процесс' : '';
             },
 
             stagePlural(count) {
@@ -801,6 +1078,11 @@
 
             canLeaveStep1() {
                 if (!this.scenarioId) return false;
+
+                // Индивидуальный процесс: тип/подтип из сценария, нужна лишь хотя бы одна фаза с участником.
+                if (this.current()?.composed) {
+                    return this.composedRoute.some(block => block.participants.length > 0);
+                }
 
                 const paramsReady = this.parameters()
                     .filter(parameter => parameter.is_required)
@@ -824,7 +1106,7 @@
 
             /** Название — проекция атрибутов, пока маска классификатора задана. */
             syncTitle() {
-                const scenario = this.current();
+                const scenario = this.cls();
                 if (!scenario || !scenario.name_template) return;
 
                 const context = {
