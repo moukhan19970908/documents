@@ -27,7 +27,7 @@ class SyncBitrix24 extends Command
         if ($syncUsers) {
             $this->info('Syncing users from Bitrix24...');
             $result = $bitrix24->syncUsers();
-            $this->line("  Created: {$result['created']}, Updated: {$result['updated']}");
+            $this->line("  Created: {$result['created']}, Updated: {$result['updated']}, Deactivated: {$result['deactivated']}");
         }
 
         $this->info('Done.');

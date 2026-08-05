@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\DocumentApproval;
 use App\Models\DocumentApprovalStage;
+use App\Models\User;
 use App\Models\Workflow;
 use App\Models\WorkflowNode;
 use App\Models\WorkflowStage;
@@ -92,6 +94,54 @@ class RouteGraphService
         }
 
         return $node->parent ? $this->nodeAfter($node->parent) : null;
+    }
+
+    /**
+     * Ещё не пройденные звенья идущего маршрута-графа — чтобы карточка документа
+     * показывала весь план, а не только материализованное на текущий момент.
+     *
+     * Идём тем же happy-path, что и движок: за задачей — её выход «Да», условие —
+     * по ответам инициатора. Уже пройденные и пустые (без исполнителей — движок их
+     * пропускает) узлы в план не попадают.
+     *
+     * @return WorkflowNode[]
+     */
+    public function plannedNodes(DocumentApproval $approval, ?User $initiator = null): array
+    {
+        $graphId = $approval->runtime_data['graph_workflow_id'] ?? null;
+
+        if (! $graphId || ! ($definition = Workflow::find($graphId))) {
+            return [];
+        }
+
+        $done = $approval->stages->pluck('workflow_node_id')->filter()
+            ->map(fn ($id) => (int) $id)->all();
+        $params = $approval->parameter_values ?? [];
+        $initiator ??= $approval->document?->initiator;
+
+        $planned = [];
+        $node = $this->firstNode($definition);
+        $steps = 0;
+
+        // Тот же предохранитель от кольца, что и в движке.
+        while ($node && ++$steps <= 200) {
+            if ($node->isTask()) {
+                if (! in_array($node->id, $done, true) && $node->resolvedApproverIds()) {
+                    $planned[] = $node;
+                }
+
+                $node = $this->nextNode($node, 'yes');
+                continue;
+            }
+
+            $node = match ($node->type) {
+                'condition' => $this->nextNode($node, $node->passesCondition($params, $initiator) ? 'yes' : 'no'),
+                'end'       => null,
+                default     => $this->nextNode($node),
+            };
+        }
+
+        return $planned;
     }
 
     /** @param array $chain узлы одной цепочки */

@@ -135,13 +135,13 @@ class DocumentPolicy
 
     public function approve(User $user, Document $document): bool
     {
-        if (!$document->activeApproval) {
-            return false;
-        }
+        $activeStage = $document->activeApproval?->activeStage();
 
-        $activeStage = $document->activeApproval->activeStage();
         if (!$activeStage) {
-            return false;
+            // Ознакомление не держит маршрут: согласование закрыто, но участник
+            // с незакрытой задачей ознакомления всё ещё вправе отметиться.
+            return $document->awaitingAck()
+                && $document->myPendingAckStage($user->id) !== null;
         }
 
         // Direct approver

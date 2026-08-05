@@ -83,7 +83,7 @@
                                         <div class="flex items-center gap-3">
                                             <div class="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 bg-indigo-100 flex items-center justify-center">
                                                 @if($user->avatar)
-                                                    <img src="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($user->avatar) }}" alt="{{ $user->name }}" class="w-full h-full object-cover">
+                                                    <img src="{{ $user->avatar_url }}" alt="{{ $user->name }}" class="w-full h-full object-cover">
                                                 @else
                                                     <span class="text-xs font-bold text-indigo-600">{{ mb_strtoupper(mb_substr($user->name, 0, 1)) }}</span>
                                                 @endif

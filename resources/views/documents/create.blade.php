@@ -158,6 +158,25 @@
             ]);
         }
 
+        // Для «Своего сценария» инициатор сам выбирает тип и подтип — отдаём весь
+        // доступный ему классификатор (те же типы/подтипы, что и в обычном запуске).
+        $classifiers = $documentTypes->map(fn ($type) => [
+            'id'            => $type->id,
+            'code'          => $type->code,
+            'name'          => $type->name,
+            'name_template' => $type->name_template,
+            'allow_manual'  => $allowManualFor($type->numerator),
+            'fields'        => $mapFields($type->fields)->values(),
+            'subtypes'      => $type->subtypes->map(fn ($st) => [
+                'id'            => $st->id,
+                'code'          => $st->code,
+                'name'          => $st->name,
+                'name_template' => $st->name_template,
+                'allow_manual'  => $allowManualFor($st->effectiveNumerator()),
+                'fields'        => $mapFields($st->fields)->values(),
+            ])->values(),
+        ])->values();
+
         // Вход «Свой сценарий» показывает только индивидуальные процессы из конструктора.
         if (request()->boolean('own')) {
             $scenarios = $scenarios->where('composed', true)->values();
@@ -400,17 +419,33 @@
                 {{-- ─────── Индивидуальный процесс: сборка маршрута (тип/подтип — из сценария) ─────── --}}
                 <div x-show="scenarioId && current()?.composed" class="space-y-6">
 
-                    {{-- Тип и подтип берутся из сценария (классификатор конструктора) — не выбираются --}}
+                    {{-- Тип и подтип выбирает инициатор при запуске своего сценария --}}
                     <div>
                         <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Тип документа</p>
-                        <div class="bg-white border border-gray-200 rounded-xl p-5">
-                            <div class="flex items-center gap-2 text-sm">
-                                <span class="text-[11px] font-mono font-semibold text-amber-500" x-text="cls()?.type_code ? '[' + cls()?.type_code + ']' : ''"></span>
-                                <span class="font-medium text-gray-900" x-text="cls()?.type_name || '— тип не задан в сценарии —'"></span>
-                                <span x-show="cls()?.subtype_name" class="text-gray-400">·</span>
-                                <span x-show="cls()?.subtype_name" class="text-gray-600" x-text="cls()?.subtype_name"></span>
+                        <div class="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500 mb-1.5">Тип <span class="text-red-500">*</span></label>
+                                <select x-model="composedTypeId" @change="onComposedTypeChange()"
+                                        class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                                    <option value="">— выберите тип —</option>
+                                    <template x-for="type in classifiers" :key="type.id">
+                                        <option :value="type.id" x-text="(type.code ? '[' + type.code + '] ' : '') + type.name"></option>
+                                    </template>
+                                </select>
                             </div>
-                            <p class="text-[11px] text-gray-400 mt-1.5">Тип, подтип и нумерация заданы в сценарии.</p>
+
+                            <div x-show="composedType() && composedType().subtypes.length > 0">
+                                <label class="block text-xs font-medium text-gray-500 mb-1.5">Подтип <span class="text-red-500">*</span></label>
+                                <select x-model="composedSubtypeId" @change="syncTitle()"
+                                        class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                                    <option value="">— выберите подтип —</option>
+                                    <template x-for="sub in (composedType()?.subtypes ?? [])" :key="sub.id">
+                                        <option :value="sub.id" x-text="(sub.code ? '[' + sub.code + '] ' : '') + sub.name"></option>
+                                    </template>
+                                </select>
+                            </div>
+
+                            <p class="text-[11px] text-gray-400">Нумерация подставится по выбранному типу или подтипу.</p>
                         </div>
                     </div>
 
@@ -750,12 +785,17 @@
     function documentCreate() {
         return {
             scenarios: @json($scenarios),
+            classifiers: @json($classifiers),
             references: @json($referenceOptions),
             people: @json($people),
 
             step: 1,
             scenarioId: @json(old('workflow_id', '')),
             subtypeId: @json(old('document_subtype_id', '')),
+
+            // «Свой сценарий»: тип и подтип выбирает инициатор при запуске.
+            composedTypeId: @json(old('document_type_id', '')),
+            composedSubtypeId: @json(old('document_subtype_id', '')),
 
             values: @json(old('data', (object) [])),
             answers: @json(old('parameters', (object) [])),
@@ -784,7 +824,12 @@
 
                 // После ошибки валидации возвращаем пользователя к тому, что он уже выбрал.
                 if (this.scenarioId) {
-                    if (this.current()?.composed) {
+                    // Карточку ищем по id: у «Своего сценария» подтип выбирает инициатор, и он
+                    // может не совпадать с классификатором карточки, по которому матчит current().
+                    const scenario = this.scenarios.find(s => String(s.id) === String(this.scenarioId));
+
+                    if (scenario?.composed) {
+                        this.subtypeId = scenario.subtype_id ?? '';   // матч карточки — по её классификатору
                         this.loadPresets();
                         this.composedRoute = (this.oldRoute || []).map(block => ({
                             phase: block.phase,
@@ -821,6 +866,8 @@
                 this.rolePicks = {};
                 this.adhoc = { ack: [], intake: [] };
                 this.composedRoute = [];
+                this.composedTypeId = '';
+                this.composedSubtypeId = '';
                 if (scenario.composed) {
                     this.loadPresets();
                 }
@@ -829,10 +876,42 @@
                 this.syncTitle();
             },
 
-            /** Классификатор документа. У composed-сценария тип/подтип заданы сценарием,
-             *  поэтому берутся так же, как у фиксированного, — из самой карточки. */
+            /** Классификатор документа. У фиксированного сценария тип/подтип берутся из
+             *  карточки; у «Своего сценария» их выбирает инициатор — собираем из выбора. */
             cls() {
-                return this.current();
+                const cur = this.current();
+                if (!cur) return null;
+                if (!cur.composed) return cur;
+
+                const type = this.composedType();
+                if (!type) return null;
+
+                const sub = (type.subtypes || []).find(s => String(s.id) === String(this.composedSubtypeId)) || null;
+
+                return {
+                    composed:      true,
+                    type_id:       type.id,
+                    type_code:     type.code,
+                    type_name:     type.name,
+                    subtype_id:    sub ? sub.id : '',
+                    subtype_code:  sub ? sub.code : '',
+                    subtype_name:  sub ? sub.name : '',
+                    name_template: (sub && sub.name_template) ? sub.name_template : type.name_template,
+                    allow_manual:  sub ? sub.allow_manual : type.allow_manual,
+                    fields:        [...(type.fields || []), ...(sub ? sub.fields : [])],
+                };
+            },
+
+            /** Выбранный инициатором тип «Своего сценария» (для списка подтипов и валидации). */
+            composedType() {
+                return this.classifiers.find(t => String(t.id) === String(this.composedTypeId)) ?? null;
+            },
+
+            /** Смена типа сбрасывает подтип и введённые поля — набор полей у типов разный. */
+            onComposedTypeChange() {
+                this.composedSubtypeId = '';
+                this.values = {};
+                this.syncTitle();
             },
 
             phaseLabel(phase) {
@@ -1079,8 +1158,12 @@
             canLeaveStep1() {
                 if (!this.scenarioId) return false;
 
-                // Индивидуальный процесс: тип/подтип из сценария, нужна лишь хотя бы одна фаза с участником.
+                // Свой сценарий: инициатор выбирает тип (и подтип, если он есть) и собирает
+                // хотя бы одну фазу с участником.
                 if (this.current()?.composed) {
+                    const type = this.composedType();
+                    if (!type) return false;
+                    if (type.subtypes.length > 0 && !this.composedSubtypeId) return false;
                     return this.composedRoute.some(block => block.participants.length > 0);
                 }
 

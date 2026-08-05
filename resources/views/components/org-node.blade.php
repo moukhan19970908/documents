@@ -51,7 +51,7 @@
             @if($dept->head)
                 <div class="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 bg-indigo-100 flex items-center justify-center border border-white shadow-sm">
                     @if($dept->head->avatar)
-                        <img src="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($dept->head->avatar) }}" alt="{{ $dept->head->name }}" class="w-full h-full object-cover">
+                        <img src="{{ $dept->head->avatar_url }}" alt="{{ $dept->head->name }}" class="w-full h-full object-cover">
                     @else
                         <span class="text-[10px] font-bold text-indigo-600">{{ mb_strtoupper(mb_substr($dept->head->name, 0, 1)) }}</span>
                     @endif
@@ -107,7 +107,7 @@
                                     <li class="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50">
                                         <div class="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 bg-indigo-100 flex items-center justify-center">
                                             @if($u->avatar)
-                                                <img src="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($u->avatar) }}" alt="{{ $u->name }}" class="w-full h-full object-cover">
+                                                <img src="{{ $u->avatar_url }}" alt="{{ $u->name }}" class="w-full h-full object-cover">
                                             @else
                                                 <span class="text-[10px] font-bold text-indigo-600">{{ mb_strtoupper(mb_substr($u->name, 0, 1)) }}</span>
                                             @endif

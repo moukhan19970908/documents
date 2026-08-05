@@ -163,6 +163,24 @@ class Document extends Model
         return $progress && $progress['done'] < $progress['total'];
     }
 
+    /**
+     * Звено ознакомления, по которому у участника ещё висит незакрытая задача.
+     * Ознакомление не держит маршрут — звено уже «approved», поэтому обычный
+     * activeStage() его не находит; для показа кнопки «Ознакомлен» ищем по задаче.
+     */
+    public function myPendingAckStage(int $userId): ?DocumentApprovalStage
+    {
+        $stageId = Task::where('document_id', $this->id)
+            ->where('assignee_id', $userId)
+            ->where('status', 'pending')
+            ->whereHas('stage.workflowStage', fn ($q) => $q->where('phase', 'ack'))
+            ->value('document_approval_stage_id');
+
+        return $stageId
+            ? DocumentApprovalStage::with(['workflowStage.approvers', 'decisions'])->find($stageId)
+            : null;
+    }
+
     public function getStatusLabelAttribute(): string
     {
         if ($this->awaitingAck()) {

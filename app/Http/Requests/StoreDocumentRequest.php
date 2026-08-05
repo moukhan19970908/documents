@@ -114,13 +114,18 @@ class StoreDocumentRequest extends FormRequest
                 }
             },
 
-            // Индивидуальный процесс отдела (composed-сценарий): при запуске нужен собранный
-            // маршрут. Тип/подтип берутся из сценария. Черновик можно сохранить и без маршрута.
+            // Свой сценарий (composed): при запуске инициатор выбирает тип/подтип и собирает
+            // маршрут. Подтип и обязательные поля проверяет валидатор выше. Черновик можно
+            // сохранить и без маршрута.
             function (Validator $validator) {
                 $workflow = $this->workflow_id ? Workflow::find($this->workflow_id) : null;
 
                 if (!$workflow || !$workflow->isComposed() || $this->input('action') !== 'launch') {
                     return;
+                }
+
+                if (!$this->document_type_id) {
+                    $validator->errors()->add('document_type_id', 'Выберите тип документа.');
                 }
 
                 $hasStage = collect($this->input('route', []))

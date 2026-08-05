@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Storage;
 
 class User extends Authenticatable
 {
@@ -327,7 +328,10 @@ class User extends Authenticatable
     public function getAvatarUrlAttribute(): string
     {
         if ($this->avatar) {
-            return asset('storage/' . $this->avatar);
+            // Аватарки лежат в приватном бакете S3 (Bitrix24Service::downloadAvatar).
+            // Прямой ->url() отдаёт публичную ссылку, которую MinIO закрывает 403 —
+            // поэтому подписываем временную ссылку: её браузер грузит напрямую.
+            return Storage::disk('s3')->temporaryUrl($this->avatar, now()->addHour());
         }
         return 'https://ui-avatars.com/api/?name=' . urlencode($this->name) . '&background=5B4FE8&color=fff';
     }

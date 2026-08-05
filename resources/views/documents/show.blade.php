@@ -20,6 +20,12 @@
 
         $approval     = $document->activeApproval ?? $document->approvals->sortByDesc('id')->first();
         $activeStage  = $document->activeApproval?->activeStage();
+
+        // Ознакомление не держит маршрут: звено уже «approved», но участнику с
+        // незакрытой задачей ознакомления всё ещё нужна кнопка «Ознакомлен».
+        if (!$activeStage && $document->awaitingAck()) {
+            $activeStage = $document->myPendingAckStage(auth()->id());
+        }
         $deadline     = $document->deadline_at;
         $isOverdue    = $deadline && $deadline->isPast() && $document->status === 'in_review';
 
@@ -712,6 +718,11 @@
                             'approvers'   => $approverNodes,
                         ];
                     }
+
+                    // Маршрут-граф материализует звенья по одному; чтобы был виден весь
+                    // план, дорисовываем ещё не пройденные звенья как «Запланировано».
+                    $plannedNodes = app(\App\Services\RouteGraphService::class)
+                        ->plannedNodes($approval, $document->initiator);
                 @endphp
 
                 <div class="bg-white rounded-xl border border-gray-200 p-6">
@@ -793,6 +804,40 @@
                                         'isMe'   => $ap['isMe'],
                                     ])
                                 @endforeach
+                            @endif
+                        @endforeach
+
+                        {{-- Ещё не пройденные звенья графа: состав по сценарию, приглушённо. --}}
+                        @foreach($plannedNodes as $node)
+                            @php $plannedApprovers = $node->resolvedApprovers(); @endphp
+                            <div class="flex items-center self-center mt-[-20px] mx-1 shrink-0">
+                                <div class="w-8 h-px bg-gray-200"></div>
+                                <svg class="w-3 h-3 text-gray-300 -ml-1 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                            </div>
+
+                            @if($plannedApprovers->count() > 1)
+                                <div class="shrink-0 self-center border-2 border-dashed border-gray-200 rounded-2xl px-5 py-4 flex flex-col items-center gap-3 bg-gray-50/40 opacity-70">
+                                    <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">{{ \App\Models\WorkflowStage::PHASES[$node->type] ?? 'Запланировано' }}</p>
+                                    <div class="flex items-start gap-4">
+                                        @foreach($plannedApprovers as $u)
+                                            @include('documents._approval_node', [
+                                                'user'   => $u,
+                                                'label'  => $u->department?->name ?? ($u->position ?? ''),
+                                                'status' => 'pending',
+                                                'date'   => 'Запланировано',
+                                                'isMe'   => false,
+                                            ])
+                                        @endforeach
+                                    </div>
+                                </div>
+                            @else
+                                @include('documents._approval_node', [
+                                    'user'   => $plannedApprovers->first(),
+                                    'label'  => $plannedApprovers->first()?->department?->name ?? ($plannedApprovers->first()?->position ?? ''),
+                                    'status' => 'pending',
+                                    'date'   => 'Запланировано',
+                                    'isMe'   => false,
+                                ])
                             @endif
                         @endforeach
 

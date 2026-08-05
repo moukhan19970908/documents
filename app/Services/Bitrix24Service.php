@@ -290,6 +290,8 @@ class Bitrix24Service
 
         $created = 0;
         $updated = 0;
+        $deactivated = 0;
+        $activeB24Ids = [];
 
         try {
             $start = 0;
@@ -306,6 +308,7 @@ class Bitrix24Service
                 foreach ($users as $b24User) {
                     try {
                         $b24Id = (string) $b24User['ID'];
+                        $activeB24Ids[] = $b24Id;
 
                         // Resolve department: UF_DEPARTMENT is an array of Bitrix24 dept IDs
                         $departmentId = null;
@@ -366,11 +369,21 @@ class Bitrix24Service
                 // Bitrix24 returns 'next' with the offset for the next page; absent when done
                 $start = $data['next'] ?? null;
             } while ($start !== null);
+
+            // Уволенных Bitrix отдаёт с ACTIVE=N — в выборку выше (ACTIVE=Y) они не
+            // попадают. Гасим у себя всех B24-пользователей, которых в активных больше
+            // нет. Только при непустой выборке: сбой API не должен погасить всех разом.
+            if (!empty($activeB24Ids)) {
+                $deactivated = User::whereNotNull('bitrix24_id')
+                    ->whereNotIn('bitrix24_id', $activeB24Ids)
+                    ->where('is_active', true)
+                    ->update(['is_active' => false]);
+            }
         } catch (\Exception $e) {
             Log::error('Bitrix24 syncUsers failed: ' . $e->getMessage());
         }
 
-        return ['created' => $created, 'updated' => $updated];
+        return ['created' => $created, 'updated' => $updated, 'deactivated' => $deactivated];
     }
 
     /**
