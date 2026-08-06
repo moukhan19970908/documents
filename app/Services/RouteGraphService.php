@@ -197,6 +197,8 @@ class RouteGraphService
                 // утверждение и приём ждут решения всегда.
                 'is_blocking'          => in_array($type, ['ack', 'opinion'], true) ? (bool) ($config['is_blocking'] ?? true) : true,
                 'on_reject'            => ($config['on_reject'] ?? 'return_initiator') === 'reject' ? 'reject' : 'return_initiator',
+                // Ключ секции бланка: комментарий этого звена подставится как ${ключ}.
+                'comment_key'          => $text($config['comment_key'] ?? null, 64),
             ],
             // Условие ветвится либо по ответу на параметр запуска, либо по отделу
             // инициатора — у каждого источника свой набор настроек.

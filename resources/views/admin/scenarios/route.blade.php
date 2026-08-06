@@ -301,6 +301,13 @@
                                     </div>
                                 </div>
 
+                                <div>
+                                    <label class="text-xs text-gray-500 block mb-1">Ключ для бланка</label>
+                                    <input type="text" x-model="editing.config.comment_key" placeholder="напр. lawyer_comment"
+                                           class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                                    <p class="text-xs text-gray-400 mt-1">Комментарий с этого звена подставится в бланк как <code>${ключ}</code>. Пусто — не подставляется.</p>
+                                </div>
+
                                 <div x-show="['ack', 'opinion'].includes(editing.type)">
                                     <label class="flex items-center justify-between text-sm text-gray-700 cursor-pointer">
                                         Блокирующее звено
