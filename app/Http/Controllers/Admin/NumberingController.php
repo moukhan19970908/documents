@@ -50,7 +50,7 @@ class NumberingController extends Controller
 
         $departments = collect();
         if ($directionId) {
-            $childIds = array_values(array_diff(Department::getDescendantIds($directionId), [$directionId]));
+            $childIds = array_values(array_diff(Department::directionMemberIds($directionId), [$directionId]));
             $departments = Department::whereIn('id', $childIds)->orderBy('name')->get();
 
             if ($departmentId && ! in_array($departmentId, $childIds, true)) {
@@ -59,7 +59,7 @@ class NumberingController extends Controller
 
             $scopeIds = array_map('intval', $departmentId
                 ? Department::getDescendantIds($departmentId)
-                : Department::getDescendantIds($directionId));
+                : Department::directionMemberIds($directionId));
 
             $custom = $custom->filter(fn (Numerator $n) => ! empty($n->allowed_departments)
                 && array_intersect($scopeIds, array_map('intval', (array) $n->allowed_departments)) !== [])
@@ -74,7 +74,7 @@ class NumberingController extends Controller
             'direction'   => $dir,
             'departments' => $allDepts->whereIn(
                 'id',
-                array_diff(Department::getDescendantIds($dir->id), [$dir->id])
+                array_diff(Department::directionMemberIds($dir->id), [$dir->id])
             )->values(),
         ])->filter(fn ($g) => $g['departments']->isNotEmpty())->values();
 

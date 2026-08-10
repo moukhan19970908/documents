@@ -34,8 +34,8 @@ class KnowledgeController extends Controller
             $materials = $materials->where('direction_id', (int) $request->input('direction'))->values();
         }
 
-        // Дерево: направления (корневые отделы) → отделы.
-        $directions = Department::with('children')->whereNull('parent_id')->orderBy('name')->get();
+        // Дерево: направления (корневые отделы) → отделы (дочерние + прикреплённые).
+        $directions = Department::with(['children', 'members'])->whereNull('parent_id')->orderBy('name')->get();
 
         return view('knowledge.index', [
             'materials'  => $materials,

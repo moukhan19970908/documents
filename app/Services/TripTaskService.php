@@ -53,6 +53,43 @@ class TripTaskService
         }
     }
 
+    /** Ключ исполнителя из графа → поле настроек TripTaskSetting. */
+    private const FLOW_ASSIGNEE = [
+        'hr'             => 'hr_user_id',
+        'office_manager' => 'office_manager_id',
+        'logistics'      => 'logistics_id',
+        'transport'      => 'transport_id',
+    ];
+
+    /** Породить задания из плана граф-процесса (узлы «Задание»/«Параллель»). Идемпотентно. */
+    public function generateFromFlow(TripRequest $trip): void
+    {
+        if ($trip->tripTasks()->exists()) {
+            return;
+        }
+
+        $settings = TripTaskSetting::current();
+
+        foreach (($trip->flow_tasks ?? []) as $t) {
+            $field      = self::FLOW_ASSIGNEE[$t['assignee'] ?? ''] ?? null;
+            $assigneeId = $field ? ($settings->{$field} ?? null) : null;
+
+            $task = TripTask::create([
+                'trip_request_id' => $trip->id,
+                'target'          => $t['assignee'] ?? 'flow',
+                'title'           => $t['title'] ?? 'Задание',
+                'assignee_id'     => $assigneeId,
+                'status'          => 'pending',
+            ]);
+
+            if ($assigneeId && ($assignee = User::find($assigneeId))) {
+                $this->notifications->notify($assignee, 'trip_task_assigned', [
+                    'title' => $task->title, 'trip_id' => $trip->id,
+                ]);
+            }
+        }
+    }
+
     public function take(TripTask $task): void
     {
         $task->update(['status' => 'in_progress']);

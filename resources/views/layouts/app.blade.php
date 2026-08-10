@@ -123,6 +123,7 @@
                 @php
                     $adminItems = array_filter([
                         ['key' => 'menu.admin.scenarios', 'label' => 'Конструктор процессов', 'route' => 'admin.scenarios', 'url' => route('admin.scenarios.index')],
+                        ['key' => 'menu.admin.scenarios', 'label' => 'Виды заявок', 'route' => 'admin.request-types', 'url' => route('admin.request-types.index')],
                         ['key' => 'menu.admin.document_types', 'label' => 'Классификаторы и типы', 'route' => 'admin.document-types', 'url' => route('admin.document-types.index')],
                         ['key' => 'menu.admin.numbering', 'label' => 'Нумерация', 'route' => 'admin.numbering', 'url' => route('admin.numbering.index')],
                         ['key' => 'menu.admin.procedures', 'label' => 'Шаблоны процедур', 'route' => 'admin.procedures', 'url' => route('admin.procedures.index')],

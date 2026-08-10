@@ -126,6 +126,7 @@
                           placeholder="Дополнительная информация...">{{ old('comment') }}</textarea>
             </div>
 
+            @include('requests.partials.deputy-field')
 
             <div class="flex items-center gap-3">
                 <button type="submit" name="submit" value="1"

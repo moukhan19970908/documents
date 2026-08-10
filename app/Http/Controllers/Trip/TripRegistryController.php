@@ -22,8 +22,13 @@ class TripRegistryController extends Controller
         $user       = auth()->user();
         $registries = Registry::where('type', 'trip')
             ->where(function ($q) use ($user) {
-                if (!$user->hasAnyRole(['admin', 'director'])) {
-                    $q->where('created_by', $user->id);
+                if ($user->hasAnyRole(['admin', 'director'])) {
+                    return; // видят все
+                }
+                $q->where('created_by', $user->id);
+                // Бухгалтерия видит переданные ей реестры, кем бы они ни были собраны (общий пул).
+                if ($user->isAccounting()) {
+                    $q->orWhereIn('status', ['sent_to_accounting', 'accepted_by_accounting']);
                 }
             })
             ->with('creator')
@@ -121,6 +126,7 @@ class TripRegistryController extends Controller
 
     public function accept(Registry $registry)
     {
+        abort_unless(auth()->user()->isAccounting(), 403);
         $this->registryService->acceptByAccounting($registry, auth()->user());
         return back()->with('success', 'Реестр принят.');
     }

@@ -54,14 +54,14 @@
 
                     @foreach($directions as $dir)
                         @php $dirActive = (int) request('direction') === $dir->id; @endphp
-                        <div x-data="{ open: {{ $dirActive || request('department') && $dir->children->contains('id', (int) request('department')) ? 'true' : 'false' }} }">
+                        <div x-data="{ open: {{ $dirActive || request('department') && $dir->catalogDepartments()->contains('id', (int) request('department')) ? 'true' : 'false' }} }">
                             <button type="button" @click="open = !open"
                                     class="w-full flex items-center gap-1.5 px-3 py-2 rounded-lg text-gray-700 hover:bg-gray-50">
                                 <svg :class="open ? 'rotate-90' : ''" class="w-3.5 h-3.5 shrink-0 transition-transform" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
                                 <span class="font-medium truncate">{{ $dir->name }}</span>
                             </button>
                             <div x-show="open" x-cloak class="ml-3 pl-2 border-l border-gray-100 space-y-0.5">
-                                @forelse($dir->children as $dept)
+                                @forelse($dir->catalogDepartments() as $dept)
                                     @php $deptActive = (int) request('department') === $dept->id; @endphp
                                     <div x-data="{ o: {{ $deptActive ? 'true' : 'false' }} }">
                                         <button type="button" @click="o = !o"

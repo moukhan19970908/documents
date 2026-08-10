@@ -31,7 +31,7 @@ class ScenarioController extends Controller
         // Отделы выбранного направления — для доп. фильтра. Без направления фильтр по отделу не имеет смысла.
         $departments = collect();
         if ($directionId) {
-            $childIds = array_values(array_diff(Department::getDescendantIds($directionId), [$directionId]));
+            $childIds = array_values(array_diff(Department::directionMemberIds($directionId), [$directionId]));
             $departments = Department::whereIn('id', $childIds)->orderBy('name')->get();
 
             // Отсекаем отдел, не относящийся к выбранному направлению.
@@ -53,7 +53,7 @@ class ScenarioController extends Controller
             // Выбран конкретный отдел — он и его подотделы; иначе все отделы направления.
             $deptIds = $departmentId
                 ? array_map('intval', Department::getDescendantIds($departmentId))
-                : array_map('intval', Department::getDescendantIds($directionId));
+                : array_map('intval', Department::directionMemberIds($directionId));
 
             $matchingIds = Workflow::where('is_system', false)->where('is_version', false)
                 ->whereNotNull('allowed_departments')

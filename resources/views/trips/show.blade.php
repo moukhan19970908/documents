@@ -5,7 +5,7 @@
 
         {{-- Header --}}
         <div class="mb-5 flex items-center gap-3">
-            <a href="{{ route('trips.index') }}" class="text-gray-400 hover:text-gray-600 shrink-0">
+            <a href="{{ route('requests.index') }}" class="text-gray-400 hover:text-gray-600 shrink-0">
                 <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
             </a>
             <div class="flex-1 min-w-0">
@@ -85,6 +85,14 @@
                     <dt class="text-gray-400">Подписант</dt>
                     <dd class="font-medium text-gray-900">{{ $trip->signatory?->name ?? '—' }}</dd>
 
+                    @if($trip->substitution)
+                        <dt class="text-gray-400">Замещение</dt>
+                        <dd class="font-medium text-gray-900">
+                            {{ $trip->substitution->deputy?->name ?? '—' }}
+                            <span class="text-gray-400 font-normal">· {{ $trip->substitution->date_from->format('d.m') }}–{{ $trip->substitution->date_to->format('d.m') }}</span>
+                        </dd>
+                    @endif
+
                     <dt class="text-gray-400">Создано</dt>
                     <dd class="text-gray-500">{{ $trip->created_at->format('d.m.Y') }} · обновлено {{ $trip->updated_at->diffForHumans() }}</dd>
                 </dl>
@@ -123,7 +131,7 @@
                     <div class="flex flex-wrap gap-2">
                         @foreach($trip->route->steps as $step)
                             @php
-                                $isDone    = $step->step_order < $trip->current_step;
+                                $isDone    = $step->step_order < $trip->current_step || $trip->status === 'approved';
                                 $isCurrent = $step->step_order === $trip->current_step && $trip->status === 'pending';
                                 $name      = $step->approverUser?->name ?? 'Уровень ' . $step->approver_role_level;
                             @endphp
@@ -148,6 +156,34 @@
                             </div>
                         @endforeach
                     </div>
+                </div>
+            @endif
+
+            {{-- Дальнейшее движение после согласования --}}
+            @if($trip->status === 'approved')
+                <div class="px-5 py-4">
+                    <p class="text-[11px] font-semibold text-gray-400 uppercase tracking-widest mb-2">Дальнейшее движение</p>
+                    @php $regItem = $trip->registryItem; @endphp
+                    @if($regItem && $regItem->registry)
+                        @php $reg = $regItem->registry; @endphp
+                        <div class="flex items-center gap-2 text-sm flex-wrap">
+                            <span class="text-gray-600">В реестре</span>
+                            <a href="{{ route('trips.registries.show', $reg) }}" class="font-medium text-[#5B4FE8] hover:underline">«{{ $reg->title }}»</a>
+                            <span class="text-xs px-2 py-0.5 rounded-full {{ $reg->status_color }}">{{ $reg->status_label }}</span>
+                            @if($regItem->status === 'dropped')
+                                <span class="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">выведена на доработку</span>
+                            @endif
+                        </div>
+                    @else
+                        @php $goesToRegistry = ($trip->user->role_level ?? 1) < 2 && !in_array($trip->user->role, ['admin', 'director', 'ceo', 'chief_of_staff']); @endphp
+                        <p class="text-sm text-gray-500">
+                            @if($goesToRegistry)
+                                Согласована. Ожидает включения в реестр командировок для передачи в бухгалтерию.
+                            @else
+                                Согласована по индивидуальному маршруту.
+                            @endif
+                        </p>
+                    @endif
                 </div>
             @endif
 
@@ -233,13 +269,19 @@
                 </div>
                 <div class="divide-y divide-gray-50">
                     @foreach($trip->tripTasks as $task)
-                        <div class="px-5 py-3.5">
+                        <div class="px-5 py-3.5" x-data="{ chat: false }">
                             <div class="flex items-center justify-between gap-3">
                                 <div class="min-w-0">
                                     <p class="text-sm font-medium text-gray-900">{{ $task->title }}</p>
                                     <p class="text-xs text-gray-400">{{ $task->whoLabel() }} · {{ $task->assignee?->name ?? 'исполнитель не назначен' }}</p>
                                 </div>
-                                <span class="shrink-0 text-xs px-2.5 py-1 rounded-full {{ $task->statusColor() }}">{{ $task->statusLabel() }}</span>
+                                <div class="flex items-center gap-2 shrink-0">
+                                    <button type="button" @click="chat = !chat"
+                                            class="text-xs px-2.5 py-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 relative">
+                                        Обсуждение@if($task->messages->isNotEmpty()) <span class="text-[#5B4FE8] font-semibold">{{ $task->messages->count() }}</span>@endif
+                                    </button>
+                                    <span class="text-xs px-2.5 py-1 rounded-full {{ $task->statusColor() }}">{{ $task->statusLabel() }}</span>
+                                </div>
                             </div>
                             @if($task->result_comment)<p class="text-sm text-gray-600 mt-1.5">{{ $task->result_comment }}</p>@endif
                             @if($task->files->isNotEmpty())
@@ -252,6 +294,10 @@
                                     @endforeach
                                 </div>
                             @endif
+
+                            <div x-show="chat" x-cloak class="mt-3 pt-3 border-t border-gray-50">
+                                @include('requests.partials.task-thread', ['task' => $task, 'placeholder' => 'Ответить исполнителю…'])
+                            </div>
                         </div>
                     @endforeach
                 </div>

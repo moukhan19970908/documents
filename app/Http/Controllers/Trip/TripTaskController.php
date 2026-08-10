@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Trip;
 use App\Http\Controllers\Controller;
 use App\Models\TripTask;
 use App\Models\TripTaskFile;
+use App\Models\TripTaskMessage;
 use App\Services\TripTaskService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -72,8 +73,37 @@ class TripTaskController extends Controller
         return Storage::download($file->path, $file->original_name);
     }
 
+    /** Вопрос инициатору / ответ в треде задания. Пишут исполнитель, инициатор и админ. */
+    public function ask(Request $request, TripTask $task)
+    {
+        abort_unless($this->canParticipate($task), 403);
+
+        $data = $request->validate(['body' => ['required', 'string', 'max:5000']]);
+
+        TripTaskMessage::create([
+            'trip_task_id' => $task->id,
+            'user_id'      => auth()->id(),
+            'body'         => $data['body'],
+        ]);
+
+        return back()->with('success', 'Сообщение отправлено.');
+    }
+
     private function canAct(TripTask $task): bool
     {
-        return $task->assignee_id === auth()->id() || auth()->user()->isAdmin();
+        return $task->assignee_id === auth()->id()
+            || auth()->user()->isAdmin()
+            || in_array($task->assignee_id, \App\Models\Substitution::coveredUserIds(auth()->user()), true);
+    }
+
+    /** Участники треда задания: исполнитель (или его замещающий), инициатор заявки и админ. */
+    private function canParticipate(TripTask $task): bool
+    {
+        $uid = auth()->id();
+
+        return $task->assignee_id === $uid
+            || $task->trip->user_id === $uid
+            || auth()->user()->isAdmin()
+            || in_array($task->assignee_id, \App\Models\Substitution::coveredUserIds(auth()->user()), true);
     }
 }

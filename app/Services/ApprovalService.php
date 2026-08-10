@@ -16,6 +16,7 @@ class ApprovalService
     {
         $query = ApprovalRoute::where('request_type', $type)
             ->where('is_active', true)
+            ->where('is_ephemeral', false)   // одноразовые маршруты из графа не участвуют в автоподборе
             ->where(function ($q) use ($user) {
                 $q->where('department_id', $user->department_id)
                   ->orWhereNull('department_id');
@@ -93,12 +94,20 @@ class ApprovalService
             ->with(['user.department', 'route.steps'])
             ->get();
 
-        return $pending->filter(function ($request) use ($approver) {
+        // Замещение: помимо себя, согласующий видит входящие тех, кого сейчас замещает.
+        $covered = \App\Models\Substitution::coveredUsers($approver);
+
+        return $pending->filter(function ($request) use ($approver, $covered) {
             if (!$request->route) {
                 return false;
             }
             $step = $request->route->steps->firstWhere('step_order', $request->current_step);
-            return $this->approverMatchesStep($approver, $step, $request->user);
+
+            if ($this->approverMatchesStep($approver, $step, $request->user)) {
+                return true;
+            }
+
+            return $covered->contains(fn ($absent) => $this->approverMatchesStep($absent, $step, $request->user));
         });
     }
 
@@ -112,12 +121,19 @@ class ApprovalService
             ->with(['creator.department', 'route.steps', 'items'])
             ->get();
 
-        return $pending->filter(function ($registry) use ($approver) {
+        $covered = \App\Models\Substitution::coveredUsers($approver);
+
+        return $pending->filter(function ($registry) use ($approver, $covered) {
             if (!$registry->route) {
                 return false;
             }
             $step = $registry->route->steps->firstWhere('step_order', $registry->current_step);
-            return $this->approverMatchesStep($approver, $step, $registry->creator);
+
+            if ($this->approverMatchesStep($approver, $step, $registry->creator)) {
+                return true;
+            }
+
+            return $covered->contains(fn ($absent) => $this->approverMatchesStep($absent, $step, $registry->creator));
         });
     }
 

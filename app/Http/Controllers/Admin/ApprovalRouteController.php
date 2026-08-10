@@ -15,6 +15,7 @@ class ApprovalRouteController extends Controller
     {
         $query = ApprovalRoute::with(['department', 'steps.approverUser'])
             ->withCount('steps')
+            ->where('is_ephemeral', false)   // одноразовые маршруты из графа не показываем
             ->orderBy('request_type')
             ->orderBy('name');
 

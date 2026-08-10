@@ -32,6 +32,7 @@ use App\Http\Controllers\Admin\BlankTemplateController;
 use App\Http\Controllers\Admin\NumberingController;
 use App\Http\Controllers\Admin\DocumentTypeController;
 use App\Http\Controllers\Admin\ScenarioController;
+use App\Http\Controllers\Admin\RequestTypeController;
 use App\Http\Controllers\Admin\WorkflowFolderController;
 use App\Http\Controllers\Admin\ApprovalRouteController;
 use App\Http\Controllers\Admin\ExternalParticipantController;
@@ -79,6 +80,9 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
 
     // Заявки — единый хаб (ТЗ 18): Отпуска / Командировки / Иное
     Route::get('requests', [RequestsController::class, 'index'])->name('requests.index');
+    Route::get('requests/approvals', [RequestsController::class, 'approvals'])->name('requests.approvals');
+    Route::get('requests/tasks', [RequestsController::class, 'tasks'])->name('requests.tasks');
+    Route::post('requests/registries', [RequestsController::class, 'storeRegistry'])->name('requests.registries.store');
 
     // Поручения (свободное дерево, ТЗ 17)
     Route::get('assignments', [AssignmentController::class, 'index'])->name('assignments.index');
@@ -296,6 +300,12 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
         Route::resource('workflow-folders', WorkflowFolderController::class);
         Route::resource('approval-routes', ApprovalRouteController::class);
         Route::patch('approval-routes/{approval_route}/toggle', [ApprovalRouteController::class, 'toggle'])->name('approval-routes.toggle');
+
+        // Виды заявок — единая страница настройки заявок бесшовного стека
+        Route::get('request-types', [RequestTypeController::class, 'index'])->name('request-types.index');
+        Route::get('request-types/{type}/edit', [RequestTypeController::class, 'edit'])->name('request-types.edit');
+        Route::put('request-types/{type}/flow', [RequestTypeController::class, 'updateFlow'])->name('request-types.flow.update');
+        Route::post('request-types/{type}/flow/publish', [RequestTypeController::class, 'publishFlow'])->name('request-types.flow.publish');
     });
 
     // Trips
@@ -317,6 +327,7 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
         Route::get('/tasks', [TripTaskController::class, 'index'])->name('tasks.index');
         Route::post('/tasks/{task}/take', [TripTaskController::class, 'take'])->name('tasks.take');
         Route::post('/tasks/{task}/complete', [TripTaskController::class, 'complete'])->name('tasks.complete');
+        Route::post('/tasks/{task}/ask', [TripTaskController::class, 'ask'])->name('tasks.ask');
         Route::get('/task-files/{file}', [TripTaskController::class, 'file'])->name('tasks.file');
         Route::get('/{trip}', [TripRequestController::class, 'show'])->name('show');
         Route::get('/{trip}/edit', [TripRequestController::class, 'edit'])->name('edit');

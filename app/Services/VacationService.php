@@ -12,6 +12,7 @@ class VacationService
     public function __construct(
         private ApprovalService $approvalService,
         private NotificationService $notifications,
+        private RequestFlowRouter $flowRouter,
     ) {}
 
     /**
@@ -39,7 +40,10 @@ class VacationService
 
     public function create(User $user, array $data, bool $submit = false): VacationRequest
     {
-        $route = $this->approvalService->findRoute($user, 'vacation');
+        // Граф-процесс (если опубликован) строит маршрут; иначе — автоподбор ApprovalRoute.
+        $route = $this->flowRouter->routeFor($user, 'vacation', [
+            'vacation_type' => $data['vacation_type'] ?? null,
+        ])['route'];
 
         $days = Carbon::parse($data['date_start'])->diffInDays($data['date_end']) + 1;
 

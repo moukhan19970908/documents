@@ -1,129 +1,134 @@
 <x-app-layout>
     <x-slot name="title">Заявки — Vamin</x-slot>
 
-    <div class="mb-6">
-        <h1 class="text-2xl font-bold text-gray-900">Заявки</h1>
-        <p class="text-sm text-gray-500 mt-1">Отпуска, командировки и прочие заявки в одном месте.</p>
-    </div>
+    @include('requests.partials.nav', ['active' => 'mine', 'title' => 'Мои заявки'])
 
-    {{-- Быстрое создание --}}
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-        <a href="{{ route('vacations.create') }}" class="group bg-white border border-gray-200 rounded-xl p-5 hover:shadow-md hover:border-[#5B4FE8]/40 transition">
-            <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-            </div>
-            <h3 class="font-semibold text-gray-900">Отпуск</h3>
-            <p class="text-sm text-gray-500">Ежегодный, за свой счёт, больничный, иное</p>
-        </a>
+    <div x-data="myRequests()">
 
-        <a href="{{ route('trips.create') }}" class="group bg-white border border-gray-200 rounded-xl p-5 hover:shadow-md hover:border-[#5B4FE8]/40 transition">
-            <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
-            </div>
-            <h3 class="font-semibold text-gray-900">Командировка</h3>
-            <p class="text-sm text-gray-500">Транспорт, проживание, регион</p>
-        </a>
+        {{-- Фильтры --}}
+        <div class="flex flex-wrap items-center gap-2 mb-4">
+            <button type="button" @click="type = 'all'"
+                    :class="type === 'all' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'"
+                    class="px-3 py-1.5 text-sm rounded-full border transition">Все</button>
+            @foreach($typeChips as $chip)
+                <button type="button" @click="type = '{{ $chip['key'] }}'"
+                        :class="type === '{{ $chip['key'] }}' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'"
+                        class="px-3 py-1.5 text-sm rounded-full border transition">{{ $chip['label'] }}</button>
+            @endforeach
 
-        <div class="bg-gray-50 border border-dashed border-gray-200 rounded-xl p-5 opacity-70">
-            <div class="w-10 h-10 rounded-xl bg-gray-100 text-gray-400 flex items-center justify-center mb-3">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
-            </div>
-            <h3 class="font-semibold text-gray-500">Иное</h3>
-            <p class="text-sm text-gray-400">Появится на следующем этапе</p>
-        </div>
-    </div>
+            <span class="w-px h-5 bg-gray-200 mx-1"></span>
 
-    {{-- На согласование --}}
-    @php $pendingTotal = $pending['trip'] + $pending['vacation'] + $pending['trip_reg'] + $pending['vacation_reg']; @endphp
-    @if($pendingTotal > 0)
-        <div class="mb-8">
-            <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-widest mb-3">Требует моего согласования</h2>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                @if($pending['vacation'] > 0)
-                    <a href="{{ route('vacations.approvals') }}" class="flex items-center justify-between bg-white border border-gray-200 rounded-xl px-5 py-4 hover:border-[#5B4FE8]/40">
-                        <span class="text-sm font-medium text-gray-800">Отпуска — заявки</span>
-                        <span class="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-2 text-xs font-bold rounded-full bg-[#5B4FE8] text-white">{{ $pending['vacation'] }}</span>
-                    </a>
-                @endif
-                @if($pending['vacation_reg'] > 0)
-                    <a href="{{ route('vacations.registries.index') }}" class="flex items-center justify-between bg-white border border-gray-200 rounded-xl px-5 py-4 hover:border-[#5B4FE8]/40">
-                        <span class="text-sm font-medium text-gray-800">Отпуска — реестры</span>
-                        <span class="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-2 text-xs font-bold rounded-full bg-[#5B4FE8] text-white">{{ $pending['vacation_reg'] }}</span>
-                    </a>
-                @endif
-                @if($pending['trip'] > 0)
-                    <a href="{{ route('trips.approvals') }}" class="flex items-center justify-between bg-white border border-gray-200 rounded-xl px-5 py-4 hover:border-[#5B4FE8]/40">
-                        <span class="text-sm font-medium text-gray-800">Командировки — заявки</span>
-                        <span class="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-2 text-xs font-bold rounded-full bg-[#5B4FE8] text-white">{{ $pending['trip'] }}</span>
-                    </a>
-                @endif
-                @if($pending['trip_reg'] > 0)
-                    <a href="{{ route('trips.registries.index') }}" class="flex items-center justify-between bg-white border border-gray-200 rounded-xl px-5 py-4 hover:border-[#5B4FE8]/40">
-                        <span class="text-sm font-medium text-gray-800">Командировки — реестры</span>
-                        <span class="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-2 text-xs font-bold rounded-full bg-[#5B4FE8] text-white">{{ $pending['trip_reg'] }}</span>
-                    </a>
-                @endif
+            <button type="button" @click="state = 'all'"
+                    :class="state === 'all' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'"
+                    class="px-3 py-1.5 text-sm rounded-full border transition">Все</button>
+            <button type="button" @click="state = 'active'"
+                    :class="state === 'active' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'"
+                    class="px-3 py-1.5 text-sm rounded-full border transition">В работе</button>
+            <button type="button" @click="state = 'done'"
+                    :class="state === 'done' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'"
+                    class="px-3 py-1.5 text-sm rounded-full border transition">Завершённые</button>
+
+            <div class="relative ml-auto">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z"/></svg>
+                <input type="text" x-model="q" placeholder="Поиск по заявкам"
+                       class="w-56 pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]/30 focus:border-[#5B4FE8]">
             </div>
         </div>
-    @endif
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {{-- Мои заявки --}}
-        <div class="lg:col-span-2">
-            <div class="flex items-center justify-between mb-3">
-                <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-widest">Мои заявки</h2>
-                <span class="text-xs text-gray-400">{{ $counts['active'] }} в работе · {{ $counts['total'] }} всего</span>
-            </div>
-            <div class="space-y-2">
-                @forelse($myRequests as $r)
-                    <a href="{{ $r['url'] }}" class="flex items-center gap-4 bg-white border border-gray-200 rounded-xl px-5 py-3.5 hover:border-[#5B4FE8]/40 transition">
-                        <div class="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 {{ $r['kind'] === 'trip' ? 'bg-blue-50 text-blue-600' : 'bg-emerald-50 text-emerald-600' }}">
-                            @if($r['kind'] === 'trip')
-                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
-                            @else
-                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                            @endif
-                        </div>
-                        <div class="flex-1 min-w-0">
-                            <p class="font-medium text-gray-900 truncate">{{ $r['title'] }}</p>
-                            <p class="text-xs text-gray-500">{{ $r['dates'] }}</p>
-                        </div>
-                        <span class="shrink-0 text-xs px-2.5 py-1 rounded-full {{ $r['color'] }}">{{ $r['status'] }}</span>
-                    </a>
-                @empty
-                    <div class="text-center text-gray-400 bg-gray-50 border border-dashed border-gray-200 rounded-xl py-12">
-                        У вас пока нет заявок. Создайте первую сверху.
+        {{-- Список --}}
+        <div class="space-y-2.5">
+            @forelse($myRequests as $r)
+                <div x-show="match('{{ $r['type_key'] }}', '{{ $r['state_group'] }}', @js($r['title']))"
+                     class="flex items-center gap-4 bg-white border border-gray-200 rounded-xl px-5 py-3.5">
+                    {{-- Иконка --}}
+                    <div class="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 {{ $r['kind'] === 'trip' ? 'bg-blue-50 text-blue-600' : 'bg-emerald-50 text-emerald-600' }}">
+                        @if($r['kind'] === 'trip')
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+                        @else
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                        @endif
                     </div>
-                @endforelse
-            </div>
-        </div>
 
-        {{-- Реестры --}}
-        <div>
-            <div class="flex items-center justify-between mb-3">
-                <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-widest">Мои реестры</h2>
-            </div>
-            <div class="space-y-2">
-                @forelse($myRegistries as $reg)
-                    <a href="{{ $reg->type === 'trip' ? route('trips.registries.show', $reg) : route('vacations.registries.show', $reg) }}"
-                       class="block bg-white border border-gray-200 rounded-xl px-4 py-3 hover:border-[#5B4FE8]/40 transition">
-                        <div class="flex items-center justify-between gap-2">
-                            <span class="text-sm font-medium text-gray-800 truncate">{{ $reg->title ?: 'Реестр #' . $reg->id }}</span>
-                            <span class="shrink-0 text-xs px-2 py-0.5 rounded-full {{ $reg->status_color }}">{{ $reg->status_label }}</span>
-                        </div>
-                        <p class="text-xs text-gray-400 mt-0.5">{{ $reg->type === 'trip' ? 'Командировки' : 'Отпуска' }}</p>
-                    </a>
-                @empty
-                    <div class="text-center text-gray-400 bg-gray-50 border border-dashed border-gray-200 rounded-xl py-8 text-sm">
-                        Реестров нет.
+                    {{-- Название + мета --}}
+                    <div class="w-52 shrink-0 min-w-0">
+                        <p class="font-medium text-gray-900 truncate">{{ $r['title'] }}</p>
+                        <p class="text-xs text-gray-400">
+                            {{ $r['submitted'] }}@if($r['stage_total'] > 0) · этап {{ $r['stage_pos'] }} из {{ $r['stage_total'] }}@endif
+                        </p>
                     </div>
-                @endforelse
-            </div>
-            <div class="mt-3 flex flex-col gap-1.5 text-sm">
-                <a href="{{ route('vacations.registries.index') }}" class="text-[#5B4FE8] hover:underline">Реестры отпусков →</a>
-                <a href="{{ route('trips.registries.index') }}" class="text-[#5B4FE8] hover:underline">Реестры командировок →</a>
-                <a href="{{ route('trips.tasks.index') }}" class="text-[#5B4FE8] hover:underline">Задания командировок →</a>
-            </div>
+
+                    {{-- Цикл движения --}}
+                    <div class="flex-1 min-w-0 overflow-x-auto">
+                        <div class="flex items-start gap-1">
+                            @foreach($r['steps'] as $s)
+                                <div class="flex flex-col items-center shrink-0" style="min-width:3.5rem">
+                                    <div @class([
+                                        'w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0',
+                                        'bg-green-500 text-white' => $s['state'] === 'done',
+                                        'bg-blue-500 text-white ring-4 ring-blue-100' => $s['state'] === 'current' && $r['indicator'] === 'blue',
+                                        'bg-orange-500 text-white ring-4 ring-orange-100' => $s['state'] === 'current' && $r['indicator'] === 'orange',
+                                        'bg-red-500 text-white ring-4 ring-red-100' => $s['state'] === 'current' && $r['indicator'] === 'red',
+                                        'bg-gray-400 text-white ring-4 ring-gray-100' => $s['state'] === 'current' && !in_array($r['indicator'], ['blue','orange','red']),
+                                        'bg-gray-100 text-gray-400' => $s['state'] === 'pending',
+                                    ])>
+                                        @if($s['state'] === 'done')
+                                            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                                        @endif
+                                    </div>
+                                    <span @class([
+                                        'mt-1 text-[10px] text-center leading-tight truncate max-w-[3.5rem]',
+                                        'text-gray-700 font-medium' => $s['state'] !== 'pending',
+                                        'text-gray-400' => $s['state'] === 'pending',
+                                    ])>{{ $s['label'] }}</span>
+                                </div>
+                                @if(!$loop->last)
+                                    <div @class([
+                                        'mt-2.5 h-0.5 w-5 shrink-0',
+                                        'bg-green-500' => $s['state'] === 'done',
+                                        'bg-gray-200' => $s['state'] !== 'done',
+                                    ])></div>
+                                @endif
+                            @endforeach
+                        </div>
+                    </div>
+
+                    {{-- Статус + Открыть --}}
+                    <span class="shrink-0 text-xs px-2.5 py-1 rounded-full {{ $r['color'] }}">{{ $r['status'] }}</span>
+                    <a href="{{ $r['url'] }}" class="shrink-0 px-3.5 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-700 hover:border-[#5B4FE8]/40 hover:text-[#5B4FE8] transition">Открыть</a>
+                </div>
+            @empty
+                <div class="text-center text-gray-400 bg-gray-50 border border-dashed border-gray-200 rounded-xl py-12">
+                    У вас пока нет заявок. Нажмите «Подать заявку» сверху.
+                </div>
+            @endforelse
+
+            {{-- Пустой результат фильтра --}}
+            @if($myRequests->isNotEmpty())
+                <div x-show="!anyVisible()" class="text-center text-gray-400 bg-gray-50 border border-dashed border-gray-200 rounded-xl py-12">
+                    Ничего не найдено по выбранным фильтрам.
+                </div>
+            @endif
         </div>
     </div>
+
+    @push('scripts')
+    <script>
+        function myRequests() {
+            return {
+                type: 'all',
+                state: 'all',
+                q: '',
+                rows: @js($myRequests->map(fn ($r) => ['t' => $r['type_key'], 's' => $r['state_group'], 'title' => $r['title']])->values()),
+                match(t, s, title) {
+                    return (this.type === 'all' || this.type === t)
+                        && (this.state === 'all' || this.state === s)
+                        && (this.q === '' || title.toLowerCase().includes(this.q.toLowerCase()));
+                },
+                anyVisible() {
+                    return this.rows.some(r => this.match(r.t, r.s, r.title));
+                },
+            };
+        }
+    </script>
+    @endpush
 </x-app-layout>

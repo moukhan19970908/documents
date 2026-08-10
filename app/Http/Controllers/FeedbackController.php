@@ -34,7 +34,7 @@ class FeedbackController extends Controller
                 $query->where('user_id', $author);
             }
             if ($direction = $request->integer('direction') ?: null) {
-                $ids = Department::getDescendantIds($direction);
+                $ids = Department::directionMemberIds($direction);
                 $query->whereHas('user', fn ($u) => $u->whereIn('department_id', $ids));
             }
         }

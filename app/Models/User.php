@@ -256,7 +256,35 @@ class User extends Authenticatable
 
     public function isManager(): bool
     {
-        return ($this->role_level ?? 1) >= 2 || $this->hasAnyRole(['admin', 'director']);
+        return ($this->role_level ?? 1) >= 2
+            || $this->hasAnyRole(['admin', 'director'])
+            || $this->headsAnyDepartment();
+    }
+
+    private ?bool $headsAnyDepartmentCache = null;
+
+    /** Руководит ли пользователь хотя бы одним отделом (head_user_id) — по оргструктуре. */
+    public function headsAnyDepartment(): bool
+    {
+        return $this->headsAnyDepartmentCache ??= Department::where('head_user_id', $this->id)->exists();
+    }
+
+    /**
+     * ID сотрудников в отделах, которыми руководит пользователь (как head_user_id),
+     * включая поддеревья. Пусто, если он не руководитель ни одного отдела.
+     *
+     * @return array<int, int>
+     */
+    public function headedDepartmentUserIds(): array
+    {
+        $headed = Department::where('head_user_id', $this->id)->pluck('id');
+        if ($headed->isEmpty()) {
+            return [];
+        }
+
+        $deptIds = $headed->flatMap(fn ($id) => Department::getDescendantIds($id))->unique()->all();
+
+        return User::whereIn('department_id', $deptIds)->pluck('id')->all();
     }
 
     /** Ранг сотрудника для доступа к Базе знаний: 3 — директор, 2 — руководитель, 1 — сотрудник. */
@@ -282,9 +310,11 @@ class User extends Authenticatable
             ->exists();
     }
 
+    /** Сотрудник бухгалтерии — работает в отделе с флагом «бухгалтерия» (или его поддереве). */
     public function isAccounting(): bool
     {
-        return $this->hasRole('archiver'); // mapping archiver → accounting role
+        return $this->department_id !== null
+            && in_array($this->department_id, \App\Models\Department::accountingDepartmentIds(), true);
     }
 
     public function manager(): BelongsTo

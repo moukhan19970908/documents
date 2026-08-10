@@ -49,6 +49,11 @@ class VacationRequest extends Model
         return $this->hasOne(RegistryItem::class, 'vacation_request_id');
     }
 
+    public function substitution(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(Substitution::class, 'vacation_request_id');
+    }
+
     public function getVacationTypeLabelAttribute(): string
     {
         return match($this->vacation_type) {
@@ -94,16 +99,15 @@ class VacationRequest extends Model
 
         $level = $user->role_level ?? 1;
 
+        $ids = [$user->id];
         if ($level >= 3) {
-            $ids = array_merge([$user->id], $user->allSubordinateIds());
-            return $query->whereIn('user_id', $ids);
+            $ids = array_merge($ids, $user->allSubordinateIds());
+        } elseif ($level === 2) {
+            $ids = array_merge($ids, $user->directSubordinateIds());
         }
+        // Руководитель отдела (по оргструктуре) видит сотрудников своих отделов и поддерева.
+        $ids = array_merge($ids, $user->headedDepartmentUserIds());
 
-        if ($level === 2) {
-            $ids = array_merge([$user->id], $user->directSubordinateIds());
-            return $query->whereIn('user_id', $ids);
-        }
-
-        return $query->where('user_id', $user->id);
+        return $query->whereIn('user_id', array_values(array_unique($ids)));
     }
 }

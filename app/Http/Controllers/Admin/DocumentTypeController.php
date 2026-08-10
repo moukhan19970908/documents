@@ -34,7 +34,7 @@ class DocumentTypeController extends Controller
 
         // Фильтр по направлению: типы, доступные отделам выбранного направления.
         if ($directionId) {
-            $deptIds = array_map('intval', Department::getDescendantIds($directionId));
+            $deptIds = array_map('intval', Department::directionMemberIds($directionId));
 
             $matchingIds = DocumentType::whereNotNull('allowed_departments')
                 ->pluck('allowed_departments', 'id')

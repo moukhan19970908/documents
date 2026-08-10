@@ -40,8 +40,18 @@ class TripRequestController extends Controller
 
     public function create()
     {
-        $norms = $this->normService->payloadFor(auth()->user());
-        return view('trips.create', compact('norms'));
+        $norms    = $this->normService->payloadFor(auth()->user());
+        $deputies = $this->deputyCandidates();
+        return view('trips.create', compact('norms', 'deputies'));
+    }
+
+    /** Кандидаты в замещающие: активные коллеги по отделу (или все, если отдел не задан), кроме себя. */
+    private function deputyCandidates()
+    {
+        return \App\Models\User::where('is_active', true)
+            ->where('id', '!=', auth()->id())
+            ->when(auth()->user()->department_id, fn ($q, $d) => $q->where('department_id', $d))
+            ->orderBy('name')->get(['id', 'name', 'position']);
     }
 
     public function store(Request $request)
@@ -56,19 +66,26 @@ class TripRequestController extends Controller
             'accommodation_total' => ['required', 'numeric', 'min:0'],
             'transport_type'      => ['nullable', 'in:own,company'],
             'comment'             => ['nullable', 'string'],
+            'deputy_id'           => ['nullable', 'integer', 'exists:users,id'],
         ]);
 
         $user = auth()->user();
 
-        if (!$this->approvalService->findRoute($user, 'trip')) {
+        $hasFlow = \App\Models\RequestFlow::where('request_type', 'trip')->where('status', 'published')->exists();
+        if (!$hasFlow && !$this->approvalService->findRoute($user, 'trip')) {
             return back()->withInput()->with('error', 'Для вашего отдела не настроен маршрут согласования командировок. Обратитесь к администратору.');
         }
+
+        $deputyId = $data['deputy_id'] ?? null;
+        unset($data['deputy_id']);
 
         $data = $this->composeLocation($data);
         $data['transport_total'] = 0;
 
         $submit = $request->boolean('submit');
         $trip   = $this->tripService->create($user, $data, $submit);
+
+        \App\Models\Substitution::assign($user, $deputyId, $request->date_start, $request->date_end, 'trip_request_id', $trip->id);
 
         $msg = $submit ? 'Заявка отправлена на согласование.' : 'Черновик сохранён.';
         return redirect()->route('trips.show', $trip)->with('success', $msg);
@@ -78,7 +95,7 @@ class TripRequestController extends Controller
     {
         $this->authorize('view', $trip);
         $trip->load(['user.department', 'route.steps.approverUser', 'approvalLogs.approver', 'signatory',
-            'tripTasks.assignee', 'tripTasks.files']);
+            'tripTasks.assignee', 'tripTasks.files', 'tripTasks.messages.user', 'substitution.deputy']);
         return view('trips.show', compact('trip'));
     }
 

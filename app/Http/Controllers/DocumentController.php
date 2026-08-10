@@ -79,7 +79,7 @@ class DocumentController extends Controller
 
         if ($direction = $request->get('direction')) {
             // Направление — корневой департамент; фильтруем по всему его поддереву.
-            $deptIds = Department::getDescendantIds((int) $direction);
+            $deptIds = Department::directionMemberIds((int) $direction);
             $query->whereHas('initiator', fn($q) => $q->whereIn('department_id', $deptIds));
         }
 

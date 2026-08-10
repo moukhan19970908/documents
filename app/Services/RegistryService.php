@@ -22,14 +22,14 @@ class RegistryService
 
             $total = $trips->sum('total_amount');
 
-            $route = $this->approvalService->findRoute($creator, 'trip');
-
+            // Индивидуальные заявки уже согласованы — реестр собирается и сразу готов
+            // к передаче в бухгалтерию, без отдельного маршрута согласования.
             $registry = Registry::create([
                 'type'         => 'trip',
                 'created_by'   => $creator->id,
-                'route_id'     => $route?->id,
+                'route_id'     => null,
                 'current_step' => 1,
-                'status'       => 'draft',
+                'status'       => 'approved',
                 'title'        => $title,
                 'total_amount' => $total,
                 'comment'      => $comment,
@@ -54,14 +54,14 @@ class RegistryService
                 ->where('status', 'approved')
                 ->get();
 
-            $route = $this->approvalService->findRoute($creator, 'vacation_registry', false);
-
+            // Индивидуальные заявки уже согласованы — реестр собирается и сразу готов
+            // к передаче в бухгалтерию, без отдельного маршрута согласования.
             $registry = Registry::create([
                 'type'         => 'vacation',
                 'created_by'   => $creator->id,
-                'route_id'     => $route?->id,
+                'route_id'     => null,
                 'current_step' => 1,
-                'status'       => 'draft',
+                'status'       => 'approved',
                 'title'        => $title,
                 'total_amount' => 0,
                 'comment'      => $comment,

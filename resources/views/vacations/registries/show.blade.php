@@ -37,6 +37,39 @@
                         </button>
                     </form>
                 @endif
+
+                {{-- Согласование реестра: доступно текущему согласующему (пока реестр в пути). --}}
+                @if($canReturnItems)
+                    <div x-data="{ rejecting: false, comment: '' }" class="flex items-center gap-2">
+                        <form action="{{ route('vacations.registries.approve', $registry) }}" method="POST">
+                            @csrf
+                            <button type="submit" class="px-4 py-2 bg-[#5B4FE8] text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
+                                Согласовать реестр
+                            </button>
+                        </form>
+                        <button type="button" @click="rejecting = true"
+                                class="px-4 py-2 border border-red-200 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors">
+                            Отклонить
+                        </button>
+
+                        <div x-show="rejecting" x-cloak x-transition class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                            <div class="bg-white rounded-xl w-full max-w-md p-6" @click.outside="rejecting = false">
+                                <h3 class="text-base font-semibold text-gray-900 mb-1">Отклонить реестр</h3>
+                                <p class="text-xs text-gray-400 mb-3">Весь реестр вернётся создателю. Для отдельной заявки используйте «Вернуть».</p>
+                                <form action="{{ route('vacations.registries.reject', $registry) }}" method="POST">
+                                    @csrf
+                                    <textarea name="comment" x-model="comment" rows="3" required
+                                              class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-red-400 mb-4"
+                                              placeholder="Причина отклонения..."></textarea>
+                                    <div class="flex gap-2 justify-end">
+                                        <button type="button" @click="rejecting = false" class="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">Отмена</button>
+                                        <button type="submit" class="px-4 py-2 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600">Отклонить реестр</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                @endif
             </div>
         </div>
 

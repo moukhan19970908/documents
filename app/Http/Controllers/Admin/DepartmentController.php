@@ -32,6 +32,7 @@ class DepartmentController extends Controller
             'parent_id'    => ['nullable', 'exists:departments,id'],
             'head_user_id' => ['nullable', 'exists:users,id'],
         ]);
+        $validated['is_accounting'] = $request->boolean('is_accounting');
 
         $department = Department::create($validated);
         $this->auditService->log('department_created', $department);
@@ -53,6 +54,7 @@ class DepartmentController extends Controller
             'parent_id'    => ['nullable', 'exists:departments,id'],
             'head_user_id' => ['nullable', 'exists:users,id'],
         ]);
+        $validated['is_accounting'] = $request->boolean('is_accounting');
 
         $department->update($validated);
         $this->auditService->log('department_updated', $department);

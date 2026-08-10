@@ -157,7 +157,7 @@ class RoleController extends Controller
     public function directions()
     {
         $directions = Department::whereNull('parent_id')
-            ->with(['head', 'children' => fn ($q) => $q->orderBy('name')])
+            ->with(['head', 'members' => fn ($q) => $q->orderBy('name')])
             ->orderBy('name')
             ->get();
 
@@ -175,12 +175,14 @@ class RoleController extends Controller
             'departments.*' => ['integer', 'exists:departments,id'],
         ]);
 
-        $direction = Department::create(['name' => $data['name']]);
+        $direction = Department::create(['name' => $data['name'], 'is_direction' => true]);
 
         if (!empty($data['departments'])) {
+            // Членство в направлении — отдельный слой (direction_id). parent_id
+            // (дерево Битрикса) не трогаем, чтобы не ломать оргструктуру.
             Department::whereIn('id', $data['departments'])
                 ->where('id', '!=', $direction->id)
-                ->update(['parent_id' => $direction->id]);
+                ->update(['direction_id' => $direction->id]);
         }
 
         $this->auditService->log('direction_created', $direction);
@@ -196,12 +198,11 @@ class RoleController extends Controller
 
         $childId = (int) $data['department_id'];
 
-        if ($childId === $department->id
-            || in_array($department->id, Department::getDescendantIds($childId), true)) {
-            return back()->with('error', 'Нельзя добавить этот отдел — возникнет цикл в структуре.');
+        if ($childId === $department->id) {
+            return back()->with('error', 'Нельзя добавить направление само в себя.');
         }
 
-        Department::whereKey($childId)->update(['parent_id' => $department->id]);
+        Department::whereKey($childId)->update(['direction_id' => $department->id]);
 
         $this->auditService->log('direction_department_added', $department);
 
@@ -210,8 +211,8 @@ class RoleController extends Controller
 
     public function removeDirectionDepartment(Department $department, Department $child)
     {
-        if ((int) $child->parent_id === $department->id) {
-            $child->update(['parent_id' => null]);
+        if ((int) $child->direction_id === $department->id) {
+            $child->update(['direction_id' => null]);
             $this->auditService->log('direction_department_removed', $department);
         }
 
@@ -220,7 +221,7 @@ class RoleController extends Controller
 
     public function destroyDirection(Department $department)
     {
-        if ($department->children()->exists()) {
+        if ($department->members()->exists()) {
             return back()->with('error', 'Сначала открепите все отделы направления.');
         }
 

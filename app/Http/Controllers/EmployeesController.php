@@ -9,11 +9,13 @@ class EmployeesController extends Controller
 {
     public function index()
     {
-        // Load full department tree with head and users
+        // Load full department tree with head and users.
+        // Контейнеры направлений (is_direction) — это слой группировки, а не отдел
+        // оргструктуры, поэтому в схему Битрикса их не показываем.
         $allDepartments = Department::with([
             'head',
             'users' => fn($q) => $q->where('is_active', true)->orderBy('name'),
-        ])->get();
+        ])->where('is_direction', false)->get();
 
         // Build nested tree: root nodes (no parent)
         $tree = $this->buildTree($allDepartments);

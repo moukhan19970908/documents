@@ -33,6 +33,7 @@ class TripTask extends Model
     public function assignee(): BelongsTo { return $this->belongsTo(User::class, 'assignee_id'); }
     public function doneBy(): BelongsTo   { return $this->belongsTo(User::class, 'done_by'); }
     public function files(): HasMany      { return $this->hasMany(TripTaskFile::class)->latest('id'); }
+    public function messages(): HasMany   { return $this->hasMany(TripTaskMessage::class)->oldest('id'); }
 
     public function whoLabel(): string { return self::TARGETS[$this->target]['who'] ?? ''; }
     public function statusLabel(): string { return self::STATUSES[$this->status] ?? $this->status; }

@@ -35,7 +35,7 @@
         <div class="space-y-3">
             @forelse($directions as $direction)
                 @php
-                    $childIds   = $direction->children->pluck('id')->all();
+                    $childIds   = $direction->members->pluck('id')->all();
                     $candidates = $allDepartments->reject(fn ($d) => $d->id === $direction->id || in_array($d->id, $childIds));
                 @endphp
                 <div x-data="{ adding: false }" class="bg-white rounded-xl border border-gray-200 px-5 py-4">
@@ -48,7 +48,7 @@
 
                         <div class="w-48 shrink-0">
                             <h2 class="font-semibold text-gray-900 truncate">{{ $direction->name }}</h2>
-                            <p class="text-xs text-gray-400 mt-0.5">{{ $direction->children->count() }} {{ $plural($direction->children->count()) }}</p>
+                            <p class="text-xs text-gray-400 mt-0.5">{{ $direction->members->count() }} {{ $plural($direction->members->count()) }}</p>
                         </div>
 
                         <div class="w-56 shrink-0 flex items-center gap-2.5">
@@ -81,7 +81,7 @@
 
                     {{-- Отделы направления --}}
                     <div class="mt-3 pl-[3.75rem] flex flex-wrap gap-2">
-                        @forelse($direction->children as $child)
+                        @forelse($direction->members as $child)
                             <span class="inline-flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-full pl-3 pr-1.5 py-1 text-sm text-gray-700">
                                 {{ $child->name }}
                                 <form method="POST" action="{{ route('admin.roles.directions.departments.remove', [$direction, $child]) }}">
@@ -127,8 +127,8 @@
         </div>
 
         <p class="text-xs text-gray-400 mt-4">
-            Направление объединяет отделы: добавленный отдел становится дочерним в оргструктуре,
-            поэтому руководитель направления видит документы всех его отделов (доступ уровня «направление»).
+            Направление объединяет отделы отдельным слоем — оргструктура (дерево Битрикса) не меняется.
+            Руководитель направления видит документы всех его отделов (доступ уровня «направление»).
         </p>
 
         {{-- Модалка создания направления --}}

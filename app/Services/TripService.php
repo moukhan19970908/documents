@@ -13,6 +13,7 @@ class TripService
         private ApprovalService $approvalService,
         private NotificationService $notifications,
         private TripTaskService $tripTasks,
+        private RequestFlowRouter $flowRouter,
     ) {}
 
     /**
@@ -40,7 +41,13 @@ class TripService
 
     public function create(User $user, array $data, bool $submit = false): TripRequest
     {
-        $route = $this->approvalService->findRoute($user, 'trip');
+        // Граф-процесс (если опубликован) строит маршрут; иначе — автоподбор ApprovalRoute.
+        $routing = $this->flowRouter->routeFor($user, 'trip', [
+            'transport_type' => $data['transport_type'] ?? null,
+            'location_type'  => $data['location_type'] ?? null,
+        ]);
+        $route     = $routing['route'];
+        $flowTasks = $routing['via_graph'] ? $routing['tasks'] : null;   // null — задания порождает TripTaskService
 
         $dateStart = Carbon::parse($data['date_start']);
         $dateEnd   = Carbon::parse($data['date_end']);
@@ -56,7 +63,7 @@ class TripService
             ? $this->approvalService->findApprover($user, $firstStep)?->id
             : null;
 
-        $trip = DB::transaction(function () use ($user, $data, $route, $total, $submit, $signatoryId) {
+        $trip = DB::transaction(function () use ($user, $data, $route, $total, $submit, $signatoryId, $flowTasks) {
             $trip = TripRequest::create([
                 'user_id'              => $user->id,
                 'signatory_id'         => $signatoryId,
@@ -74,6 +81,7 @@ class TripService
                 'transport_type'       => $data['transport_type'] ?? null,
                 'total_amount'         => $total,
                 'comment'              => $data['comment'] ?? null,
+                'flow_tasks'           => $flowTasks,
             ]);
 
             if ($submit) {
@@ -120,9 +128,14 @@ class TripService
             $this->notifyCurrentApprover($fresh);
         }
 
-        // Согласование завершено — параллельно порождаются задания (ТЗ 18.3).
+        // Согласование завершено — порождаются задания: по графу (если заявка шла по нему)
+        // либо по прежним правилам (ТЗ 18.3).
         if ($fresh?->status === 'approved') {
-            $this->tripTasks->generateFor($fresh);
+            if ($fresh->flow_tasks !== null) {
+                $this->tripTasks->generateFromFlow($fresh);
+            } else {
+                $this->tripTasks->generateFor($fresh);
+            }
         }
     }
 

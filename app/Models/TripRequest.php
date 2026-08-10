@@ -17,6 +17,7 @@ class TripRequest extends Model
         'user_id', 'signatory_id', 'route_id', 'current_step', 'status',
         'city', 'location_type', 'purpose', 'date_start', 'date_end',
         'daily_rate', 'accommodation_total', 'transport_total', 'transport_type', 'total_amount', 'comment',
+        'flow_tasks',
     ];
 
     protected $casts = [
@@ -26,6 +27,7 @@ class TripRequest extends Model
         'accommodation_total'  => 'decimal:2',
         'transport_total'      => 'decimal:2',
         'total_amount'         => 'decimal:2',
+        'flow_tasks'           => 'array',
     ];
 
     public function user(): BelongsTo
@@ -53,6 +55,11 @@ class TripRequest extends Model
     public function registryItem(): \Illuminate\Database\Eloquent\Relations\HasOne
     {
         return $this->hasOne(RegistryItem::class, 'trip_request_id');
+    }
+
+    public function substitution(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(Substitution::class, 'trip_request_id');
     }
 
     /** Порождаемые задания командировки (ТЗ 18.3). */
@@ -100,16 +107,15 @@ class TripRequest extends Model
 
         $level = $user->role_level ?? 1;
 
+        $ids = [$user->id];
         if ($level >= 3) {
-            $ids = array_merge([$user->id], $user->allSubordinateIds());
-            return $query->whereIn('user_id', $ids);
+            $ids = array_merge($ids, $user->allSubordinateIds());
+        } elseif ($level === 2) {
+            $ids = array_merge($ids, $user->directSubordinateIds());
         }
+        // Руководитель отдела (по оргструктуре) видит сотрудников своих отделов и поддерева.
+        $ids = array_merge($ids, $user->headedDepartmentUserIds());
 
-        if ($level === 2) {
-            $ids = array_merge([$user->id], $user->directSubordinateIds());
-            return $query->whereIn('user_id', $ids);
-        }
-
-        return $query->where('user_id', $user->id);
+        return $query->whereIn('user_id', array_values(array_unique($ids)));
     }
 }

@@ -75,9 +75,9 @@ class AssignmentService
     private function scopeUserIds(User $initiator, string $scope): array
     {
         if ($scope === 'direction' && $initiator->department_id) {
-            // Всё направление: поддерево корневого отдела.
+            // Всё направление: сам отдел-направление, прикреплённые отделы и их поддеревья.
             $rootId  = Department::directionRootId($initiator->department_id);
-            $deptIds = Department::getDescendantIds($rootId);
+            $deptIds = Department::directionMemberIds($rootId);
 
             return User::whereIn('department_id', $deptIds)
                 ->where('id', '!=', $initiator->id)->pluck('id')->all();

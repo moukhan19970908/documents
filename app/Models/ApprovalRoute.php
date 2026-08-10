@@ -8,9 +8,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ApprovalRoute extends Model
 {
-    protected $fillable = ['name', 'request_type', 'department_id', 'applies_to_role_level', 'is_active'];
+    protected $fillable = ['name', 'request_type', 'department_id', 'applies_to_role_level', 'is_active', 'is_ephemeral'];
 
-    protected $casts = ['is_active' => 'boolean'];
+    protected $casts = ['is_active' => 'boolean', 'is_ephemeral' => 'boolean'];
 
     public const REQUEST_TYPE_LABELS = [
         'trip'              => 'Командировка',

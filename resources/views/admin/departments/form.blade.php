@@ -37,6 +37,15 @@
                 </div>
             </div>
 
+            <label class="flex items-start gap-3 mb-6 cursor-pointer">
+                <input type="checkbox" name="is_accounting" value="1" @checked(old('is_accounting', $department->is_accounting ?? false))
+                       class="mt-0.5 w-4 h-4 rounded border-gray-300 text-[#5B4FE8] focus:ring-[#5B4FE8]">
+                <span>
+                    <span class="block text-sm font-medium text-gray-800">Бухгалтерия</span>
+                    <span class="block text-xs text-gray-400">Сотрудники этого отдела (и его поддерева) видят и принимают реестры, переданные в бухгалтерию.</span>
+                </span>
+            </label>
+
             <div class="flex items-center gap-3">
                 <button type="submit" class="px-6 py-2.5 bg-[#5B4FE8] text-white rounded-lg text-sm font-medium hover:bg-indigo-700">
                     {{ isset($department) ? 'Сохранить' : 'Создать отдел' }}

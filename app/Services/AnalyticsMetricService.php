@@ -385,7 +385,7 @@ class AnalyticsMetricService
         }
         $scope = $f['department'] ?? $f['direction'] ?? null;
         if ($scope) {
-            $ids = Department::getDescendantIds((int) $scope);
+            $ids = Department::directionMemberIds((int) $scope);
             $q->whereHas('initiator', fn ($u) => $u->whereIn('department_id', $ids));
         }
 

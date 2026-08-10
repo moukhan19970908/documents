@@ -69,7 +69,7 @@ class KnowledgeController extends Controller
     {
         $material->load(['accessDepartments', 'allowedUsers']);
 
-        $directions = Department::with('children')->whereNull('parent_id')->orderBy('name')->get();
+        $directions = Department::with(['children', 'members'])->whereNull('parent_id')->orderBy('name')->get();
         $users = User::where('is_active', true)->orderBy('name')
             ->get(['id', 'name', 'department_id']);
 
@@ -127,11 +127,11 @@ class KnowledgeController extends Controller
     /** Направления с отделами (для зависимых списков размещения) + справочники. */
     private function formData(Material $material): array
     {
-        $directions = Department::with('children')->whereNull('parent_id')->orderBy('name')->get()
+        $directions = Department::with(['children', 'members'])->whereNull('parent_id')->orderBy('name')->get()
             ->map(fn (Department $d) => [
                 'id'          => $d->id,
                 'name'        => $d->name,
-                'departments' => $d->children->map(fn ($c) => ['id' => $c->id, 'name' => $c->name])->values(),
+                'departments' => $d->catalogDepartments()->map(fn ($c) => ['id' => $c->id, 'name' => $c->name])->values(),
             ])->values();
 
         return [

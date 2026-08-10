@@ -3,7 +3,7 @@
     $flatDepts = collect();
     foreach ($directions as $dir) {
         $flatDepts->push(['id' => $dir->id, 'name' => $dir->name . ' (направление)']);
-        foreach ($dir->children as $child) {
+        foreach ($dir->catalogDepartments() as $child) {
             $flatDepts->push(['id' => $child->id, 'name' => $dir->name . ' → ' . $child->name]);
         }
     }
