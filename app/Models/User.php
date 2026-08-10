@@ -358,10 +358,10 @@ class User extends Authenticatable
     public function getAvatarUrlAttribute(): string
     {
         if ($this->avatar) {
-            // Аватарки лежат в приватном бакете S3 (Bitrix24Service::downloadAvatar).
-            // Прямой ->url() отдаёт публичную ссылку, которую MinIO закрывает 403 —
-            // поэтому подписываем временную ссылку: её браузер грузит напрямую.
-            return Storage::disk('s3')->temporaryUrl($this->avatar, now()->addHour());
+            // Аватарки лежат в приватном бакете S3/MinIO (Bitrix24Service::downloadAvatar).
+            // Отдаём их через приложение (AvatarController), чтобы не светить MinIO в
+            // браузер напрямую (иначе presigned-ссылка на :9000 ломается по TLS в проде).
+            return route('avatars.show', $this);
         }
         return 'https://ui-avatars.com/api/?name=' . urlencode($this->name) . '&background=5B4FE8&color=fff';
     }

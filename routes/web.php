@@ -45,6 +45,7 @@ use App\Http\Controllers\Vacation\VacationApprovalController;
 use App\Http\Controllers\Vacation\VacationRegistryController;
 
 use App\Http\Controllers\AgreementController;
+use App\Http\Controllers\AvatarController;
 
 // Auth
 Route::redirect('/', '/login');
@@ -53,6 +54,10 @@ Route::post('/login', [LoginController::class, 'login'])->name('login.post');
 Route::get('/auth/bitrix24', [BitrixSocialiteController::class, 'redirect'])->name('auth.bitrix24');
 Route::get('/auth/bitrix24/callback', [BitrixSocialiteController::class, 'callback'])->name('auth.bitrix24.callback');
 Route::post('/logout', [LoginController::class, 'logout'])->name('logout')->middleware('auth');
+
+// Аватары отдаём через приложение (не светим MinIO в браузер). Только auth — без
+// audit/agreement, чтобы не спамить журнал и не ловить редиректы на <img>.
+Route::get('/avatars/{user}', [AvatarController::class, 'show'])->name('avatars.show')->middleware('auth');
 
 // Agreement (auth required, but no agreement check yet)
 Route::middleware('auth')->group(function () {

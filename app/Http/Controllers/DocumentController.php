@@ -83,11 +83,18 @@ class DocumentController extends Controller
             $query->whereHas('initiator', fn($q) => $q->whereIn('department_id', $deptIds));
         }
 
-        // Процессная страница (Кредитный комитет и т.п.): только документы,
-        // чей сценарий относится к этому типу процесса.
+        // Процессная страница (Кредитный комитет и т.п.): только документы, чей сценарий
+        // относится к этому типу процесса. Общий документооборот, наоборот, исключает
+        // процессные документы — показывает только общие сценарии и документы без сценария.
         $process = $request->route('process');
         if ($process) {
             $query->whereHas('workflow', fn ($q) => $q->where('process_type', $process));
+        } else {
+            $query->where(fn ($q) => $q
+                ->whereDoesntHave('workflow')
+                ->orWhereHas('workflow', fn ($w) => $w
+                    ->whereNull('process_type')->orWhereIn('process_type', ['', 'document_flow']))
+            );
         }
 
         // Apply access-level-based filtering
