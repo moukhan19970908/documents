@@ -21,10 +21,14 @@
         $approval     = $document->activeApproval ?? $document->approvals->sortByDesc('id')->first();
         $activeStage  = $document->activeApproval?->activeStage();
 
-        // Ознакомление не держит маршрут: звено уже «approved», но участнику с
-        // незакрытой задачей ознакомления всё ещё нужна кнопка «Ознакомлен».
-        if (!$activeStage && $document->awaitingAck()) {
-            $activeStage = $document->myPendingAckStage(auth()->id());
+        // Ознакомление не держит маршрут: звено ack сразу «approved», а документ идёт
+        // дальше (в т.ч. на приём, оставаясь in_review). Участнику с незакрытой задачей
+        // ознакомления всё равно нужна кнопка «Ознакомлен» — если он не входит в текущее
+        // активное звено, показываем ему его ack-звено (при любом статусе документа).
+        $inActiveStage = $activeStage?->workflowStage?->approvers
+            ->contains('approver_id', auth()->id()) ?? false;
+        if (!$inActiveStage) {
+            $activeStage = $document->myPendingAckStage(auth()->id()) ?? $activeStage;
         }
         $deadline     = $document->deadline_at;
         $isOverdue    = $deadline && $deadline->isPast() && $document->status === 'in_review';
