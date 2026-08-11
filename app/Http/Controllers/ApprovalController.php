@@ -133,10 +133,15 @@ class ApprovalController extends Controller
 
         $stage = $document->activeApproval?->activeStage();
 
-        // Ознакомление не держит маршрут: звено уже закрыто, но задача участника
-        // ещё висит — находим звено по ней, чтобы «Ознакомлен» сработало.
-        if (!$stage && $action === 'acknowledge') {
-            $stage = $document->myPendingAckStage(auth()->id());
+        // Ознакомление не держит маршрут: маршрут мог уйти дальше (приём) или закрыться.
+        // Если участник не входит в текущее активное звено — берём его ack-звено по
+        // незакрытой задаче, чтобы «Ознакомлен» сработало при любом статусе документа.
+        if ($action === 'acknowledge') {
+            $inActive = $stage?->workflowStage?->approvers()
+                ->where('approver_id', auth()->id())->exists() ?? false;
+            if (!$inActive) {
+                $stage = $document->myPendingAckStage(auth()->id()) ?? $stage;
+            }
         }
 
         if (!$stage) {

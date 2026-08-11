@@ -728,7 +728,13 @@ class ApprovalEngineService
         $stage->update(['status' => 'approved', 'completed_at' => now()]);
         $this->completeTasksForStage($stage);
         event(new ApprovalStageChanged($stage));
-        $this->moveToNextStage($approval, $stage);
+
+        // Не-блокирующее совещательное звено (ознакомление) уже увело маршрут дальше
+        // при активации — повторно двигать нельзя, иначе создастся дубликат следующего
+        // звена. Блокирующие/решающие звенья держат маршрут и продвигают его здесь.
+        if ($stage->workflowStage->is_blocking || ! $stage->workflowStage->isAdvisory()) {
+            $this->moveToNextStage($approval, $stage);
+        }
     }
 
     /** Приём в два шага: сначала «принять к исполнению», и только потом «исполнено». */

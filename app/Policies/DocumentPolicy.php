@@ -137,22 +137,23 @@ class DocumentPolicy
     {
         $activeStage = $document->activeApproval?->activeStage();
 
-        if (!$activeStage) {
-            // Ознакомление не держит маршрут: согласование закрыто, но участник
-            // с незакрытой задачей ознакомления всё ещё вправе отметиться.
-            return $document->awaitingAck()
-                && $document->myPendingAckStage($user->id) !== null;
+        if ($activeStage) {
+            // Direct approver
+            if ($activeStage->workflowStage->approvers()->where('approver_id', $user->id)->exists()) {
+                return true;
+            }
+            // Delegated approver
+            if ($activeStage->decisions()
+                ->where('action', 'delegate')
+                ->where('delegated_to', $user->id)
+                ->exists()) {
+                return true;
+            }
         }
 
-        // Direct approver
-        if ($activeStage->workflowStage->approvers()->where('approver_id', $user->id)->exists()) {
-            return true;
-        }
-
-        // Delegated approver
-        return $activeStage->decisions()
-            ->where('action', 'delegate')
-            ->where('delegated_to', $user->id)
-            ->exists();
+        // Ознакомление не держит маршрут: даже когда маршрут ушёл дальше (приём) или
+        // документ уже approved, участник с незакрытой задачей ознакомления вправе
+        // отметиться. Поэтому проверяем ack-звено при любом статусе документа.
+        return $document->myPendingAckStage($user->id) !== null;
     }
 }
