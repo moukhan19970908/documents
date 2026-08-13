@@ -594,6 +594,75 @@
                                         </button>
                                     </form>
                                 @endif
+
+                                {{-- Состав ознакомления и приёма виден по ходу маршрута — согласующий и
+                                     утверждающий вправе дописать туда людей, пока фаза не началась. --}}
+                                @php
+                                    $phasePeople = \App\Models\User::with('department')
+                                        ->where('is_active', true)->orderBy('name')->get()
+                                        ->map(fn ($u) => [
+                                            'id'         => $u->id,
+                                            'name'       => $u->name,
+                                            'initial'    => mb_strtoupper(mb_substr($u->name, 0, 1)),
+                                            'department' => $u->department?->name ?? ($u->position ?? '—'),
+                                        ])->all();
+                                @endphp
+
+                                <div class="border-t border-gray-100 pt-3 mb-3"
+                                     x-data="phaseParticipants(@js([
+                                        'ack'    => route('documents.phase-participants', ['document' => $document, 'phase' => 'ack']),
+                                        'intake' => route('documents.phase-participants', ['document' => $document, 'phase' => 'intake']),
+                                     ]), @js($phasePeople))">
+                                    <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Добавить участников</p>
+
+                                    <div class="flex gap-2">
+                                        @foreach(['ack' => 'Ознакомление', 'intake' => 'Приём'] as $phaseKey => $phaseLabel)
+                                            <button type="button" @click="toggle('{{ $phaseKey }}')"
+                                                    class="flex-1 border py-2 rounded-lg text-sm font-medium transition-colors"
+                                                    :class="phase === '{{ $phaseKey }}' ? 'border-[#5B4FE8] text-[#5B4FE8] bg-indigo-50' : 'border-gray-200 text-gray-700 hover:bg-gray-50'">
+                                                {{ $phaseLabel }}
+                                            </button>
+                                        @endforeach
+                                    </div>
+
+                                    <form x-show="phase" style="display:none" :action="action" method="POST" class="mt-2 space-y-2">
+                                        @csrf
+                                        <div class="relative">
+                                            <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                                            <input x-model="search" type="text" placeholder="Поиск по ФИО..."
+                                                   class="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                                        </div>
+
+                                        <div class="border border-gray-200 rounded-lg overflow-y-auto" style="max-height:220px">
+                                            <template x-for="person in filtered" :key="person.id">
+                                                <label class="flex items-center gap-2.5 px-2.5 py-2 cursor-pointer hover:bg-gray-50"
+                                                       :class="selected.includes(String(person.id)) ? 'bg-indigo-50' : ''">
+                                                    <input type="checkbox" :value="person.id" x-model="selected"
+                                                           class="w-4 h-4 rounded text-[#5B4FE8] border-gray-300 focus:ring-[#5B4FE8]">
+                                                    <span class="w-7 h-7 rounded-full bg-indigo-50 text-[#5B4FE8] text-[11px] font-semibold flex items-center justify-center shrink-0"
+                                                          x-text="person.initial"></span>
+                                                    <span class="min-w-0">
+                                                        <span class="block text-sm text-gray-900 truncate" x-text="person.name"></span>
+                                                        <span class="block text-xs text-gray-400 truncate" x-text="person.department"></span>
+                                                    </span>
+                                                </label>
+                                            </template>
+                                            <p x-show="filtered.length === 0" class="px-2.5 py-3 text-sm text-gray-400">Никого не нашли</p>
+                                        </div>
+
+                                        {{-- Отмеченный человек может уйти из списка под фильтр поиска, поэтому
+                                             в форму он попадает не чекбоксом, а скрытым полем. --}}
+                                        <template x-for="id in selected" :key="'picked-' + id">
+                                            <input type="hidden" name="user_ids[]" :value="id">
+                                        </template>
+
+                                        <button type="submit" :disabled="selected.length === 0"
+                                                class="w-full border border-gray-200 text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                                            <span x-text="phase === 'ack' ? 'Добавить в «Ознакомление»' : 'Добавить в «Приём»'"></span>
+                                            <span x-show="selected.length > 0" x-text="'(' + selected.length + ')'"></span>
+                                        </button>
+                                    </form>
+                                </div>
                             @endif
 
                             <textarea x-model="comment" rows="3"
@@ -1253,6 +1322,25 @@ document.addEventListener('alpine:init', () => {
             const q = this.search.toLowerCase();
             return name.toLowerCase().includes(q) || department.toLowerCase().includes(q);
         }
+    }));
+
+    // Добавление людей в ознакомление и приём: одна форма на обе фазы, адрес меняется вместе с выбором.
+    Alpine.data('phaseParticipants', (urls, people) => ({
+        phase: '',
+        search: '',
+        selected: [],
+        toggle(phase) {
+            this.phase = this.phase === phase ? '' : phase;
+            this.search = '';
+            this.selected = [];
+        },
+        get action() {
+            return urls[this.phase] ?? '';
+        },
+        get filtered() {
+            const q = this.search.trim().toLowerCase();
+            return q ? people.filter(p => p.name.toLowerCase().includes(q)) : people;
+        },
     }));
 
     Alpine.data('chatWidget', ({ chatId, currentUserId, initialMessages, messagesUrl, sendUrl }) => ({

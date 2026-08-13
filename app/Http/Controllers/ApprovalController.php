@@ -217,6 +217,40 @@ class ApprovalController extends Controller
         return back()->with('success', 'Задача делегирована.');
     }
 
+    /**
+     * Согласующий или утверждающий дописывает людей в ознакомление и приём:
+     * состав этих фаз виден только по ходу маршрута, поэтому его пополняют не только при запуске.
+     */
+    public function addParticipants(Request $request, Document $document, string $phase)
+    {
+        $this->authorize('approve', $document);
+
+        abort_unless(in_array($phase, ['ack', 'intake'], true), 404);
+
+        $data = $request->validate([
+            'user_ids'   => ['required', 'array', 'min:1'],
+            'user_ids.*' => ['integer', 'exists:users,id'],
+        ]);
+
+        $approval = $document->activeApproval;
+        $stage    = $approval?->activeStage();
+
+        if (!$stage || !in_array($stage->workflowStage->kind(), ['approval', 'approve'], true)) {
+            return back()->with('error', 'Добавлять участников можно на согласовании и утверждении.');
+        }
+
+        $added = $this->engine->addPhaseParticipants($approval, $phase, $data['user_ids']);
+        $label = $phase === 'ack' ? 'ознакомление' : 'приём';
+
+        if (!$added) {
+            return back()->with('error', "Никого не добавили: эти люди уже в фазе «{$label}» или фаза уже началась.");
+        }
+
+        $this->audit->log(auth()->user()->name . ' добавил участников в ' . $label . ' по документу «' . $document->title . '»', $document);
+
+        return back()->with('success', "Добавлено в {$label}: {$added}.");
+    }
+
     public function cancelApproval(Request $request, Document $document)
     {
         $this->authorize('cancelApproval', $document);

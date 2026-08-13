@@ -165,6 +165,9 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
     Route::post('documents/{document}/decide/{action}', [ApprovalController::class, 'decide'])
         ->whereIn('action', ['opinion_yes', 'opinion_no', 'acknowledge', 'accept', 'execute'])
         ->name('documents.decide');
+    Route::post('documents/{document}/phase/{phase}/participants', [ApprovalController::class, 'addParticipants'])
+        ->whereIn('phase', ['ack', 'intake'])
+        ->name('documents.phase-participants');
     Route::get('documents/{document}/approval-sheet', [ApprovalController::class, 'approvalSheet'])->name('documents.approval-sheet');
     Route::post('documents/{document}/notes', [DocumentController::class, 'storeNote'])->name('documents.notes.store');
 

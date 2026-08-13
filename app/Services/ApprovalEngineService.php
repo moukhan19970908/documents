@@ -341,6 +341,162 @@ class ApprovalEngineService
         }
     }
 
+    /**
+     * Участник согласования или утверждения дописывает людей в ознакомление или приём.
+     * Эти фазы идут после решающих звеньев, поэтому состав пополняется, пока звено не началось:
+     * задачи разойдутся сами, когда маршрут до него дойдёт.
+     *
+     * @param  int[]  $userIds
+     * @return int    сколько человек реально добавлено
+     */
+    public function addPhaseParticipants(DocumentApproval $approval, string $phase, array $userIds): int
+    {
+        if (! in_array($phase, ['ack', 'intake'], true)) {
+            return 0;
+        }
+
+        $userIds = array_values(array_unique(array_filter(array_map('intval', $userIds))));
+
+        if (! $userIds) {
+            return 0;
+        }
+
+        return DB::transaction(function () use ($approval, $phase, $userIds) {
+            $stage = $approval->stages()
+                ->where('status', 'pending')
+                ->whereHas('workflowStage', fn ($q) => $q->where('phase', $phase))
+                ->orderBy('id')
+                ->first();
+
+            // Маршрут-граф материализует звено при входе в узел — там состав дописывается
+            // в runtime, и узел заберёт его сам.
+            if (! $stage && ($graphId = $approval->runtime_data['graph_workflow_id'] ?? null)) {
+                return $this->addGraphPhaseParticipants($approval, (int) $graphId, $phase, $userIds);
+            }
+
+            $container = $this->documentScopedWorkflow($approval);
+
+            if ($stage) {
+                $workflowStage = $this->stageOwnedByDocument($stage, $container);
+            } else {
+                $workflowStage = WorkflowStage::create([
+                    'workflow_id' => $container->id,
+                    'name'        => $phase === 'ack' ? 'Ознакомление' : 'Приём',
+                    'phase'       => $phase,
+                    'stage_type'  => 'parallel',
+                    'policy'      => 'all',
+                    'resolver'    => 'user',
+                    // Ознакомление не держит маршрут; приём — держит.
+                    'is_blocking' => $phase !== 'ack',
+                    'sort_order'  => (int) WorkflowStage::where('workflow_id', $container->id)->max('sort_order') + 1,
+                ]);
+
+                DocumentApprovalStage::create([
+                    'document_approval_id' => $approval->id,
+                    'workflow_stage_id'    => $workflowStage->id,
+                    'status'               => 'pending',
+                ]);
+            }
+
+            $added = array_values(array_diff($userIds, $workflowStage->approvers()->pluck('approver_id')->all()));
+
+            foreach ($added as $userId) {
+                WorkflowStageApprover::create([
+                    'workflow_stage_id' => $workflowStage->id,
+                    'approver_type'     => 'user',
+                    'approver_id'       => $userId,
+                    'is_required'       => true,
+                    'participant_type'  => 'signatory',
+                ]);
+            }
+
+            $this->afterPhaseParticipantsAdded($approval, $phase, $added);
+
+            return count($added);
+        });
+    }
+
+    /** @param int[] $userIds @return int сколько человек добавлено */
+    private function addGraphPhaseParticipants(DocumentApproval $approval, int $graphId, string $phase, array $userIds): int
+    {
+        $passed = $approval->stages()->pluck('workflow_node_id')->filter()->all();
+
+        $nodeAhead = WorkflowNode::where('workflow_id', $graphId)
+            ->where('type', $phase)
+            ->when($passed, fn ($q) => $q->whereNotIn('id', $passed))
+            ->exists();
+
+        if (! $nodeAhead) {
+            return 0; // в схеме такой фазы впереди нет — дописывать некуда
+        }
+
+        $runtime = $approval->runtime_data ?? [];
+        $current = array_filter($runtime['adhoc'][$phase] ?? []);
+        $added   = array_values(array_diff($userIds, $current));
+
+        $runtime['adhoc'][$phase] = array_values(array_merge($current, $added));
+        $approval->update(['runtime_data' => $runtime]);
+
+        $this->afterPhaseParticipantsAdded($approval, $phase, $added);
+
+        return count($added);
+    }
+
+    /** @param int[] $added */
+    private function afterPhaseParticipantsAdded(DocumentApproval $approval, string $phase, array $added): void
+    {
+        if (! $added) {
+            return;
+        }
+
+        if ($chat = Chat::where('document_approval_id', $approval->id)->first()) {
+            $this->chatService->addParticipants($chat, $added);
+        }
+
+        $this->auditService->log('phase_participants_added', $approval->document, null, [
+            'phase'    => $phase,
+            'user_ids' => $added,
+        ]);
+    }
+
+    /**
+     * Маршрут, принадлежащий одному документу. Дописывать людей в общий сценарий нельзя —
+     * они попали бы во все следующие документы, поэтому при необходимости заводим копию.
+     */
+    private function documentScopedWorkflow(DocumentApproval $approval): Workflow
+    {
+        $workflow = $approval->workflow;
+
+        return $workflow->version_label === 'документ #' . $approval->document_id
+            ? $workflow
+            : $this->createRuntimeContainer($workflow, $approval->document);
+    }
+
+    /** Звено общего сценария копируем документу — вместе с уже назначенными участниками. */
+    private function stageOwnedByDocument(DocumentApprovalStage $stage, Workflow $container): WorkflowStage
+    {
+        $shared = $stage->workflowStage;
+
+        if ($shared->workflow_id === $container->id) {
+            return $shared;
+        }
+
+        $copy = $shared->replicate();
+        $copy->workflow_id = $container->id;
+        $copy->save();
+
+        foreach ($shared->approvers as $approver) {
+            $approverCopy = $approver->replicate();
+            $approverCopy->workflow_stage_id = $copy->id;
+            $approverCopy->save();
+        }
+
+        // Звено ещё не началось, поэтому переключить его на копию безопасно.
+        $stage->update(['workflow_stage_id' => $copy->id]);
+
+        return $copy->load('approvers');
+    }
+
     private function publishedVersionOrFail(Workflow $workflow): Workflow
     {
         $version = $workflow->publishedVersion();
@@ -932,6 +1088,8 @@ class ApprovalEngineService
 
     private function activateStage(DocumentApprovalStage $stage, DocumentApproval $approval): void
     {
+        $this->approveIfDecisionsDone($approval, $stage);
+
         $stage->update(['status' => 'in_progress', 'started_at' => now()]);
 
         $document = $approval->document;
@@ -1023,10 +1181,19 @@ class ApprovalEngineService
         }
     }
 
-    private function completeApproval(DocumentApproval $approval): void
+    /**
+     * Судьбу документа решают согласование и утверждение. Ознакомление и приём идут уже
+     * по одобренному документу, поэтому статус ставим, как только решающих звеньев не
+     * осталось, — не дожидаясь, пока исполнитель отчитается.
+     */
+    private function markDocumentApproved(DocumentApproval $approval): void
     {
-        $approval->update(['status' => 'approved', 'completed_at' => now()]);
         $document = $approval->document;
+
+        if ($document->status === 'approved') {
+            return; // уже отмечен при входе в приём/ознакомление — второй раз не регистрируем
+        }
+
         $document->update(['status' => 'approved']);
 
         $this->registerDocument($document, 'on_approval');
@@ -1039,6 +1206,46 @@ class ApprovalEngineService
         event(new DocumentApproved($document));
 
         $this->auditService->log('document_approved', $document);
+    }
+
+    /**
+     * Перед входом в ознакомление или приём: если решающих звеньев впереди не осталось,
+     * документ уже одобрен — так его и показываем, пока идут остальные фазы.
+     */
+    private function approveIfDecisionsDone(DocumentApproval $approval, DocumentApprovalStage $next): void
+    {
+        if (! in_array($next->workflowStage?->kind(), ['ack', 'intake'], true)) {
+            return;
+        }
+
+        $decisive = $approval->stages()
+            ->where('id', '!=', $next->id)
+            ->whereHas('workflowStage', fn ($q) => $q->where(
+                fn ($w) => $w->whereIn('phase', ['approval', 'approve'])->orWhereNull('phase')
+            ))
+            ->pluck('status');
+
+        // Ни одного решающего звена — одобрять нечего; хоть одно незакрытое — рано.
+        if ($decisive->isEmpty() || $decisive->contains(fn ($s) => $s !== 'approved')) {
+            return;
+        }
+
+        // Маршрут-граф материализует звенья по одному — что впереди, знает только схема.
+        foreach ($this->graph->plannedNodes($approval) as $node) {
+            if (in_array($node->type, ['approval', 'approve'], true)) {
+                return;
+            }
+        }
+
+        $this->markDocumentApproved($approval);
+    }
+
+    private function completeApproval(DocumentApproval $approval): void
+    {
+        $this->markDocumentApproved($approval);
+
+        $approval->update(['status' => 'approved', 'completed_at' => now()]);
+        $document = $approval->document;
 
         // Процесс завершён (все звенья, включая ознакомление/приём, отработали) —
         // кладём неизменяемую копию в архив. Сбой архивации не должен ломать согласование.

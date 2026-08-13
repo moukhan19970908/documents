@@ -26,20 +26,31 @@ class DocumentApproval extends Model
     /** Чем закончился круг согласования. Возврат на доработку — свой исход, не отклонение. */
     public const STATUSES = [
         'in_progress'      => 'Идёт согласование',
-        'approved'         => 'Согласован',
+        'approved'         => 'Согласовано',
         'rejected'         => 'Отклонён',
         'requires_changes' => 'Отправлен на доработку',
         'cancelled'        => 'Отменён',
     ];
 
+    /**
+     * Исход круга. Согласование и утверждение решают судьбу документа: как только они
+     * позади, круг согласован, даже если ознакомление и приём ещё идут.
+     */
+    public function effectiveStatus(): string
+    {
+        return $this->status === 'in_progress' && $this->document?->status === 'approved'
+            ? 'approved'
+            : $this->status;
+    }
+
     public function statusLabel(): string
     {
-        return self::STATUSES[$this->status] ?? $this->status;
+        return self::STATUSES[$this->effectiveStatus()] ?? $this->status;
     }
 
     public function statusColor(): string
     {
-        return match ($this->status) {
+        return match ($this->effectiveStatus()) {
             'approved'         => 'bg-green-50 text-green-700 border-green-200',
             'rejected'         => 'bg-red-50 text-red-700 border-red-200',
             'requires_changes' => 'bg-orange-50 text-orange-700 border-orange-200',
