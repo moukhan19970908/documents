@@ -169,6 +169,8 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
         ->whereIn('phase', ['ack', 'intake'])
         ->name('documents.phase-participants');
     Route::get('documents/{document}/approval-sheet', [ApprovalController::class, 'approvalSheet'])->name('documents.approval-sheet');
+    Route::get('documents/{document}/acknowledgment-sheet', [ApprovalController::class, 'acknowledgmentSheet'])->name('documents.acknowledgment-sheet');
+    Route::get('documents/{document}/acceptance-sheet', [ApprovalController::class, 'acceptanceSheet'])->name('documents.acceptance-sheet');
     Route::post('documents/{document}/notes', [DocumentController::class, 'storeNote'])->name('documents.notes.store');
 
     // Files
@@ -216,6 +218,8 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
     Route::get('/archive', [ArchiveController::class, 'index'])->name('archive.index');
     Route::get('/archive/{archived}/file', [ArchiveController::class, 'file'])->name('archive.file');
     Route::get('/archive/{archived}/sheet', [ArchiveController::class, 'sheet'])->name('archive.sheet');
+    Route::get('/archive/{archived}/ack-sheet', [ArchiveController::class, 'acknowledgmentSheet'])->name('archive.ack-sheet');
+    Route::get('/archive/{archived}/intake-sheet', [ArchiveController::class, 'acceptanceSheet'])->name('archive.intake-sheet');
     Route::get('/archive/{archived}', [ArchiveController::class, 'show'])->name('archive.show');
 
     // Workflows

@@ -30,4 +30,36 @@ class PdfGeneratorService
 
         return $path;
     }
+
+    /**
+     * Лист по одной фазе маршрута: 'ack' — Лист ознакомления, 'intake' — Лист приёма.
+     * Собирается из звеньев этой фазы последнего круга согласования.
+     */
+    public function generatePhaseSheet(Document $document, string $phase): string
+    {
+        $title = $phase === 'ack' ? 'ЛИСТ ОЗНАКОМЛЕНИЯ' : 'ЛИСТ ПРИЁМА';
+
+        $approval = $document->approvals()
+            ->with(['stages.decisions.user', 'stages.workflowStage.approvers.user.department'])
+            ->latest()
+            ->first();
+
+        $stages = $approval
+            ? $approval->phaseStages($phase)
+            : collect();
+
+        if (class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
+            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.phase_sheet', compact('document', 'stages', 'phase', 'title'));
+            $content = $pdf->output();
+        } else {
+            $content = view('pdf.phase_sheet', compact('document', 'stages', 'phase', 'title'))->render();
+        }
+
+        $version = $document->files()->max('version') ?? 1;
+        $path = "approvals/{$document->id}/{$phase}_sheet_v{$version}.pdf";
+
+        Storage::put($path, $content);
+
+        return $path;
+    }
 }

@@ -74,6 +74,51 @@ class DocumentApproval extends Model
         return $this->hasMany(DocumentApprovalStage::class);
     }
 
+    /**
+     * Звенья одной фазы маршрута (ознакомление / приём) в этом круге.
+     *
+     * @return \Illuminate\Support\Collection<int, DocumentApprovalStage>
+     */
+    public function phaseStages(string $phase): \Illuminate\Support\Collection
+    {
+        return $this->stages
+            ->filter(fn ($stage) => $stage->workflowStage?->kind() === $phase)
+            ->values();
+    }
+
+    /**
+     * Фаза маршрута отработана целиком.
+     *
+     * Приём держит маршрут и закрывается решением исполнителя («Исполнено» → звено approved),
+     * поэтому его завершение — терминальный статус звена. Ознакомление маршрут не держит:
+     * звено помечается approved уже при активации, до отметок, — здесь верный признак только
+     * решения самих участников.
+     */
+    public function phaseComplete(string $phase): bool
+    {
+        $stages = $this->phaseStages($phase);
+
+        if ($stages->isEmpty()) {
+            return false;
+        }
+
+        return $stages->every(function ($stage) use ($phase) {
+            if ($phase === 'intake') {
+                return $stage->status === 'approved';
+            }
+
+            $participants = $stage->workflowStage?->approvers->pluck('approver_id') ?? collect();
+
+            if ($participants->isEmpty()) {
+                return false;
+            }
+
+            $responded = $stage->decisions->pluck('user_id')->unique();
+
+            return $participants->unique()->diff($responded)->isEmpty();
+        });
+    }
+
     public function activeStage()
     {
         // «accepted» — звено приёма, уже принятое к исполнению: оно всё ещё активно,

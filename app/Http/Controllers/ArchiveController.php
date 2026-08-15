@@ -127,6 +127,28 @@ class ArchiveController extends Controller
         return Storage::download($archived->approval_sheet_path, "Лист_согласования_{$archived->id}.pdf");
     }
 
+    /** Скачать неизменяемый лист ознакомления. */
+    public function acknowledgmentSheet(ArchivedDocument $archived)
+    {
+        $this->authorizeAccess($archived);
+        abort_unless($archived->acknowledgment_sheet_path && Storage::exists($archived->acknowledgment_sheet_path), 404);
+
+        $this->audit->log('archive_sheet_downloaded', $archived);
+
+        return Storage::download($archived->acknowledgment_sheet_path, "Лист_ознакомления_{$archived->id}.pdf");
+    }
+
+    /** Скачать неизменяемый лист приёма. */
+    public function acceptanceSheet(ArchivedDocument $archived)
+    {
+        $this->authorizeAccess($archived);
+        abort_unless($archived->acceptance_sheet_path && Storage::exists($archived->acceptance_sheet_path), 404);
+
+        $this->audit->log('archive_sheet_downloaded', $archived);
+
+        return Storage::download($archived->acceptance_sheet_path, "Лист_приёма_{$archived->id}.pdf");
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────
 
     /** Фасеты (счётчики) для текущей точки входа, в пределах доступа. */

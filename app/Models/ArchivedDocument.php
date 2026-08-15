@@ -17,6 +17,7 @@ class ArchivedDocument extends Model
         'document_type_id', 'document_subtype_id', 'direction_id', 'department_id',
         'initiator_id', 'counterparty', 'metadata',
         'body_html', 'file_path', 'file_name', 'file_size', 'approval_sheet_path',
+        'acknowledgment_sheet_path', 'acceptance_sheet_path',
         'content_hash', 'archived_at', 'archived_by',
     ];
 

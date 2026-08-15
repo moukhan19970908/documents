@@ -35,6 +35,12 @@
             @if($archived->approval_sheet_path)
                 <a href="{{ route('archive.sheet', $archived) }}" class="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Лист согласования</a>
             @endif
+            @if($archived->acknowledgment_sheet_path)
+                <a href="{{ route('archive.ack-sheet', $archived) }}" class="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Лист ознакомления</a>
+            @endif
+            @if($archived->acceptance_sheet_path)
+                <a href="{{ route('archive.intake-sheet', $archived) }}" class="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Лист приёма</a>
+            @endif
             @if($openUrl)
                 <a href="{{ $openUrl }}" class="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Открыть оригинал</a>
             @endif

@@ -41,6 +41,8 @@ class ArchiveService
         }
 
         $sheetPath = $this->snapshotApprovalSheet($document, "archive/documents/{$document->id}/approval_sheet.pdf");
+        $ackSheetPath = $this->snapshotPhaseSheet($document, 'ack', "archive/documents/{$document->id}/acknowledgment_sheet.pdf");
+        $intakeSheetPath = $this->snapshotPhaseSheet($document, 'intake', "archive/documents/{$document->id}/acceptance_sheet.pdf");
 
         return $this->store($document, [
             'title'               => $document->title,
@@ -57,6 +59,8 @@ class ArchiveService
             'file_name'           => $file?->file_name,
             'file_size'           => $file?->file_size,
             'approval_sheet_path' => $sheetPath,
+            'acknowledgment_sheet_path' => $ackSheetPath,
+            'acceptance_sheet_path'     => $intakeSheetPath,
         ]);
     }
 
@@ -191,6 +195,35 @@ class ArchiveService
             }
         } catch (\Throwable $e) {
             Log::warning("Archive: лист согласования документа {$document->id} не создан: {$e->getMessage()}");
+        }
+
+        return null;
+    }
+
+    /**
+     * Снимок листа фазы (ознакомление / приём) — только если эта фаза была в маршруте.
+     * Ознакомление не держит маршрут, поэтому к моменту архивации часть отметок может ещё
+     * отсутствовать; лист фиксирует состояние как есть.
+     */
+    private function snapshotPhaseSheet(Document $document, string $phase, string $dest): ?string
+    {
+        try {
+            $approval = $document->approvals()
+                ->with(['stages.workflowStage.approvers'])
+                ->latest()
+                ->first();
+
+            if (! $approval || $approval->phaseStages($phase)->isEmpty()) {
+                return null; // такой фазы в маршруте не было — листа нет
+            }
+
+            $generated = $this->pdf->generatePhaseSheet($document, $phase);
+            if ($generated && Storage::exists($generated)) {
+                Storage::put($dest, Storage::get($generated));
+                return $dest;
+            }
+        } catch (\Throwable $e) {
+            Log::warning("Archive: лист фазы «{$phase}» документа {$document->id} не создан: {$e->getMessage()}");
         }
 
         return null;

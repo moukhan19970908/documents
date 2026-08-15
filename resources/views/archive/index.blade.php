@@ -186,6 +186,12 @@
                                             @if($doc->approval_sheet_path)
                                                 <a href="{{ route('archive.sheet', $doc) }}" class="text-gray-600 hover:underline">Лист согл.</a>
                                             @endif
+                                            @if($doc->acknowledgment_sheet_path)
+                                                <a href="{{ route('archive.ack-sheet', $doc) }}" class="text-gray-600 hover:underline">Лист озн.</a>
+                                            @endif
+                                            @if($doc->acceptance_sheet_path)
+                                                <a href="{{ route('archive.intake-sheet', $doc) }}" class="text-gray-600 hover:underline">Лист приёма</a>
+                                            @endif
                                         </div>
                                     </td>
                                 </tr>

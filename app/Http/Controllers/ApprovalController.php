@@ -7,6 +7,7 @@ use App\Models\Document;
 use App\Models\Workflow;
 use App\Services\ApprovalEngineService;
 use App\Services\AuditService;
+use App\Services\PdfGeneratorService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -15,6 +16,7 @@ class ApprovalController extends Controller
     public function __construct(
         private ApprovalEngineService $engine,
         private AuditService $audit,
+        private PdfGeneratorService $pdf,
     ) {}
 
     public function start(Request $request, Document $document)
@@ -306,5 +308,34 @@ class ApprovalController extends Controller
         );
 
         return response($html, 200, ['Content-Type' => 'text/html; charset=UTF-8']);
+    }
+
+    /** Лист ознакомления — доступен, когда высказались все ознакомляющие. */
+    public function acknowledgmentSheet(Document $document)
+    {
+        return $this->phaseSheet($document, 'ack', 'Лист_ознакомления');
+    }
+
+    /** Лист приёма — доступен, когда высказались все принимающие. */
+    public function acceptanceSheet(Document $document)
+    {
+        return $this->phaseSheet($document, 'intake', 'Лист_приёма');
+    }
+
+    private function phaseSheet(Document $document, string $phase, string $fileLabel)
+    {
+        $this->authorize('view', $document);
+
+        // Лист собирается только когда высказались все участники фазы.
+        $approval = $document->approvals()
+            ->with(['stages.decisions', 'stages.workflowStage.approvers'])
+            ->latest()
+            ->first();
+
+        abort_unless($approval && $approval->phaseComplete($phase), 404);
+
+        $path = $this->pdf->generatePhaseSheet($document, $phase);
+
+        return Storage::download($path, "{$fileLabel}_{$document->id}.pdf");
     }
 }
