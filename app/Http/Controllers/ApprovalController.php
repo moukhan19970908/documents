@@ -328,14 +328,29 @@ class ApprovalController extends Controller
 
         // Лист собирается только когда высказались все участники фазы.
         $approval = $document->approvals()
-            ->with(['stages.decisions', 'stages.workflowStage.approvers'])
+            ->with(['stages.decisions.user', 'stages.workflowStage.approvers.user.department'])
             ->latest()
             ->first();
 
         abort_unless($approval && $approval->phaseComplete($phase), 404);
 
-        $path = $this->pdf->generatePhaseSheet($document, $phase);
+        // DomPDF есть — отдаём настоящий PDF; нет — рендерим HTML в браузере (как лист согласования).
+        if (class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
+            $path = $this->pdf->generatePhaseSheet($document, $phase);
 
-        return Storage::download($path, "{$fileLabel}_{$document->id}.pdf");
+            return Storage::download($path, "{$fileLabel}_{$document->id}.pdf");
+        }
+
+        $stages = $approval->phaseStages($phase);
+        $title  = $phase === 'ack' ? 'ЛИСТ ОЗНАКОМЛЕНИЯ' : 'ЛИСТ ПРИЁМА';
+
+        $html = view('pdf.phase_sheet', compact('document', 'stages', 'phase', 'title'))->render();
+        $html = str_replace(
+            '</body>',
+            '<div style="text-align:center;margin:20px"><button onclick="window.print()" style="padding:8px 24px;background:#5B4FE8;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer">Распечатать / Сохранить как PDF</button></div></body>',
+            $html
+        );
+
+        return response($html, 200, ['Content-Type' => 'text/html; charset=UTF-8']);
     }
 }

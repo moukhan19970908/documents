@@ -488,13 +488,38 @@
                                                 <button type="button" @click="removeParticipant(index, pid)" class="text-gray-400 hover:text-red-500">×</button>
                                             </span>
                                         </template>
-                                        <select @change="addParticipant(index, $event.target.value); $event.target.value = ''"
-                                                class="text-sm border border-dashed border-[#5B4FE8] text-[#5B4FE8] rounded-lg px-3 py-1.5 bg-white focus:outline-none">
-                                            <option value="">+ Добавить участника</option>
-                                            <template x-for="person in people" :key="person.id">
-                                                <option :value="person.id" x-text="person.name"></option>
-                                            </template>
-                                        </select>
+                                        {{-- Поиск по сотрудникам вместо длинного выпадающего списка --}}
+                                        <div x-data="{ open: false, search: '' }" @click.outside="open = false" @keydown.escape="open = false" class="relative">
+                                            <button type="button"
+                                                    @click="open = !open; if (open) $nextTick(() => $refs.search.focus())"
+                                                    class="text-sm border border-dashed border-[#5B4FE8] text-[#5B4FE8] rounded-lg px-3 py-1.5 bg-white hover:bg-[#5B4FE8]/5 focus:outline-none">
+                                                + Добавить участника
+                                            </button>
+
+                                            <div x-show="open" x-transition style="display:none"
+                                                 class="absolute left-0 top-full mt-1 z-30 w-72 bg-white border border-gray-200 rounded-lg shadow-lg">
+                                                <div class="p-2 border-b border-gray-100">
+                                                    <input x-ref="search" x-model="search" type="text" placeholder="Поиск по ФИО или должности…"
+                                                           class="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                                                </div>
+                                                <div class="max-h-56 overflow-y-auto py-1">
+                                                    <template x-for="person in availablePeople(block.participants, search)" :key="person.id">
+                                                        <button type="button"
+                                                                @click="addParticipant(index, person.id); search = ''; open = false"
+                                                                class="w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-gray-50">
+                                                            <span class="w-7 h-7 rounded-full bg-indigo-50 text-[#5B4FE8] text-[11px] font-semibold flex items-center justify-center shrink-0"
+                                                                  x-text="initials(person.name)"></span>
+                                                            <span class="min-w-0">
+                                                                <span class="block text-sm text-gray-900 truncate" x-text="person.name"></span>
+                                                                <span class="block text-xs text-gray-400 truncate" x-text="person.position || ''"></span>
+                                                            </span>
+                                                        </button>
+                                                    </template>
+                                                    <p x-show="availablePeople(block.participants, search).length === 0"
+                                                       class="px-3 py-3 text-sm text-gray-400 text-center">Никого не нашли</p>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </template>
@@ -948,6 +973,16 @@
 
             personName(id) {
                 return this.personById(id)?.name ?? '';
+            },
+
+            // Кандидаты для звена: ещё не добавленные и подходящие под поиск (ФИО или должность).
+            availablePeople(participants, search) {
+                const q = (search || '').trim().toLowerCase();
+                const chosen = participants ?? [];
+                return this.people.filter(p =>
+                    !chosen.includes(p.id)
+                    && (!q || (p.name || '').toLowerCase().includes(q) || (p.position || '').toLowerCase().includes(q))
+                );
             },
 
             loadPresets() {

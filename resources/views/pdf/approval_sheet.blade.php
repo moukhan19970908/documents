@@ -29,9 +29,57 @@
         .footer { margin-top: 30px; text-align: center; font-size: 9px; color: #888; border-top: 1px solid #eee; padding-top: 8px; }
         .page-break { page-break-after: always; }
         .comment-cell { max-width: 200px; word-wrap: break-word; }
+
+        /* Штамп-удостоверение + фоновый водяной знак (только для согласованного документа) */
+        .watermark { position: fixed; top: 38%; left: 0; width: 100%; text-align: center;
+            font-size: 96px; font-weight: bold; color: #0a7d3c; opacity: 0.09;
+            transform: rotate(-22deg); letter-spacing: 10px; z-index: 0; }
+        .sheet-content { position: relative; z-index: 1; }
+        .cert-stamp { width: 350px; margin: 0 2px 18px auto; border: 2.5px solid #0a7d3c;
+            border-radius: 8px; padding: 10px 14px; color: #0a7d3c; background: rgba(10,125,60,0.05);
+            transform: rotate(-2deg); position: relative; z-index: 2; }
+        .cert-stamp .cert-title { font-size: 14px; font-weight: bold; text-align: center; letter-spacing: 1px; text-transform: uppercase; }
+        .cert-stamp .cert-sub { font-size: 8px; text-align: center; text-transform: uppercase; letter-spacing: 1px;
+            padding-bottom: 6px; margin-bottom: 6px; border-bottom: 1px solid rgba(10,125,60,0.35); }
+        .cert-stamp table { width: 100%; border-collapse: collapse; margin: 0; }
+        .cert-stamp td { border: none; padding: 2px 0; font-size: 9px; color: #0a5c2c; vertical-align: top; }
+        .cert-stamp td.k { font-weight: bold; white-space: nowrap; padding-right: 8px; }
+        .cert-stamp a { color: #0a7d3c; word-break: break-all; }
+        .cert-stamp .cert-status { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(10,125,60,0.35);
+            font-size: 10px; font-weight: bold; text-align: center; }
     </style>
 </head>
 <body>
+
+@php
+    // Штамп-удостоверение показываем только у согласованного документа.
+    $isCertified = $approval && in_array($document->status, ['approved', 'signed', 'archived']);
+
+    // «Утвердил»: сначала решение в фазе утверждения, иначе последнее «Согласовать» по маршруту.
+    $approveDecision = null;
+    if ($approval) {
+        foreach ($approval->stages->sortByDesc(fn ($s) => $s->workflowStage?->sort_order ?? 0) as $s) {
+            if (($s->workflowStage?->phase) === 'approve') {
+                $approveDecision = $s->decisions->where('action', 'approve')->sortByDesc('decided_at')->first();
+                if ($approveDecision) { break; }
+            }
+        }
+        $approveDecision ??= $approval->stages
+            ->flatMap(fn ($s) => $s->decisions)
+            ->where('action', 'approve')
+            ->sortByDesc('decided_at')
+            ->first();
+    }
+    $approver = $approveDecision?->user;
+    $certDate = optional($approval?->completed_at)->format('d.m.Y') ?: optional($document->registered_at)->format('d.m.Y');
+    $docLink  = route('documents.show', $document->id);
+@endphp
+
+@if($isCertified)
+    <div class="watermark">СОГЛАСОВАНО</div>
+@endif
+
+<div class="sheet-content">
 
     <div class="header">
         <h1>ЛИСТ СОГЛАСОВАНИЯ</h1>
@@ -56,6 +104,22 @@
             <div class="value">{{ $document->status_label }}</div>
         </div>
     </div>
+
+    @if($isCertified)
+        <div class="cert-stamp">
+            <div class="cert-title">Документ согласован</div>
+            <div class="cert-sub">Внутренний штамп-удостоверение</div>
+            <table>
+                <tr><td class="k">Наименование:</td><td>{{ $document->title }}</td></tr>
+                <tr><td class="k">Дата согласования:</td><td>{{ $certDate ?: '—' }}</td></tr>
+                <tr><td class="k">Лист согласования:</td><td>№ {{ $approval->id }}</td></tr>
+                <tr><td class="k">Утвердил:</td><td>{{ $approver?->name ?? '—' }}@if($approver?->position) ({{ $approver->position }})@endif</td></tr>
+                <tr><td class="k">ID документа:</td><td>{{ $document->id }}@if($document->number) · {{ $document->number }}@endif</td></tr>
+                <tr><td class="k">Подлинность:</td><td><a href="{{ $docLink }}">{{ $docLink }}</a></td></tr>
+            </table>
+            <div class="cert-status">✔ Действителен, изменения запрещены</div>
+        </div>
+    @endif
 
     @if($document->data)
         <div class="section-title">Реквизиты документа</div>
@@ -132,6 +196,8 @@
     <div class="footer">
         Документ сформирован: {{ now()->format('d.m.Y H:i:s') }} | Vamin &copy; {{ now()->year }}
     </div>
+
+</div>{{-- /.sheet-content --}}
 
 </body>
 </html>

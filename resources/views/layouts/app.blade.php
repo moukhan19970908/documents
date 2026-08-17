@@ -187,15 +187,7 @@
                 </a>
                 @endif
 
-                {{-- Обратная связь --}}
-                @if(auth()->user()->canSeeMenu('menu.feedback'))
-                @php $feedbackActive = request()->routeIs('feedback.*'); @endphp
-                <a href="{{ route('feedback.index') }}"
-                   class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {{ $feedbackActive ? 'bg-[#5B4FE8]/10 text-[#5B4FE8]' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
-                    @include('partials.nav-icon', ['icon' => 'feedback', 'active' => $feedbackActive])
-                    Обратная связь
-                </a>
-                @endif
+                
 
                 {{-- Trips --}}
                 <!-- @if(auth()->user()->canSeeMenu('menu.trips'))
@@ -275,6 +267,18 @@
                     База знаний
                 </a>
             </div>
+
+            {{-- Обратная связь --}}
+            @if(auth()->user()->canSeeMenu('menu.feedback'))
+            <div class="px-3 py-3">
+            @php $feedbackActive = request()->routeIs('feedback.*'); @endphp
+            <a href="{{ route('feedback.index') }}"
+                class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {{ $feedbackActive ? 'bg-[#5B4FE8]/10 text-[#5B4FE8]' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
+                @include('partials.nav-icon', ['icon' => 'feedback', 'active' => $feedbackActive])
+                Обратная связь
+            </a>
+            </div>
+            @endif
         </aside>
 
         {{-- Main content --}}
