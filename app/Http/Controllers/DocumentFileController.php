@@ -6,6 +6,7 @@ use App\Models\Document;
 use App\Models\DocumentFile;
 use App\Services\AuditService;
 use App\Services\DocumentVersionService;
+use App\Services\FileWatermarkService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -14,6 +15,7 @@ class DocumentFileController extends Controller
     public function __construct(
         private DocumentVersionService $versionService,
         private AuditService $auditService,
+        private FileWatermarkService $watermark,
     ) {}
 
     public function store(Request $request, Document $document)
@@ -34,6 +36,22 @@ class DocumentFileController extends Controller
         $this->authorize('view', $document);
 
         $this->auditService->log('file_downloaded', $document, null, ['file_id' => $file->id]);
+
+        // Согласованный документ скачивается со штампом-удостоверением, впечатанным в файл
+        // (PDF через qpdf, растровые картинки через GD). Остальное отдаём потоком как есть.
+        if ($this->watermark->canStamp($file, $document)) {
+            $disk = Storage::disk('s3');
+
+            if ($disk->exists($file->file_path)) {
+                $bytes = $this->watermark->stamp($disk->get($file->file_path), $file, $document);
+
+                return response($bytes, 200, [
+                    'Content-Type'        => $file->mime_type,
+                    'Content-Disposition' => 'attachment; filename="' . rawurlencode($file->file_name) . '"',
+                    'Content-Length'      => strlen($bytes),
+                ]);
+            }
+        }
 
         return $this->versionService->download($file);
     }
