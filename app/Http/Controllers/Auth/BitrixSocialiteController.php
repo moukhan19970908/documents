@@ -67,7 +67,7 @@ class BitrixSocialiteController extends Controller
             );
             $b24User = $userResponse->json()['result'] ?? [];
 
-            $user = User::updateOrCreate(
+            $user = User::firstOrCreate(
                 ['bitrix24_id' => (string) $b24UserId],
                 [
                     'name'           => trim(($b24User['NAME'] ?? '') . ' ' . ($b24User['LAST_NAME'] ?? 'B24 User')),
