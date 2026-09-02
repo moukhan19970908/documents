@@ -13,14 +13,17 @@ use Symfony\Component\Process\Process;
  *
  * PDF: штамп-оверлей генерируется чистым PHP (TCPDF, кириллица) и накладывается на
  * исходник нативной утилитой qpdf — векторный текст оригинала сохраняется, работают
- * любые версии PDF. Растровые картинки (PNG/WebP/GIF) штампуются через GD.
- * Всё, что не поддаётся (JPEG в этой сборке GD, DOCX и т.п.), возвращается без
- * изменений — скачивание не должно ломаться из-за штампа.
+ * любые версии PDF. DOCX: блок-удостоверение впечатывается прямо в word/document.xml
+ * (ZipArchive). Растровые картинки (PNG/WebP/GIF) штампуются через GD.
+ * Всё, что не поддаётся (JPEG в этой сборке GD и т.п.), возвращается без изменений —
+ * скачивание не должно ломаться из-за штампа.
  */
 class FileWatermarkService
 {
     /** MIME, которые умеет открыть и сохранить текущая сборка GD. */
     private const IMAGE_MIME = ['image/png', 'image/webp', 'image/gif'];
+
+    private const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
     private const A4 = [595.28, 841.89];
 
@@ -37,7 +40,18 @@ class FileWatermarkService
             return $this->qpdfBin() !== null;
         }
 
+        if ($this->isDocx($file)) {
+            return class_exists(\ZipArchive::class);
+        }
+
         return in_array($mime, self::IMAGE_MIME, true) && $this->fontPath() !== null;
+    }
+
+    /** DOCX по mime или по расширению — libmagic на проде нередко отдаёт docx как application/zip. */
+    private function isDocx(DocumentFile $file): bool
+    {
+        return $this->mime($file) === self::DOCX_MIME
+            || str_ends_with(strtolower((string) $file->file_name), '.docx');
     }
 
     /** Возвращает байты со штампом либо исходные — если формат не поддержан или что-то пошло не так. */
@@ -50,11 +64,33 @@ class FileWatermarkService
         try {
             $mime = $this->mime($file);
 
-            return $mime === 'application/pdf'
-                ? ($this->stampPdf($bytes, $document) ?? $bytes)
-                : ($this->stampImage($bytes, $mime, $document) ?? $bytes);
+            return match (true) {
+                $mime === 'application/pdf' => $this->stampPdf($bytes, $document) ?? $bytes,
+                $this->isDocx($file)        => $this->stampDocx($bytes, $document) ?? $bytes,
+                default                     => $this->stampImage($bytes, $mime, $document) ?? $bytes,
+            };
         } catch (\Throwable $e) {
             Log::warning("Watermark: файл {$file->id} не проштампован: {$e->getMessage()}");
+
+            return $bytes;
+        }
+    }
+
+    /**
+     * Штампует уже готовые PDF-байты (тело документа по бланку, отрендеренное в PDF) тем же
+     * штампом-удостоверением, что и загруженные файлы. Штамп ставится только у согласованного
+     * документа; если qpdf недоступен или что-то пошло не так — возвращаются исходные байты.
+     */
+    public function stampPdfBytes(string $bytes, Document $document): string
+    {
+        if (! $this->isCertified($document) || ! $this->qpdfBin()) {
+            return $bytes;
+        }
+
+        try {
+            return $this->stampPdf($bytes, $document) ?? $bytes;
+        } catch (\Throwable $e) {
+            Log::warning("Watermark: PDF документа {$document->id} не проштампован: {$e->getMessage()}");
 
             return $bytes;
         }
@@ -292,6 +328,77 @@ class FileWatermarkService
         imagedestroy($img);
 
         return $out ?: null;
+    }
+
+    // ── DOCX (ZipArchive) ────────────────────────────────────────────────────
+
+    /** Впечатывает блок-удостоверение в начало тела документа word/document.xml. */
+    private function stampDocx(string $bytes, Document $document): ?string
+    {
+        if (! class_exists(\ZipArchive::class)) {
+            return null;
+        }
+
+        $tmp = tempnam(sys_get_temp_dir(), 'wm_dx_');
+
+        try {
+            file_put_contents($tmp, $bytes);
+
+            $zip = new \ZipArchive();
+            if ($zip->open($tmp) !== true) {
+                return null;
+            }
+
+            $xml = $zip->getFromName('word/document.xml');
+            if ($xml === false || ! preg_match('/<w:body[^>]*>/', $xml, $m, PREG_OFFSET_CAPTURE)) {
+                $zip->close();
+
+                return null;
+            }
+
+            // Блок штампа — сразу после открывающего <w:body>, до содержимого документа.
+            $pos     = $m[0][1] + strlen($m[0][0]);
+            $patched = substr($xml, 0, $pos) . $this->docxStampXml($this->stampLines($document)) . substr($xml, $pos);
+
+            $zip->addFromString('word/document.xml', $patched);
+            $zip->close();
+
+            return file_get_contents($tmp) ?: null;
+        } finally {
+            if (is_file($tmp)) {
+                @unlink($tmp);
+            }
+        }
+    }
+
+    /** Зелёный бокс-удостоверение (WordprocessingML) с теми же строками, что и штамп PDF. */
+    private function docxStampXml(array $lines): string
+    {
+        $runs = '';
+        foreach (array_values($lines) as $i => $line) {
+            $isTitle = $i === 0;
+            $runs .= '<w:r><w:rPr>' . ($isTitle ? '<w:b/>' : '')
+                . '<w:color w:val="0A7D3C"/><w:sz w:val="' . ($isTitle ? '26' : '18') . '"/></w:rPr>'
+                . ($isTitle ? '' : '<w:br/>')
+                . '<w:t xml:space="preserve">' . $this->xmlEscape($line) . '</w:t></w:r>';
+        }
+
+        $border = '';
+        foreach (['top', 'left', 'bottom', 'right'] as $side) {
+            $border .= '<w:' . $side . ' w:val="single" w:sz="18" w:space="6" w:color="0A7D3C"/>';
+        }
+
+        return '<w:p><w:pPr>'
+            . '<w:pBdr>' . $border . '</w:pBdr>'
+            . '<w:shd w:val="clear" w:color="auto" w:fill="EAF7EF"/>'
+            . '<w:spacing w:before="60" w:after="240" w:line="264" w:lineRule="auto"/>'
+            . '<w:jc w:val="center"/>'
+            . '</w:pPr>' . $runs . '</w:p>';
+    }
+
+    private function xmlEscape(string $s): string
+    {
+        return htmlspecialchars($s, ENT_QUOTES | ENT_XML1, 'UTF-8');
     }
 
     // ── общее ────────────────────────────────────────────────────────────────

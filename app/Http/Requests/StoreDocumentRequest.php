@@ -45,7 +45,9 @@ class StoreDocumentRequest extends FormRequest
             'route.*.phase'          => ['required_with:route', Rule::in(['approval', 'approve', 'ack', 'intake'])],
             'route.*.participants'   => ['required_with:route', 'array', 'min:1'],
             'route.*.participants.*' => ['integer', 'exists:users,id'],
-            'file'                => ['nullable', 'file', 'max:51200'], // 50MB
+            // Готовый документ загружаем только как PDF или DOCX (docx нередко детектится как zip).
+            'file'                => ['nullable', 'file', 'max:51200', 'extensions:pdf,docx',
+                'mimetypes:application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/zip'], // 50MB
             'approvers'           => ['nullable', 'array'],
             'approvers.*'         => ['integer', 'exists:users,id'],
         ];

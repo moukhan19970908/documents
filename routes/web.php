@@ -153,6 +153,7 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
     // Documents
     Route::resource('documents', DocumentController::class);
     Route::put('documents/{document}/blank', [DocumentController::class, 'updateBlank'])->name('documents.blank.update');
+    Route::get('documents/{document}/blank/download', [DocumentController::class, 'downloadBlank'])->name('documents.blank.download');
     Route::post('documents/{document}/start-approval', [ApprovalController::class, 'start'])->name('documents.start-approval');
     Route::post('documents/{document}/approve', [ApprovalController::class, 'approve'])->name('documents.approve');
     Route::post('documents/{document}/reject', [ApprovalController::class, 'reject'])->name('documents.reject');

@@ -224,12 +224,21 @@
                                     <p class="text-xs font-medium text-gray-600 truncate">
                                         Бланк: {{ $document->blank?->name ?? '—' }}
                                     </p>
-                                    @can('update', $document)
-                                        <button type="button" @click="editing = true"
-                                                class="text-xs text-[#5B4FE8] hover:underline font-medium shrink-0 ml-3">
-                                            Заполнить бланк
-                                        </button>
-                                    @endcan
+                                    <div class="flex items-center gap-3 shrink-0 ml-3">
+                                        @if(in_array($document->status, ['approved', 'signed', 'archived']))
+                                            <a href="{{ route('documents.blank.download', $document) }}"
+                                               class="flex items-center gap-1 text-xs text-[#5B4FE8] hover:underline font-medium">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                                                Скачать
+                                            </a>
+                                        @endif
+                                        @can('update', $document)
+                                            <button type="button" @click="editing = true"
+                                                    class="text-xs text-[#5B4FE8] hover:underline font-medium">
+                                                Заполнить бланк
+                                            </button>
+                                        @endcan
+                                    </div>
                                 </div>
 
                                 <div class="bg-gray-100 p-8 overflow-x-auto">
@@ -331,7 +340,7 @@
                     @can('update', $document)
                         <form action="{{ route('documents.files.store', $document) }}" method="POST" enctype="multipart/form-data" class="mt-3 flex items-center gap-3">
                             @csrf
-                            <input type="file" name="file" class="flex-1 text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-gray-100 file:text-gray-700 file:text-xs hover:file:bg-gray-200">
+                            <input type="file" name="file" accept=".pdf,.docx" class="flex-1 text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-gray-100 file:text-gray-700 file:text-xs hover:file:bg-gray-200">
                             <button type="submit" class="px-4 py-2 text-sm bg-[#5B4FE8] text-white rounded-lg font-medium hover:bg-indigo-700 whitespace-nowrap">
                                 Загрузить версию
                             </button>

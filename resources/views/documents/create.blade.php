@@ -599,9 +599,9 @@
 
                     {{-- Готовый файл вместо бланка --}}
                     <div x-show="source === 'file'" class="bg-white border border-gray-200 rounded-xl p-6">
-                        <input type="file" name="file"
+                        <input type="file" name="file" accept=".pdf,.docx"
                                class="w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-[#5B4FE8] file:text-white file:text-sm file:font-medium hover:file:bg-indigo-700">
-                        <p class="text-xs text-gray-400 mt-2">Максимальный размер файла: 50 МБ</p>
+                        <p class="text-xs text-gray-400 mt-2">Форматы: PDF или DOCX. Максимальный размер файла: 50 МБ</p>
                         @error('file')<p class="text-xs text-red-500 mt-1">{{ $message }}</p>@enderror
                     </div>
 

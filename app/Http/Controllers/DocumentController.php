@@ -16,9 +16,11 @@ use App\Models\User;
 use App\Models\Department;
 use App\Services\AuditService;
 use App\Services\ApprovalEngineService;
+use App\Services\BlankPdfService;
 use App\Services\DocumentNamingService;
 use App\Services\DocumentNumberService;
 use App\Services\DocumentVersionService;
+use App\Services\FileWatermarkService;
 use App\Services\PdfGeneratorService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -494,6 +496,33 @@ class DocumentController extends Controller
         $this->auditService->log('document_blank_updated', $document);
 
         return redirect()->route('documents.show', $document)->with('success', 'Бланк сохранён.');
+    }
+
+    /**
+     * Скачать документ по бланку как PDF. Тело (с подставленными токенами) рендерится в PDF,
+     * а у согласованного документа поверх ложится штамп-удостоверение — как у загруженных файлов.
+     */
+    public function downloadBlank(
+        Document $document,
+        DocumentNamingService $namingService,
+        BlankPdfService $blankPdf,
+        FileWatermarkService $watermark,
+    ) {
+        $this->authorize('view', $document);
+        abort_if($document->blank_template_id === null, 404);
+
+        $bytes = $blankPdf->render($document, $namingService->fillBlank($document) ?? '');
+        $bytes = $watermark->stampPdfBytes($bytes, $document);
+
+        $this->auditService->log('document_blank_downloaded', $document);
+
+        $name = trim((string) $document->title) !== '' ? $document->title : 'Документ ' . $document->id;
+
+        return response($bytes, 200, [
+            'Content-Type'        => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="' . rawurlencode($name) . '.pdf"',
+            'Content-Length'      => strlen($bytes),
+        ]);
     }
 
     public function storeNote(Request $request, Document $document)

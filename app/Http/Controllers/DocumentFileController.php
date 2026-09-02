@@ -23,7 +23,9 @@ class DocumentFileController extends Controller
         $this->authorize('update', $document);
 
         $request->validate([
-            'file' => ['required', 'file', 'max:51200'],
+            // Новую версию загружаем только как PDF или DOCX (docx нередко детектится как zip).
+            'file' => ['required', 'file', 'max:51200', 'extensions:pdf,docx',
+                'mimetypes:application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/zip'],
         ]);
 
         $this->versionService->storeFile($document, $request->file('file'));
