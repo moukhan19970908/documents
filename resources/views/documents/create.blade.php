@@ -194,13 +194,11 @@
             ->map(fn ($p) => ['id' => $p->id, 'name' => $p->name, 'position' => $p->position])
             ->values();
 
-        // Фазы маршрута идут в этом порядке — тот же, что применяет движок.
-        $phaseMeta = [
-            'approval' => ['label' => 'Фаза согласования', 'dot' => 'bg-blue-500',   'fixed' => true],
-            'approve'  => ['label' => 'Фаза утверждения',  'dot' => 'bg-emerald-500', 'fixed' => true],
-            'opinion'  => ['label' => 'Фаза заключений',   'dot' => 'bg-sky-500',     'fixed' => true],
-            'ack'      => ['label' => 'Фаза ознакомления', 'dot' => 'bg-amber-500',   'fixed' => false],
-            'intake'   => ['label' => 'Фаза приёма',       'dot' => 'bg-purple-500',  'fixed' => false],
+        // Фазы, куда инициатор может добавить участников поверх сценария. Остальные шаги
+        // маршрута показываются в порядке сценария и правке не подлежат.
+        $adhocPhases = [
+            'ack'    => ['label' => 'Фаза ознакомления', 'dot' => 'bg-amber-500'],
+            'intake' => ['label' => 'Фаза приёма',       'dot' => 'bg-purple-500'],
         ];
     @endphp
 
@@ -311,100 +309,110 @@
                     </div>
                 </div>
 
-                {{-- Маршрут: собирается движком из сценария и ответов (фиксированный сценарий) --}}
+                {{-- Маршрут: тот же порядок шагов, что нарисован в конструкторе, — движок ведёт
+                     документ по звеньям подряд (sort_order), а не по фазам. --}}
                 <div x-show="scenarioId && !current()?.composed">
-                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-1">
                         Маршрут согласования — собран автоматически
                     </p>
+                    <p class="text-xs text-gray-400 mb-3">
+                        Шаги идут в том же порядке, что и в конструкторе процесса — порядок и состав зафиксированы сценарием
+                    </p>
 
-                    <div class="space-y-5">
-                        @foreach($phaseMeta as $phase => $meta)
-                            <div x-show="stagesOf('{{ $phase }}').length > 0 || {{ $meta['fixed'] ? 'false' : 'true' }}">
+                    <div class="space-y-2">
+                        <template x-for="(stage, index) in routeStages()" :key="index">
+                            <div class="bg-white border border-gray-200 rounded-xl px-4 py-3">
                                 <div class="flex items-center gap-2 mb-2">
-                                    <span class="w-2 h-2 rounded-full {{ $meta['dot'] }}"></span>
-                                    <span class="text-sm font-semibold text-gray-900">{{ $meta['label'] }}</span>
-                                    @if($meta['fixed'])
-                                        <span class="text-xs text-gray-400">— порядок и состав зафиксированы сценарием</span>
-                                    @endif
+                                    <span class="w-5 h-5 rounded-full bg-gray-100 text-gray-500 text-[11px] font-semibold flex items-center justify-center shrink-0"
+                                          x-text="index + 1"></span>
+                                    <span class="w-2 h-2 rounded-full shrink-0" :class="phaseDot(stage.phase)"></span>
+                                    <span class="text-sm font-semibold text-gray-900 truncate" x-text="stage.name"></span>
+                                    <span class="text-[11px] bg-gray-100 text-gray-500 rounded px-2 py-0.5 shrink-0" x-text="phaseLabel(stage.phase)"></span>
+                                    <svg class="w-3.5 h-3.5 text-gray-300 ml-auto shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" title="Состав зафиксирован сценарием"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
                                 </div>
 
-                                @if(!$meta['fixed'])
-                                    <p class="text-xs text-gray-400 mb-2 ml-4">
-                                        Добавление участника не изменяет сам сценарий — звенья добавляются только к этому документу
-                                    </p>
-                                @endif
+                                <div class="pl-7">
+                                    {{-- Звено на роли: инициатор выбирает одного исполнителя из тех, у кого эта роль --}}
+                                    <template x-if="stage.resolver === 'group' && stage.role_name">
+                                        <div>
+                                            <p class="flex items-center gap-1.5 text-xs text-gray-500 mb-2">
+                                                <svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                                                <span x-text="'Роль: ' + stage.role_name"></span>
+                                            </p>
 
-                                <div class="ml-4 border-l-2 border-gray-100 pl-4 space-y-2">
-                                    <template x-for="(stage, index) in stagesOf('{{ $phase }}')" :key="index">
-                                        <div class="bg-white border border-gray-200 rounded-xl px-4 py-3">
-                                            {{-- Звено на роли: инициатор выбирает одного исполнителя из тех, у кого эта роль --}}
-                                            <template x-if="stage.resolver === 'group' && stage.role_name">
+                                            <template x-if="stage.approvers.length > 0">
                                                 <div>
-                                                    <p class="flex items-center gap-1.5 text-xs text-gray-500 mb-2">
-                                                        <svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                                                        <span x-text="'Роль: ' + stage.role_name"></span>
-                                                    </p>
-
-                                                    <template x-if="stage.approvers.length > 0">
-                                                        <div>
-                                                            <select x-model="rolePicks[stage.role_code]"
-                                                                    class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
-                                                                <option value="">— выберите исполнителя —</option>
-                                                                <template x-for="approver in stage.approvers" :key="approver.id">
-                                                                    <option :value="approver.id" x-text="approver.name + (approver.position ? ' — ' + approver.position : '')"></option>
-                                                                </template>
-                                                            </select>
-                                                            <input type="hidden" :name="`role_picks[${stage.role_code}]`" :value="rolePicks[stage.role_code] ?? ''">
-                                                        </div>
-                                                    </template>
-
-                                                    {{-- У роли нет ни одного сотрудника — выбирать не из кого --}}
-                                                    <p x-show="stage.approvers.length === 0" class="text-sm text-amber-600"
-                                                       x-text="'Нет сотрудников с ролью «' + stage.role_name + '» — обратитесь к администратору'"></p>
+                                                    <select x-model="rolePicks[stage.role_code]"
+                                                            class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                                                        <option value="">— выберите исполнителя —</option>
+                                                        <template x-for="approver in stage.approvers" :key="approver.id">
+                                                            <option :value="approver.id" x-text="approver.name + (approver.position ? ' — ' + approver.position : '')"></option>
+                                                        </template>
+                                                    </select>
+                                                    <input type="hidden" :name="`role_picks[${stage.role_code}]`" :value="rolePicks[stage.role_code] ?? ''">
                                                 </div>
                                             </template>
 
-                                            {{-- Обычное звено: состав задан сценарием --}}
-                                            <template x-if="!(stage.resolver === 'group' && stage.role_name)">
-                                                <div class="flex items-center gap-3">
-                                                    <template x-for="approver in stage.approvers" :key="approver.id">
-                                                        <div class="flex items-center gap-2.5">
-                                                            <span class="w-7 h-7 rounded-full bg-indigo-50 text-[#5B4FE8] text-[11px] font-semibold flex items-center justify-center shrink-0"
-                                                                  x-text="initials(approver.name)"></span>
-                                                            <span>
-                                                                <span class="block text-sm text-gray-900" x-text="approver.name"></span>
-                                                                <span class="block text-xs text-gray-400" x-text="approver.position || ''"></span>
-                                                            </span>
-                                                        </div>
-                                                    </template>
-                                                    <span x-show="stage.approvers.length === 0" class="text-sm text-gray-400" x-text="stage.name"></span>
-                                                    <svg class="w-3.5 h-3.5 text-gray-300 ml-auto shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" title="Состав зафиксирован сценарием"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-                                                </div>
-                                            </template>
+                                            {{-- У роли нет ни одного сотрудника — выбирать не из кого --}}
+                                            <p x-show="stage.approvers.length === 0" class="text-sm text-amber-600"
+                                               x-text="'Нет сотрудников с ролью «' + stage.role_name + '» — обратитесь к администратору'"></p>
                                         </div>
                                     </template>
 
-                                    {{-- Ад-хок участники: только для ознакомления и приёма --}}
-                                    @if(!$meta['fixed'])
-                                        <div class="flex flex-wrap items-center gap-2">
-                                            <template x-for="person in adhoc['{{ $phase }}']" :key="person.id">
-                                                <span class="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 text-gray-700 text-sm rounded-lg px-2.5 py-1.5">
-                                                    <input type="hidden" name="adhoc[{{ $phase }}][]" :value="person.id">
-                                                    <span class="w-5 h-5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold flex items-center justify-center" x-text="initials(person.name)"></span>
-                                                    <span x-text="person.name"></span>
-                                                    <button type="button" @click="removeAdhoc('{{ $phase }}', person.id)" class="text-gray-400 hover:text-red-500">×</button>
-                                                </span>
+                                    {{-- Обычное звено: состав задан сценарием --}}
+                                    <template x-if="!(stage.resolver === 'group' && stage.role_name)">
+                                        <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                                            <template x-for="approver in stage.approvers" :key="approver.id">
+                                                <div class="flex items-center gap-2.5">
+                                                    <span class="w-7 h-7 rounded-full bg-indigo-50 text-[#5B4FE8] text-[11px] font-semibold flex items-center justify-center shrink-0"
+                                                          x-text="initials(approver.name)"></span>
+                                                    <span>
+                                                        <span class="block text-sm text-gray-900" x-text="approver.name"></span>
+                                                        <span class="block text-xs text-gray-400" x-text="approver.position || ''"></span>
+                                                    </span>
+                                                </div>
                                             </template>
-
-                                            <select @change="addAdhoc('{{ $phase }}', $event.target.value); $event.target.value = ''"
-                                                    class="text-sm border border-dashed border-[#5B4FE8] text-[#5B4FE8] rounded-lg px-3 py-1.5 bg-white focus:outline-none">
-                                                <option value="">+ Добавить участника {{ $phase === 'ack' ? 'ознакомления' : 'приёма' }}</option>
-                                                <template x-for="person in people" :key="person.id">
-                                                    <option :value="person.id" x-text="person.name"></option>
-                                                </template>
-                                            </select>
+                                            <span x-show="stage.approvers.length === 0" class="text-sm text-amber-600">Исполнители не назначены — шаг будет пропущен</span>
                                         </div>
-                                    @endif
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+
+                        <p x-show="routeStages().length === 0" class="text-sm text-gray-400 border border-dashed border-gray-200 rounded-xl py-6 text-center">
+                            Маршрут пуст — документ сохранится черновиком.
+                        </p>
+                    </div>
+
+                    {{-- Ад-хок участники: только для ознакомления и приёма --}}
+                    <div class="mt-5 space-y-4">
+                        @foreach($adhocPhases as $phase => $meta)
+                            <div>
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="w-2 h-2 rounded-full {{ $meta['dot'] }}"></span>
+                                    <span class="text-sm font-semibold text-gray-900">{{ $meta['label'] }}</span>
+                                </div>
+                                <p class="text-xs text-gray-400 mb-2 ml-4">
+                                    Добавление участника не изменяет сам сценарий — звенья добавляются только к этому документу
+                                </p>
+
+                                <div class="ml-4 border-l-2 border-gray-100 pl-4 flex flex-wrap items-center gap-2">
+                                    <template x-for="person in adhoc['{{ $phase }}']" :key="person.id">
+                                        <span class="inline-flex items-center gap-1.5 bg-amber-50 border border-amber-200 text-gray-700 text-sm rounded-lg px-2.5 py-1.5">
+                                            <input type="hidden" name="adhoc[{{ $phase }}][]" :value="person.id">
+                                            <span class="w-5 h-5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold flex items-center justify-center" x-text="initials(person.name)"></span>
+                                            <span x-text="person.name"></span>
+                                            <button type="button" @click="removeAdhoc('{{ $phase }}', person.id)" class="text-gray-400 hover:text-red-500">×</button>
+                                        </span>
+                                    </template>
+
+                                    <select @change="addAdhoc('{{ $phase }}', $event.target.value); $event.target.value = ''"
+                                            class="text-sm border border-dashed border-[#5B4FE8] text-[#5B4FE8] rounded-lg px-3 py-1.5 bg-white focus:outline-none">
+                                        <option value="">+ Добавить участника {{ $phase === 'ack' ? 'ознакомления' : 'приёма' }}</option>
+                                        <template x-for="person in people" :key="person.id">
+                                            <option :value="person.id" x-text="person.name"></option>
+                                        </template>
+                                    </select>
                                 </div>
                             </div>
                         @endforeach
@@ -735,27 +743,24 @@
                 <div class="bg-white border border-gray-200 rounded-xl p-5">
                     <p class="text-sm font-semibold text-gray-900 mb-4">Маршрут</p>
                     <div class="flex items-start gap-4 overflow-x-auto">
-                        @foreach($phaseMeta as $phase => $meta)
-                            <template x-if="phaseParticipants('{{ $phase }}').length > 0">
-                                <div class="flex items-start gap-4 shrink-0">
-                                    <div>
-                                        <div class="flex items-center gap-1.5 mb-2">
-                                            <span class="w-2 h-2 rounded-full {{ $meta['dot'] }}"></span>
-                                            <span class="text-xs font-medium text-gray-700">{{ str_replace('Фаза ', '', $meta['label']) }}</span>
-                                        </div>
-                                        <div class="flex items-center gap-1">
-                                            <template x-for="person in phaseParticipants('{{ $phase }}')" :key="person.id">
-                                                <span class="w-7 h-7 rounded-full bg-indigo-50 text-[#5B4FE8] text-[10px] font-semibold flex items-center justify-center"
-                                                      :title="person.name" x-text="initials(person.name)"></span>
-                                            </template>
-                                        </div>
-                                        <p class="text-[11px] text-gray-400 mt-2 text-center"
-                                           x-text="phaseParticipants('{{ $phase }}').length + ' уч.'"></p>
+                        <template x-for="(step, index) in routePreview()" :key="index">
+                            <div class="flex items-start gap-4 shrink-0">
+                                <div>
+                                    <div class="flex items-center gap-1.5 mb-2">
+                                        <span class="w-2 h-2 rounded-full" :class="phaseDot(step.phase)"></span>
+                                        <span class="text-xs font-medium text-gray-700" x-text="step.name"></span>
                                     </div>
-                                    <svg class="w-3.5 h-3.5 text-gray-300 mt-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+                                    <div class="flex items-center gap-1">
+                                        <template x-for="person in step.people" :key="person.id">
+                                            <span class="w-7 h-7 rounded-full bg-indigo-50 text-[#5B4FE8] text-[10px] font-semibold flex items-center justify-center"
+                                                  :title="person.name" x-text="initials(person.name)"></span>
+                                        </template>
+                                    </div>
+                                    <p class="text-[11px] text-gray-400 mt-2 text-center" x-text="phaseLabel(step.phase)"></p>
                                 </div>
-                            </template>
-                        @endforeach
+                                <svg x-show="index < routePreview().length - 1" class="w-3.5 h-3.5 text-gray-300 mt-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+                            </div>
+                        </template>
                     </div>
                     <p x-show="routeStages().length === 0" class="text-sm text-gray-400">
                         Маршрут пуст — документ сохранится черновиком.
@@ -940,11 +945,11 @@
             },
 
             phaseLabel(phase) {
-                return { approval: 'Согласование', approve: 'Утверждение', ack: 'Ознакомление', intake: 'Приём' }[phase] ?? phase;
+                return { approval: 'Согласование', approve: 'Утверждение', opinion: 'Заключение', ack: 'Ознакомление', intake: 'Приём' }[phase] ?? phase;
             },
 
             phaseDot(phase) {
-                return { approval: 'bg-blue-500', approve: 'bg-emerald-500', ack: 'bg-amber-500', intake: 'bg-purple-500' }[phase] ?? 'bg-gray-400';
+                return { approval: 'bg-blue-500', approve: 'bg-emerald-500', opinion: 'bg-sky-500', ack: 'bg-amber-500', intake: 'bg-purple-500' }[phase] ?? 'bg-gray-400';
             },
 
             addPhase(phase) {
@@ -1062,6 +1067,7 @@
                     return this.composedRoute
                         .filter(block => block.participants.length > 0)
                         .map(block => ({
+                            name: this.phaseLabel(block.phase),
                             phase: block.phase,
                             resolver: 'user',
                             role_code: null,
@@ -1085,18 +1091,30 @@
                 });
             },
 
-            stagesOf(phase) {
-                return this.routeStages().filter(stage => stage.phase === phase);
-            },
+            /** Сводка маршрута для шага 3: шаги в порядке сценария плюс участники, которых
+             *  инициатор добавил вручную. Добавленных движок дописывает в первый шаг фазы,
+             *  а если такого шага в маршруте нет — заводит его отдельно. */
+            routePreview() {
+                const steps = this.routeStages().map(stage => ({
+                    name:   stage.name,
+                    phase:  stage.phase,
+                    people: this.stageParticipants(stage),
+                }));
 
-            /** Участники фазы для сводки на шаге 3: состав сценария плюс добавленные вручную. */
-            phaseParticipants(phase) {
-                const fromRoute = this.stagesOf(phase).flatMap(stage => this.stageParticipants(stage));
-                const added = this.adhoc[phase] ?? [];
+                for (const phase of ['ack', 'intake']) {
+                    const added = this.adhoc[phase] ?? [];
+                    if (added.length === 0) continue;
 
-                return [...fromRoute, ...added].filter(
-                    (person, index, list) => list.findIndex(p => p.id === person.id) === index
-                );
+                    const target = steps.find(step => step.phase === phase);
+
+                    if (target) {
+                        target.people = [...target.people, ...added.filter(p => !target.people.some(x => x.id === p.id))];
+                    } else {
+                        steps.push({ name: this.phaseLabel(phase), phase, people: added });
+                    }
+                }
+
+                return steps;
             },
 
             /** Кто реально пойдёт по звену: для роли — только выбранный исполнитель. */
