@@ -164,8 +164,12 @@
                             </td>
                             <td class="px-5 py-3.5">
                                 @php
+                                    // Ответственный — участники текущей (незакрытой) стадии маршрута.
+                                    // Без этого в колонке оставался согласующий первой стадии,
+                                    // уже давно её одобривший.
                                     $approval    = $doc->activeApproval ?? $doc->latestApproval;
-                                    $activeStage = $approval?->stages->first();
+                                    $activeStage = $approval?->stages->firstWhere('status', 'in_progress')
+                                                ?? $approval?->stages->first();
                                     $approvers   = $activeStage?->workflowStage?->approvers ?? collect();
                                 @endphp
                                 @if($approvers->isNotEmpty())

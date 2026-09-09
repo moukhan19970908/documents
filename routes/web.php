@@ -243,6 +243,17 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
     // Employees org chart
     Route::get('/employees', [EmployeesController::class, 'index'])->name('employees.index');
 
+    // Правка оргструктуры прямо со страницы «Сотрудники» (только админ)
+    Route::middleware('role:admin')->prefix('employees')->name('employees.')->group(function () {
+        Route::post('departments', [EmployeesController::class, 'storeDepartment'])->name('departments.store');
+        Route::put('departments/{department}', [EmployeesController::class, 'updateDepartment'])->name('departments.update');
+        Route::delete('departments/{department}', [EmployeesController::class, 'destroyDepartment'])->name('departments.destroy');
+        Route::post('users', [EmployeesController::class, 'storeUser'])->name('users.store');
+        Route::put('users/{user}', [EmployeesController::class, 'updateUser'])->name('users.update');
+        Route::put('users/{user}/password', [EmployeesController::class, 'updateUserPassword'])->name('users.password');
+        Route::delete('users/{user}', [EmployeesController::class, 'deactivateUser'])->name('users.deactivate');
+    });
+
     // Admin
     Route::middleware('role:admin')->prefix('admin')->name('admin.')->group(function () {
         Route::get('access-control', AccessControlController::class)->name('access-control.index');
