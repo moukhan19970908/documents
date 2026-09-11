@@ -28,6 +28,19 @@
     box-shadow: 0 1px 3px rgb(0 0 0 / 0.1), 0 8px 24px rgb(0 0 0 / 0.06);
 }
 
+/* Тот же текст, но вне «листа»: статья базы знаний набирается в этом же редакторе,
+   поэтому берём типографику .blank-sheet и снимаем только геометрию листа A4.
+   Без этого preflight Tailwind срезает маркеры и отступы у ul/ol, а классу prose
+   опереться не на что — плагина @tailwindcss/typography в проекте нет. */
+.blank-sheet.sheet-plain {
+    width: auto;
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
 .blank-sheet p { margin: 0 0 0.5em; }
 .blank-sheet h1 { font-size: 18pt; font-weight: 700; margin: 0 0 0.5em; }
 .blank-sheet h2 { font-size: 15pt; font-weight: 700; margin: 0 0 0.5em; }

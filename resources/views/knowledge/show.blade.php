@@ -41,9 +41,9 @@
             </div>
         </div>
 
-        <article class="prose prose-sm max-w-none bg-white border border-gray-200 rounded-xl p-6">
+        <article class="bg-white border border-gray-200 rounded-xl p-6">
             @if($material->body)
-                {!! $material->bodyWithVideos() !!}
+                <div class="blank-sheet sheet-plain">{!! $material->bodyWithVideos() !!}</div>
             @else
                 <p class="text-gray-400">Материал пока без содержимого.</p>
             @endif

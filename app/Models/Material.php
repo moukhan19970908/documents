@@ -186,9 +186,13 @@ class Material extends Model
             return false;
         }
 
+        // directionMemberIds, а не getDescendantIds: отделы прикреплены к направлению
+        // через direction_id, их parent_id остаётся в дереве Битрикса. Обход только по
+        // parent_id возвращал бы один контейнер направления, и доступ, выданный на
+        // направление, не доходил бы ни до одного отдела.
         $scope = [];
         foreach ($this->accessDepartments as $dept) {
-            $scope = array_merge($scope, Department::getDescendantIds($dept->id));
+            $scope = array_merge($scope, Department::directionMemberIds($dept->id));
         }
 
         if (!in_array($user->department_id, $scope, true)) {

@@ -43,7 +43,12 @@
     @endif
 
     {{-- Filters --}}
-    <form method="GET" class="bg-white rounded-xl border border-gray-200 p-4 mb-5 flex flex-wrap gap-3 items-end">
+    {{-- Подтип каскадом от типа: пока тип не выбран, выбирать нечего, а после выбора
+         в списке остаются только подтипы этого типа. Смена типа сбрасывает подтип. --}}
+    <form method="GET"
+          x-data="{ type: @js((string) request('type', '')), subtype: @js((string) request('subtype', '')) }"
+          x-init="$watch('type', () => subtype = '')"
+          class="bg-white rounded-xl border border-gray-200 p-4 mb-5 flex flex-wrap gap-3 items-end">
         @if(auth()->user()->isAdmin() && request('scope') === 'all')
             <input type="hidden" name="scope" value="all">
         @endif
@@ -54,13 +59,34 @@
         </div>
         <div class="w-40">
             <label class="text-xs text-gray-500 font-medium block mb-1">Тип</label>
-            <select name="type" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+            <select name="type" x-model="type" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
                 <option value="">Все типы</option>
                 @foreach($documentTypes as $type)
                     <option value="{{ $type->slug }}" {{ request('type') === $type->slug ? 'selected' : '' }}>{{ $type->name }}</option>
                 @endforeach
             </select>
         </div>
+        @php $subtypeTypes = $documentTypes->filter(fn ($t) => $t->subtypes->isNotEmpty()); @endphp
+        @if($subtypeTypes->isNotEmpty())
+        <div class="w-40">
+            <label class="text-xs text-gray-500 font-medium block mb-1">Подтип</label>
+            <select name="subtype" x-model="subtype" :disabled="!type"
+                    :class="!type && 'bg-gray-50 text-gray-400 cursor-not-allowed'"
+                    class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                <option value="" x-text="type ? 'Все подтипы' : 'Сначала выберите тип'">Все подтипы</option>
+                @foreach($subtypeTypes as $subtypeType)
+                    @foreach($subtypeType->subtypes as $sub)
+                        {{-- x-show прячет чужие подтипы, :disabled страхует на случай браузера,
+                             который display:none у <option> игнорирует. --}}
+                        <option value="{{ $sub->id }}"
+                                x-show="type === @js($subtypeType->slug)"
+                                :disabled="type !== @js($subtypeType->slug)"
+                                {{ (int) request('subtype') === $sub->id ? 'selected' : '' }}>{{ $sub->name }}</option>
+                    @endforeach
+                @endforeach
+            </select>
+        </div>
+        @endif
         <div class="w-40">
             <label class="text-xs text-gray-500 font-medium block mb-1">Статус</label>
             <select name="status" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
@@ -92,7 +118,7 @@
             <input type="date" name="date_to" value="{{ request('date_to') }}" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
         </div>
         <button type="submit" class="px-4 py-2 bg-[#5B4FE8] text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">Найти</button>
-        @if(request()->hasAny(['search', 'type', 'status', 'date_from', 'date_to', 'direction']))
+        @if(request()->hasAny(['search', 'type', 'subtype', 'status', 'date_from', 'date_to', 'direction']))
             <a href="{{ route($listRoute, request('scope') === 'all' ? ['scope' => 'all'] : []) }}" class="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-50">Сбросить</a>
         @endif
     </form>

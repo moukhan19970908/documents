@@ -36,7 +36,9 @@
         @endif
 
         <div class="flex gap-6 items-start">
-            {{-- Дерево знаний --}}
+            {{-- Дерево знаний: только админу — обычному сотруднику незачем видеть
+                 направления и отделы, к которым у него нет материалов. --}}
+            @if($isAdmin)
             <aside class="w-60 shrink-0 hidden md:block">
                 <div class="relative mb-4">
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
@@ -87,6 +89,7 @@
                     @endforeach
                 </nav>
             </aside>
+            @endif
 
             {{-- Карточки --}}
             <div class="flex-1 min-w-0">

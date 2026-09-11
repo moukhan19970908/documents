@@ -47,6 +47,12 @@ class DocumentType extends Model
         return $this->belongsTo(Numerator::class);
     }
 
+    /** Scenarios bound to this type. */
+    public function workflows(): HasMany
+    {
+        return $this->hasMany(Workflow::class);
+    }
+
     public function subtypes(): HasMany
     {
         return $this->hasMany(DocumentSubtype::class)->orderBy('sort_order');

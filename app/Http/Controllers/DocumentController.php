@@ -63,6 +63,10 @@ class DocumentController extends Controller
             $query->whereHas('type', fn($q) => $q->where('slug', $type));
         }
 
+        if ($subtype = $request->get('subtype')) {
+            $query->where('document_subtype_id', $subtype);
+        }
+
         if ($status = $request->get('status')) {
             $query->where('status', $status);
         }
@@ -148,8 +152,18 @@ class DocumentController extends Controller
         }
         // full access non-admin: no restriction — all documents visible
 
-        $documents     = $query->paginate(25)->withQueryString();
-        $documentTypes = DocumentType::all();
+        $documents = $query->paginate(25)->withQueryString();
+
+        // Фильтр по типу предлагает только типы процесса этой страницы: у общего
+        // документооборота и «Кредитного комитета» наборы разные, а отключённым
+        // типам и типам чужих процессов («Приказ») в списке делать нечего.
+        // Подтипы фильтра берутся отсюда же — в выпадающем списке они сгруппированы
+        // по своему типу, поэтому отдельной выборки не нужно.
+        $documentTypes = DocumentType::where('is_active', true)
+            ->whereHas('workflows', fn ($q) => $this->scopeWorkflowsToProcess($q, $process))
+            ->with(['subtypes' => fn ($q) => $q->where('is_active', true)])
+            ->orderBy('name')
+            ->get();
 
         // Approver candidates for the "Свой сценарий" (ad-hoc) form.
         // Linear users may pick only colleagues from their department + the department head.
