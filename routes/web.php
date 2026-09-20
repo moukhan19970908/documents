@@ -46,6 +46,7 @@ use App\Http\Controllers\Vacation\VacationRegistryController;
 
 use App\Http\Controllers\AgreementController;
 use App\Http\Controllers\AvatarController;
+use App\Http\Controllers\ProfileController;
 
 // Auth
 Route::redirect('/', '/login');
@@ -239,6 +240,12 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
     // Web Push subscriptions
     Route::post('/push/subscribe', [\App\Http\Controllers\PushController::class, 'subscribe'])->name('push.subscribe');
     Route::post('/push/unsubscribe', [\App\Http\Controllers\PushController::class, 'unsubscribe'])->name('push.unsubscribe');
+
+    // Личный профиль: контакты и смена пароля
+    Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
+    Route::put('/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::get('/profile/password', [ProfileController::class, 'editPassword'])->name('profile.password');
+    Route::put('/profile/password', [ProfileController::class, 'updatePassword'])->name('profile.password.update');
 
     // Employees org chart
     Route::get('/employees', [EmployeesController::class, 'index'])->name('employees.index');

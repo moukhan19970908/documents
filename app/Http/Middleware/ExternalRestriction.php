@@ -10,9 +10,9 @@ class ExternalRestriction
 {
     /**
      * External participants may only reach their own workspace: dashboard,
-     * their documents, tasks, chats, archive and notifications. Everything
-     * else (workflows, employees, trips, vacations, admin) is denied even
-     * via a direct URL.
+     * their documents, tasks, chats, archive, notifications and their own
+     * profile. Everything else (workflows, employees, trips, vacations,
+     * admin) is denied even via a direct URL.
      */
     private const ALLOWED_PREFIXES = [
         'dashboard',
@@ -22,6 +22,7 @@ class ExternalRestriction
         'archive.',
         'notifications.',
         'agreement.',
+        'profile.',
         'logout',
     ];
 
