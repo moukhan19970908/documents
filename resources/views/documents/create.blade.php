@@ -250,7 +250,7 @@
             <div x-show="step === 1" class="max-w-4xl space-y-6">
 
                 {{-- Классификатор: тип и подтип сужают список сценариев ниже --}}
-                <div>
+                <div x-show="filterTypes().length > 0">
                     <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Классификатор</p>
                     <div class="bg-white border border-gray-200 rounded-xl p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
@@ -276,12 +276,9 @@
                         </div>
                     </div>
 
-                    <p x-show="filterTypes().length === 0" class="text-sm text-gray-400 mt-3">
-                        Доступных типов документов нет — обратитесь к администратору.
-                    </p>
                 </div>
 
-                <div x-show="filterTypeId">
+                <div x-show="filterTypeId || filterTypes().length === 0">
                     <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Сценарий</p>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <template x-for="scenario in filteredScenarios()" :key="scenario.id + '-' + scenario.subtype_id">
@@ -300,8 +297,11 @@
                             </button>
                         </template>
                     </div>
-                    <p x-show="filteredScenarios().length === 0" class="text-sm text-gray-400">
-                        Для выбранного классификатора сценариев нет — выберите другой тип или обратитесь к администратору.
+                    <p x-show="filteredScenarios().length === 0 && scenarios.length > 0" class="text-sm text-gray-400">
+                        Для выбранного классификатора сценариев нет — выберите другой тип.
+                    </p>
+                    <p x-show="scenarios.length === 0" class="text-sm text-gray-400">
+                        Доступных сценариев нет — обратитесь к администратору.
                     </p>
                 </div>
 
@@ -923,11 +923,19 @@
                     && (!this.subtypeId || Number(s.subtype_id) === Number(this.subtypeId))) ?? null;
             },
 
-            /** Типы классификатора, по которым есть хотя бы один доступный сценарий. */
+            /** Типы, встречающиеся в доступных сценариях. Строим по самим сценариям, а не
+             *  пересечением с классификатором: сценарий (например, composed) может ссылаться
+             *  на тип, которого нет в списке доступных инициатору, — и тогда он выпал бы из
+             *  формы вместе со своим типом. */
             filterTypes() {
-                const ids = new Set(this.scenarios.map(s => String(s.type_id)));
+                const seen = new Map();
 
-                return this.classifiers.filter(t => ids.has(String(t.id)));
+                this.scenarios.forEach(s => {
+                    if (! s.type_id || seen.has(String(s.type_id))) return;
+                    seen.set(String(s.type_id), { id: s.type_id, code: s.type_code, name: s.type_name });
+                });
+
+                return [...seen.values()];
             },
 
             /** Подтипы выбранного типа — только встречающиеся в сценариях. */
@@ -943,9 +951,11 @@
                 return [...seen.values()];
             },
 
-            /** Сценарии выбранного классификатора. Сценарий без типа универсален — он
-             *  не привязан к классификатору и остаётся виден при любом выборе. */
+            /** Сценарии выбранного классификатора. Сценарий без типа универсален — он не
+             *  привязан к классификатору и виден при любом выборе. Если типов нет вообще,
+             *  классификатор не показывается и список работает как прежде — без фильтра. */
             filteredScenarios() {
+                if (this.filterTypes().length === 0) return this.scenarios;
                 if (!this.filterTypeId) return [];
 
                 return this.scenarios.filter(s => !s.type_id || (
