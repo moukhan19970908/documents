@@ -19,7 +19,7 @@ class TripTaskController extends Controller
     {
         $user = auth()->user();
 
-        $tasks = TripTask::with(['trip.user', 'files', 'assignee'])
+        $tasks = TripTask::with(['trip.user', 'vacation.user', 'files', 'assignee'])
             ->where(function ($q) use ($user) {
                 $q->where('assignee_id', $user->id);
                 if ($user->isAdmin()) {
@@ -64,7 +64,7 @@ class TripTaskController extends Controller
         $task = $file->task;
         $uid  = auth()->id();
         $allowed = $task->assignee_id === $uid
-            || $task->trip->user_id === $uid
+            || $task->initiator()?->id === $uid
             || auth()->user()->isAdmin();
 
         abort_unless($allowed, 403);
@@ -102,7 +102,7 @@ class TripTaskController extends Controller
         $uid = auth()->id();
 
         return $task->assignee_id === $uid
-            || $task->trip->user_id === $uid
+            || $task->initiator()?->id === $uid
             || auth()->user()->isAdmin()
             || in_array($task->assignee_id, \App\Models\Substitution::coveredUserIds(auth()->user()), true);
     }

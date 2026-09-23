@@ -15,31 +15,47 @@
                     <div class="min-w-0">
                         <p class="font-semibold text-gray-900">{{ $task->title }}</p>
                         <p class="text-xs text-gray-500 mt-0.5">
-                            {{ $task->whoLabel() }} · командировка
-                            <a href="{{ route('trips.show', $task->trip) }}" class="text-[#5B4FE8] hover:underline">T-{{ $task->trip_request_id }}</a>
-                            · {{ $task->trip->user->name }}
+                            {{ $task->whoLabel() }} · {{ $task->requestLabel() }}
+                            <a href="{{ $task->requestUrl() }}" class="text-[#5B4FE8] hover:underline">{{ $task->requestNumber() }}</a>
+                            · {{ $task->initiator()?->name }}
                         </p>
                     </div>
                     <span class="shrink-0 text-xs px-2.5 py-1 rounded-full {{ $task->statusColor() }}">{{ $task->statusLabel() }}</span>
                 </div>
 
                 {{-- Контекст родительской заявки --}}
+                @php($parent = $task->request())
+                @if($parent)
                 <div class="mt-3 rounded-lg bg-[#5B4FE8]/5 border border-[#5B4FE8]/10 px-4 py-3">
                     <p class="text-[11px] font-semibold text-[#5B4FE8] uppercase tracking-widest mb-2">Контекст родительской заявки</p>
                     <dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm">
-                        @if($task->trip->city)
-                            <dt class="text-gray-400">Город</dt><dd class="text-gray-800 font-medium">{{ $task->trip->city }}</dd>
-                        @endif
+                        <dt class="text-gray-400">Сотрудник</dt>
+                        <dd class="text-gray-800 font-medium">{{ $parent->user?->name }}</dd>
                         <dt class="text-gray-400">Даты</dt>
-                        <dd class="text-gray-800 font-medium">{{ $task->trip->date_start?->format('d.m.Y') }} — {{ $task->trip->date_end?->format('d.m.Y') }}</dd>
-                        @if($task->trip->transport_type)
-                            <dt class="text-gray-400">Транспорт</dt><dd class="text-gray-800 font-medium">{{ $task->trip->transport_type }}</dd>
-                        @endif
-                        @if($task->trip->purpose)
-                            <dt class="text-gray-400">Цель</dt><dd class="text-gray-700">{{ $task->trip->purpose }}</dd>
+                        <dd class="text-gray-800 font-medium">{{ $parent->date_start?->format('d.m.Y') }} — {{ $parent->date_end?->format('d.m.Y') }}</dd>
+                        @if($task->isVacationTask())
+                            <dt class="text-gray-400">Вид отпуска</dt>
+                            <dd class="text-gray-800 font-medium">{{ $parent->vacation_type_label }}</dd>
+                            <dt class="text-gray-400">Дней</dt>
+                            <dd class="text-gray-800 font-medium">{{ $parent->days_count }}</dd>
+                            @if($parent->substitution?->deputy)
+                                <dt class="text-gray-400">Замещение</dt>
+                                <dd class="text-gray-800 font-medium">{{ $parent->substitution->deputy->name }}</dd>
+                            @endif
+                        @else
+                            @if($parent->city)
+                                <dt class="text-gray-400">Город</dt><dd class="text-gray-800 font-medium">{{ $parent->city }}</dd>
+                            @endif
+                            @if($parent->transport_type)
+                                <dt class="text-gray-400">Транспорт</dt><dd class="text-gray-800 font-medium">{{ $parent->transport_type }}</dd>
+                            @endif
+                            @if($parent->purpose)
+                                <dt class="text-gray-400">Цель</dt><dd class="text-gray-700">{{ $parent->purpose }}</dd>
+                            @endif
                         @endif
                     </dl>
                 </div>
+                @endif
 
                 {{-- Результат + файлы --}}
                 @if($task->result_comment)

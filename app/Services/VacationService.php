@@ -13,6 +13,7 @@ class VacationService
         private ApprovalService $approvalService,
         private NotificationService $notifications,
         private RequestFlowRouter $flowRouter,
+        private TripTaskService $tasks,
     ) {}
 
     /**
@@ -41,9 +42,11 @@ class VacationService
     public function create(User $user, array $data, bool $submit = false): VacationRequest
     {
         // Граф-процесс (если опубликован) строит маршрут; иначе — автоподбор ApprovalRoute.
-        $route = $this->flowRouter->routeFor($user, 'vacation', [
+        $routing = $this->flowRouter->routeFor($user, 'vacation', [
             'vacation_type' => $data['vacation_type'] ?? null,
-        ])['route'];
+        ]);
+        $route     = $routing['route'];
+        $flowTasks = $routing['via_graph'] ? $routing['tasks'] : null;   // null — заявка шла не по графу
 
         $days = Carbon::parse($data['date_start'])->diffInDays($data['date_end']) + 1;
 
@@ -52,7 +55,7 @@ class VacationService
             ? $this->approvalService->findApprover($user, $firstStep)?->id
             : null;
 
-        $vacation = DB::transaction(function () use ($user, $data, $route, $days, $submit, $signatoryId) {
+        $vacation = DB::transaction(function () use ($user, $data, $route, $days, $submit, $signatoryId, $flowTasks) {
             $vacation = VacationRequest::create([
                 'user_id'       => $user->id,
                 'signatory_id'  => $signatoryId,
@@ -64,6 +67,7 @@ class VacationService
                 'date_end'      => $data['date_end'],
                 'days_count'    => $days,
                 'comment'       => $data['comment'] ?? null,
+                'flow_tasks'    => $flowTasks,
             ]);
 
             if ($submit) {
@@ -102,9 +106,16 @@ class VacationService
             }
         });
 
+        $fresh = $vacation->fresh();
+
         // Moved on to the next step — notify its approver.
-        if ($vacation->fresh()?->status === 'pending') {
-            $this->notifyCurrentApprover($vacation->fresh());
+        if ($fresh?->status === 'pending') {
+            $this->notifyCurrentApprover($fresh);
+        }
+
+        // Согласование завершено — порождаются задания графа (узлы «Задание»).
+        if ($fresh?->status === 'approved' && $fresh->flow_tasks !== null) {
+            $this->tasks->generateFromFlow($fresh);
         }
     }
 

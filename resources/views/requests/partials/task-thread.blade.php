@@ -1,10 +1,11 @@
-{{-- Тред задания: вопросы инициатору и ответы. $task — TripTask (с messages.user). --}}
+{{-- Тред задания: вопросы инициатору и ответы. $task — TripTask (с messages.user);
+     родительская заявка — командировка или отпуск. --}}
 <div>
     @if($task->messages->isNotEmpty())
         <div class="space-y-2.5 mb-3">
             @foreach($task->messages as $m)
                 @php
-                    $role = $m->user_id === $task->trip->user_id ? 'инициатор'
+                    $role = $m->user_id === $task->initiator()?->id ? 'инициатор'
                           : ($m->user_id === $task->assignee_id ? 'исполнитель' : null);
                 @endphp
                 <div class="flex items-start gap-2.5">

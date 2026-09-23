@@ -4,7 +4,9 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class ProfileTest extends TestCase
@@ -83,6 +85,80 @@ class ProfileTest extends TestCase
         ])->assertRedirect(route('profile.password'));
 
         $this->assertTrue(Hash::check('brand-new-456', $user->refresh()->password));
+    }
+
+    public function test_user_uploads_an_avatar(): void
+    {
+        Storage::fake('s3');
+        $user = $this->user(['avatar' => null]);
+
+        $this->actingAs($user)->put(route('profile.update'), [
+            'name'   => $user->name,
+            'email'  => $user->email,
+            'avatar' => UploadedFile::fake()->image('me.jpg'),
+        ])->assertRedirect(route('profile.edit'));
+
+        $user->refresh();
+        $this->assertNotNull($user->avatar);
+        Storage::disk('s3')->assertExists($user->avatar);
+    }
+
+    public function test_replacing_an_avatar_deletes_the_previous_file(): void
+    {
+        Storage::fake('s3');
+        Storage::fake('local');
+        $user = $this->user();
+
+        $this->actingAs($user)->put(route('profile.update'), [
+            'name'   => $user->name,
+            'email'  => $user->email,
+            'avatar' => UploadedFile::fake()->image('first.jpg'),
+        ]);
+        $first = $user->refresh()->avatar;
+
+        // Кэш прогревается при первой отдаче через AvatarController — имитируем его.
+        Storage::disk('local')->put($user->avatarCachePath($first), 'cached');
+
+        $this->actingAs($user)->put(route('profile.update'), [
+            'name'   => $user->name,
+            'email'  => $user->email,
+            'avatar' => UploadedFile::fake()->image('second.jpg'),
+        ]);
+        $second = $user->refresh()->avatar;
+
+        $this->assertNotSame($first, $second);
+        Storage::disk('s3')->assertExists($second);
+        Storage::disk('s3')->assertMissing($first);
+        Storage::disk('local')->assertMissing($user->avatarCachePath($first));
+    }
+
+    public function test_saving_without_a_file_keeps_the_current_avatar(): void
+    {
+        Storage::fake('s3');
+        $user = $this->user(['avatar' => 'avatars/b24_42.jpg']);
+        Storage::disk('s3')->put('avatars/b24_42.jpg', 'binary');
+
+        $this->actingAs($user)->put(route('profile.update'), [
+            'name'  => 'Новое Имя',
+            'email' => $user->email,
+        ])->assertRedirect(route('profile.edit'));
+
+        $this->assertSame('avatars/b24_42.jpg', $user->refresh()->avatar);
+        Storage::disk('s3')->assertExists('avatars/b24_42.jpg');
+    }
+
+    public function test_a_non_image_is_rejected(): void
+    {
+        Storage::fake('s3');
+        $user = $this->user(['avatar' => null]);
+
+        $this->actingAs($user)->put(route('profile.update'), [
+            'name'   => $user->name,
+            'email'  => $user->email,
+            'avatar' => UploadedFile::fake()->create('resume.pdf', 100, 'application/pdf'),
+        ])->assertSessionHasErrors('avatar');
+
+        $this->assertNull($user->refresh()->avatar);
     }
 
     public function test_both_tabs_render(): void

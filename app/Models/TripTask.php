@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class TripTask extends Model
 {
     protected $fillable = [
-        'trip_request_id', 'target', 'title', 'assignee_id',
+        'trip_request_id', 'vacation_request_id', 'target', 'title', 'assignee_id',
         'status', 'result_comment', 'done_by', 'done_at',
     ];
 
@@ -30,10 +30,37 @@ class TripTask extends Model
     ];
 
     public function trip(): BelongsTo     { return $this->belongsTo(TripRequest::class, 'trip_request_id'); }
+    public function vacation(): BelongsTo { return $this->belongsTo(VacationRequest::class, 'vacation_request_id'); }
     public function assignee(): BelongsTo { return $this->belongsTo(User::class, 'assignee_id'); }
     public function doneBy(): BelongsTo   { return $this->belongsTo(User::class, 'done_by'); }
     public function files(): HasMany      { return $this->hasMany(TripTaskFile::class)->latest('id'); }
     public function messages(): HasMany   { return $this->hasMany(TripTaskMessage::class)->oldest('id'); }
+
+    /** Родительская заявка: командировка либо отпуск — заполнена ровно одна ссылка. */
+    public function request(): TripRequest|VacationRequest|null
+    {
+        return $this->trip ?? $this->vacation;
+    }
+
+    public function isVacationTask(): bool { return $this->vacation_request_id !== null; }
+
+    /** Человек, которому уходит результат задания, — инициатор родительской заявки. */
+    public function initiator(): ?User { return $this->request()?->user; }
+
+    /** Номер заявки так, как он показан в её карточке: T-12 / V-25. */
+    public function requestNumber(): string
+    {
+        return $this->isVacationTask() ? 'V-' . $this->vacation_request_id : 'T-' . $this->trip_request_id;
+    }
+
+    public function requestLabel(): string { return $this->isVacationTask() ? 'отпуск' : 'командировка'; }
+
+    public function requestUrl(): string
+    {
+        return $this->isVacationTask()
+            ? route('vacations.show', $this->vacation_request_id)
+            : route('trips.show', $this->trip_request_id);
+    }
 
     public function whoLabel(): string { return self::TARGETS[$this->target]['who'] ?? ''; }
     public function statusLabel(): string { return self::STATUSES[$this->status] ?? $this->status; }

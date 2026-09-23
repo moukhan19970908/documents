@@ -24,9 +24,9 @@
                         <div class="min-w-0">
                             <p class="font-semibold text-gray-900">{{ $task->title }}</p>
                             <p class="text-xs text-gray-500 mt-0.5">
-                                {{ $task->whoLabel() }} · командировка
-                                <a href="{{ route('trips.show', $task->trip) }}" class="text-[#5B4FE8] hover:underline">T-{{ $task->trip_request_id }}</a>
-                                · {{ $task->trip->user->name }}@if($task->trip->city) · {{ $task->trip->city }}@endif
+                                {{ $task->whoLabel() }} · {{ $task->requestLabel() }}
+                                <a href="{{ $task->requestUrl() }}" class="text-[#5B4FE8] hover:underline">{{ $task->requestNumber() }}</a>
+                                · {{ $task->initiator()?->name }}@if(! $task->isVacationTask() && $task->trip?->city) · {{ $task->trip->city }}@endif
                             </p>
                         </div>
                         <span class="shrink-0 text-xs px-2.5 py-1 rounded-full {{ $task->statusColor() }}">{{ $task->statusLabel() }}</span>

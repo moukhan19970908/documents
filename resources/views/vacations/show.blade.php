@@ -155,6 +155,48 @@
                 </div>
             @endif
 
+            {{-- Задания по отпуску: порождает граф-процесс, результаты возвращаются инициатору --}}
+            @if($vacation->tasks->isNotEmpty())
+                <div class="bg-white rounded-xl border border-gray-200">
+                    <div class="px-6 py-4 border-b border-gray-100">
+                        <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-widest">Задания по отпуску</h2>
+                        <p class="text-xs text-gray-400 mt-0.5">Порождаются после согласования, результаты возвращаются инициатору</p>
+                    </div>
+                    <div class="divide-y divide-gray-50">
+                        @foreach($vacation->tasks as $task)
+                            <div class="px-6 py-3.5" x-data="{ chat: false }">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div class="min-w-0">
+                                        <p class="text-sm font-medium text-gray-900">{{ $task->title }}</p>
+                                        <p class="text-xs text-gray-400">{{ $task->assignee?->name ?? 'исполнитель не назначен' }}</p>
+                                    </div>
+                                    <div class="flex items-center gap-2 shrink-0">
+                                        <button type="button" @click="chat = !chat"
+                                                class="text-xs px-2.5 py-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50">
+                                            Обсуждение@if($task->messages->isNotEmpty()) <span class="text-[#5B4FE8] font-semibold">{{ $task->messages->count() }}</span>@endif
+                                        </button>
+                                        <span class="text-xs px-2.5 py-1 rounded-full {{ $task->statusColor() }}">{{ $task->statusLabel() }}</span>
+                                    </div>
+                                </div>
+                                @if($task->result_comment)<p class="text-sm text-gray-600 mt-1.5">{{ $task->result_comment }}</p>@endif
+                                @if($task->files->isNotEmpty())
+                                    <div class="mt-2 flex flex-wrap gap-2">
+                                        @foreach($task->files as $f)
+                                            <a href="{{ route('trips.tasks.file', $f) }}" class="inline-flex items-center gap-1.5 text-xs text-[#5B4FE8] hover:underline">
+                                                {{ $f->original_name }}
+                                            </a>
+                                        @endforeach
+                                    </div>
+                                @endif
+                                <div x-show="chat" x-cloak class="mt-3 pt-3 border-t border-gray-50">
+                                    @include('requests.partials.task-thread', ['task' => $task, 'placeholder' => 'Ответить исполнителю…'])
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
+
             @if($vacation->approvalLogs->isNotEmpty())
                 <div class="bg-white rounded-xl border border-gray-200 p-6">
                     <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">История согласования</h2>

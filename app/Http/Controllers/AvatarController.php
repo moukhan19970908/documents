@@ -31,7 +31,7 @@ class AvatarController extends Controller
 
         // Локальный файловый кэш: содержимое по пути неизменно (Bitrix24Service не
         // перекачивает уже сохранённые аватары), поэтому ключ = путь-в-S3.
-        $cacheKey = 'avatar-cache/' . $user->id . '-' . substr(md5($user->avatar), 0, 10) . '.' . ($ext ?: 'jpg');
+        $cacheKey = $user->avatarCachePath($user->avatar);
 
         try {
             if (! Storage::disk('local')->exists($cacheKey)) {

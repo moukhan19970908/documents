@@ -249,10 +249,42 @@
             {{-- ─────────────── Шаг 1: сценарий и маршрут ─────────────── --}}
             <div x-show="step === 1" class="max-w-4xl space-y-6">
 
+                {{-- Классификатор: тип и подтип сужают список сценариев ниже --}}
                 <div>
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Классификатор</p>
+                    <div class="bg-white border border-gray-200 rounded-xl p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 mb-1.5">Тип <span class="text-red-500">*</span></label>
+                            <select x-model="filterTypeId" @change="onFilterChange(true)"
+                                    class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                                <option value="">— выберите тип —</option>
+                                <template x-for="type in filterTypes()" :key="type.id">
+                                    <option :value="type.id" x-text="(type.code ? '[' + type.code + '] ' : '') + type.name"></option>
+                                </template>
+                            </select>
+                        </div>
+
+                        <div x-show="filterSubtypes().length > 0">
+                            <label class="block text-xs font-medium text-gray-500 mb-1.5">Подтип</label>
+                            <select x-model="filterSubtypeId" @change="onFilterChange()"
+                                    class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                                <option value="">Все подтипы</option>
+                                <template x-for="sub in filterSubtypes()" :key="sub.id">
+                                    <option :value="sub.id" x-text="(sub.code ? '[' + sub.code + '] ' : '') + sub.name"></option>
+                                </template>
+                            </select>
+                        </div>
+                    </div>
+
+                    <p x-show="filterTypes().length === 0" class="text-sm text-gray-400 mt-3">
+                        Доступных типов документов нет — обратитесь к администратору.
+                    </p>
+                </div>
+
+                <div x-show="filterTypeId">
                     <p class="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Сценарий</p>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <template x-for="scenario in scenarios" :key="scenario.id + '-' + scenario.subtype_id">
+                        <template x-for="scenario in filteredScenarios()" :key="scenario.id + '-' + scenario.subtype_id">
                             <button type="button" @click="pickScenario(scenario)"
                                     :class="isPicked(scenario) ? 'border-[#5B4FE8] ring-1 ring-[#5B4FE8]' : 'border-gray-200 hover:border-gray-300'"
                                     class="relative bg-white border rounded-xl p-4 text-left">
@@ -268,8 +300,8 @@
                             </button>
                         </template>
                     </div>
-                    <p x-show="scenarios.length === 0" class="text-sm text-gray-400">
-                        Доступных сценариев нет — обратитесь к администратору.
+                    <p x-show="filteredScenarios().length === 0" class="text-sm text-gray-400">
+                        Для выбранного классификатора сценариев нет — выберите другой тип или обратитесь к администратору.
                     </p>
                 </div>
 
@@ -823,6 +855,10 @@
             scenarioId: @json(old('workflow_id', '')),
             subtypeId: @json(old('document_subtype_id', '')),
 
+            // Классификатор сужает список сценариев: тип → подтип → сценарий.
+            filterTypeId: '',
+            filterSubtypeId: '',
+
             // «Свой сценарий»: тип и подтип выбирает инициатор при запуске.
             composedTypeId: @json(old('document_type_id', '')),
             composedSubtypeId: @json(old('document_subtype_id', '')),
@@ -858,6 +894,10 @@
                     // может не совпадать с классификатором карточки, по которому матчит current().
                     const scenario = this.scenarios.find(s => String(s.id) === String(this.scenarioId));
 
+                    // Фильтр классификатора — по карточке, иначе список сценариев был бы пуст.
+                    this.filterTypeId    = scenario?.type_id ?? '';
+                    this.filterSubtypeId = scenario?.subtype_id ?? '';
+
                     if (scenario?.composed) {
                         this.subtypeId = scenario.subtype_id ?? '';   // матч карточки — по её классификатору
                         this.loadPresets();
@@ -883,6 +923,58 @@
                     && (!this.subtypeId || Number(s.subtype_id) === Number(this.subtypeId))) ?? null;
             },
 
+            /** Типы классификатора, по которым есть хотя бы один доступный сценарий. */
+            filterTypes() {
+                const ids = new Set(this.scenarios.map(s => String(s.type_id)));
+
+                return this.classifiers.filter(t => ids.has(String(t.id)));
+            },
+
+            /** Подтипы выбранного типа — только встречающиеся в сценариях. */
+            filterSubtypes() {
+                const seen = new Map();
+
+                this.scenarios
+                    .filter(s => String(s.type_id) === String(this.filterTypeId) && s.subtype_id)
+                    .forEach(s => seen.set(String(s.subtype_id), {
+                        id: s.subtype_id, code: s.subtype_code, name: s.subtype_name,
+                    }));
+
+                return [...seen.values()];
+            },
+
+            /** Сценарии выбранного классификатора. Сценарий без типа универсален — он
+             *  не привязан к классификатору и остаётся виден при любом выборе. */
+            filteredScenarios() {
+                if (!this.filterTypeId) return [];
+
+                return this.scenarios.filter(s => !s.type_id || (
+                    String(s.type_id) === String(this.filterTypeId)
+                    && (!this.filterSubtypeId || String(s.subtype_id) === String(this.filterSubtypeId))
+                ));
+            },
+
+            /** Смена классификатора: выбранный сценарий принадлежал прежнему — снимаем. */
+            onFilterChange(resetSubtype = false) {
+                if (resetSubtype) {
+                    this.filterSubtypeId = '';
+                }
+
+                if (this.scenarioId && !this.filteredScenarios().some(s => this.isPicked(s))) {
+                    this.scenarioId = '';
+                    this.subtypeId = '';
+                    this.values = {};
+                    this.answers = {};
+                    this.rolePicks = {};
+                    this.adhoc = { ack: [], intake: [] };
+                    this.composedRoute = [];
+                    this.composedTypeId = '';
+                    this.composedSubtypeId = '';
+                    this.resetSource();
+                    this.syncTitle();
+                }
+            },
+
             isPicked(scenario) {
                 return String(this.scenarioId) === String(scenario.id)
                     && Number(this.subtypeId || 0) === Number(scenario.subtype_id || 0);
@@ -896,8 +988,13 @@
                 this.rolePicks = {};
                 this.adhoc = { ack: [], intake: [] };
                 this.composedRoute = [];
-                this.composedTypeId = '';
-                this.composedSubtypeId = '';
+
+                // Тип и подтип уже выбраны в классификаторе сверху — подставляем их,
+                // чтобы инициатор «Своего сценария» не выбирал то же самое дважды.
+                // Поменять выбор он по-прежнему может в блоке «Тип документа».
+                this.composedTypeId = scenario.composed ? (this.filterTypeId || '') : '';
+                this.composedSubtypeId = scenario.composed ? (this.filterSubtypeId || '') : '';
+
                 if (scenario.composed) {
                     this.loadPresets();
                 }

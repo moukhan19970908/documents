@@ -15,11 +15,13 @@ class VacationRequest extends Model
     protected $fillable = [
         'user_id', 'signatory_id', 'route_id', 'current_step', 'status',
         'vacation_type', 'date_start', 'date_end', 'days_count', 'comment',
+        'flow_tasks',
     ];
 
     protected $casts = [
         'date_start' => 'date',
         'date_end'   => 'date',
+        'flow_tasks' => 'array',
     ];
 
     public function user(): BelongsTo
@@ -42,6 +44,11 @@ class VacationRequest extends Model
         return $this->hasMany(TripApprovalLog::class, 'request_id')
             ->where('request_type', 'vacation')
             ->orderBy('created_at', 'desc');
+    }
+
+    public function tasks(): HasMany
+    {
+        return $this->hasMany(TripTask::class, 'vacation_request_id')->orderBy('id');
     }
 
     public function registryItem(): \Illuminate\Database\Eloquent\Relations\HasOne

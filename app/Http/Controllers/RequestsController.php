@@ -84,7 +84,7 @@ class RequestsController extends Controller
         // Замещение: замещающий видит и задания тех, кого сейчас замещает.
         $coveredIds = \App\Models\Substitution::coveredUserIds($user);
 
-        $tasks = TripTask::with(['trip.user', 'files', 'messages.user', 'assignee', 'doneBy'])
+        $tasks = TripTask::with(['trip.user', 'vacation.user', 'vacation.substitution.deputy', 'files', 'messages.user', 'assignee', 'doneBy'])
             ->where(function ($q) use ($user, $coveredIds) {
                 $q->where('assignee_id', $user->id)->orWhereIn('assignee_id', $coveredIds);
                 if ($user->isAdmin()) {

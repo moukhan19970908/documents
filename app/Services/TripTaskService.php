@@ -7,10 +7,12 @@ use App\Models\TripTask;
 use App\Models\TripTaskFile;
 use App\Models\TripTaskSetting;
 use App\Models\User;
+use App\Models\VacationRequest;
 
 /**
- * Порождаемые задания командировок (ТЗ 18.3). Живут в разделе «Заявки», привязаны к заявке.
- * Результат возвращается ИНИЦИАТОРУ командировки.
+ * Порождаемые задания заявок (ТЗ 18.3): командировок — по правилам 18.3 или по графу,
+ * отпусков — только по графу. Живут в разделе «Заявки», привязаны к заявке.
+ * Результат возвращается ИНИЦИАТОРУ заявки.
  */
 class TripTaskService
 {
@@ -53,7 +55,11 @@ class TripTaskService
         }
     }
 
-    /** Ключ исполнителя из графа → поле настроек TripTaskSetting. */
+    /**
+     * Запасной способ: ключ исполнителя из графа → поле настроек TripTaskSetting.
+     * Нужен только для ключей, которым не соответствует роль в справочнике
+     * (офис-менеджер, логистика, транспорт).
+     */
     private const FLOW_ASSIGNEE = [
         'hr'             => 'hr_user_id',
         'office_manager' => 'office_manager_id',
@@ -61,30 +67,61 @@ class TripTaskService
         'transport'      => 'transport_id',
     ];
 
-    /** Породить задания из плана граф-процесса (узлы «Задание»/«Параллель»). Идемпотентно. */
-    public function generateFromFlow(TripRequest $trip): void
+    /**
+     * Исполнитель задания из графа. Ключ узла — это код роли: берём активного носителя
+     * роли, как узел «Согласующий (роль)». Если роли с таким кодом нет, падаем на
+     * прежние настройки исполнителей командировок.
+     */
+    private function resolveAssignee(string $key, TripTaskSetting $settings): ?User
     {
-        if ($trip->tripTasks()->exists()) {
+        if ($key === '') {
+            return null;
+        }
+
+        $byRole = User::where('is_active', true)
+            ->where(fn ($q) => $q->where('role', $key)->orWhereHas('roles', fn ($r) => $r->where('code', $key)))
+            ->orderBy('id')
+            ->first();
+
+        if ($byRole) {
+            return $byRole;
+        }
+
+        $field = self::FLOW_ASSIGNEE[$key] ?? null;
+
+        return $field ? User::find($settings->{$field} ?? null) : null;
+    }
+
+    /**
+     * Породить задания из плана граф-процесса (узлы «Задание»/«Параллель») для
+     * командировки или отпуска. Идемпотентно.
+     */
+    public function generateFromFlow(TripRequest|VacationRequest $request): void
+    {
+        $isVacation = $request instanceof VacationRequest;
+
+        if (($isVacation ? $request->tasks() : $request->tripTasks())->exists()) {
             return;
         }
 
         $settings = TripTaskSetting::current();
 
-        foreach (($trip->flow_tasks ?? []) as $t) {
-            $field      = self::FLOW_ASSIGNEE[$t['assignee'] ?? ''] ?? null;
-            $assigneeId = $field ? ($settings->{$field} ?? null) : null;
+        foreach (($request->flow_tasks ?? []) as $t) {
+            $assignee = $this->resolveAssignee((string) ($t['assignee'] ?? ''), $settings);
 
             $task = TripTask::create([
-                'trip_request_id' => $trip->id,
-                'target'          => $t['assignee'] ?? 'flow',
-                'title'           => $t['title'] ?? 'Задание',
-                'assignee_id'     => $assigneeId,
-                'status'          => 'pending',
+                'trip_request_id'     => $isVacation ? null : $request->id,
+                'vacation_request_id' => $isVacation ? $request->id : null,
+                'target'              => $t['assignee'] ?? 'flow',
+                'title'               => $t['title'] ?? 'Задание',
+                'assignee_id'         => $assignee?->id,
+                'status'              => 'pending',
             ]);
 
-            if ($assigneeId && ($assignee = User::find($assigneeId))) {
+            if ($assignee) {
                 $this->notifications->notify($assignee, 'trip_task_assigned', [
-                    'title' => $task->title, 'trip_id' => $trip->id,
+                    'title'   => $task->title,
+                    'trip_id' => $isVacation ? null : $request->id,
                 ]);
             }
         }
@@ -116,9 +153,11 @@ class TripTaskService
             'done_at'        => now(),
         ]);
 
-        // Результат возвращается инициатору заявки (ТЗ 18.3).
-        $this->notifications->notify($task->trip->user, 'trip_task_done', [
-            'title' => $task->title, 'trip_id' => $task->trip_request_id,
-        ]);
+        // Результат возвращается инициатору заявки (ТЗ 18.3) — командировки или отпуска.
+        if ($initiator = $task->initiator()) {
+            $this->notifications->notify($initiator, 'trip_task_done', [
+                'title' => $task->title, 'trip_id' => $task->trip_request_id,
+            ]);
+        }
     }
 }

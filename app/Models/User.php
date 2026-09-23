@@ -361,9 +361,19 @@ class User extends Authenticatable
             // Аватарки лежат в приватном бакете S3/MinIO (Bitrix24Service::downloadAvatar).
             // Отдаём их через приложение (AvatarController), чтобы не светить MinIO в
             // браузер напрямую (иначе presigned-ссылка на :9000 ломается по TLS в проде).
-            return route('avatars.show', $this);
+            // ?v= — путь /avatars/{user} не меняется при замене аватара, а отдаётся он
+            // с длинным max-age; без метки браузер держал бы старую картинку сутки.
+            return route('avatars.show', $this) . '?v=' . substr(md5($this->avatar), 0, 8);
         }
         return 'https://ui-avatars.com/api/?name=' . urlencode($this->name) . '&background=5B4FE8&color=fff';
+    }
+
+    /** Путь файлового кэша аватара на локальном диске (см. AvatarController). */
+    public function avatarCachePath(string $avatar): string
+    {
+        $ext = strtolower(pathinfo($avatar, PATHINFO_EXTENSION));
+
+        return 'avatar-cache/' . $this->id . '-' . substr(md5($avatar), 0, 10) . '.' . ($ext ?: 'jpg');
     }
 
     public function getRoleLabelAttribute(): string

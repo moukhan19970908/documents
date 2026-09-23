@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Services\AuditService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -22,14 +23,31 @@ class ProfileController extends Controller
         $user = $request->user();
 
         $validated = $request->validate([
-            'name'  => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
-            'phone' => ['nullable', 'string', 'max:32'],
+            'name'   => ['required', 'string', 'max:255'],
+            'email'  => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
+            'phone'  => ['nullable', 'string', 'max:32'],
+            'avatar' => ['nullable', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
         ]);
 
-        $old = $user->only(['name', 'email', 'phone']);
+        unset($validated['avatar']);
+        $previousAvatar = $user->avatar;
+
+        if ($file = $request->file('avatar')) {
+            // Имя генерирует Laravel — путь всегда новый, поэтому ключ файлового кэша
+            // в AvatarController и метка ?v= в avatar_url меняются сами собой.
+            $validated['avatar'] = $file->store('avatars', 's3');
+        }
+
+        $old = $user->only(['name', 'email', 'phone', 'avatar']);
         $user->update($validated);
-        $this->auditService->log('profile_updated', $user, $old, $user->only(['name', 'email', 'phone']));
+        $this->auditService->log('profile_updated', $user, $old, $user->only(['name', 'email', 'phone', 'avatar']));
+
+        // Старый файл — только после успешной записи нового пути, иначе при сбое
+        // пользователь остался бы и без старого аватара, и без нового.
+        if ($previousAvatar && $user->avatar !== $previousAvatar) {
+            Storage::disk('s3')->delete($previousAvatar);
+            Storage::disk('local')->delete($user->avatarCachePath($previousAvatar));
+        }
 
         return redirect()->route('profile.edit')->with('success', 'Профиль обновлён.');
     }

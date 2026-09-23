@@ -72,7 +72,7 @@ class VacationRequestController extends Controller
     public function show(VacationRequest $vacation)
     {
         $this->authorize('view', $vacation);
-        $vacation->load(['user.department', 'route.steps.approverUser', 'approvalLogs.approver', 'signatory', 'substitution.deputy']);
+        $vacation->load(['user.department', 'route.steps.approverUser', 'approvalLogs.approver', 'signatory', 'substitution.deputy', 'tasks.assignee', 'tasks.files', 'tasks.messages.user']);
         return view('vacations.show', compact('vacation'));
     }
 
