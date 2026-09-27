@@ -16,7 +16,10 @@ use App\Models\VacationRequest;
  */
 class TripTaskService
 {
-    public function __construct(private NotificationService $notifications) {}
+    public function __construct(
+        private NotificationService $notifications,
+        private TaskDispatchService $dispatcher,
+    ) {}
 
     /** Создать задания по правилам 18.3 (идемпотентно — не дублирует при повторном вызове). */
     public function generateFor(TripRequest $trip): void
@@ -48,9 +51,7 @@ class TripTaskService
             ]);
 
             if ($assigneeId && ($assignee = User::find($assigneeId))) {
-                $this->notifications->notify($assignee, 'trip_task_assigned', [
-                    'title' => $task->title, 'trip_id' => $trip->id,
-                ]);
+                $this->notifyAssignee($assignee, $task, $trip);
             }
         }
     }
@@ -119,12 +120,33 @@ class TripTaskService
             ]);
 
             if ($assignee) {
-                $this->notifications->notify($assignee, 'trip_task_assigned', [
-                    'title'   => $task->title,
-                    'trip_id' => $isVacation ? null : $request->id,
-                ]);
+                $this->notifyAssignee($assignee, $task, $request);
             }
         }
+    }
+
+    /**
+     * Исполнителю уходит письмо о задаче (постановщик — инициатор заявки), а уведомление
+     * остаётся только в интерфейсе: письмо по этому событию уже отправлено.
+     */
+    private function notifyAssignee(User $assignee, TripTask $task, TripRequest|VacationRequest $request): void
+    {
+        $isVacation = $request instanceof VacationRequest;
+
+        $this->dispatcher->mail(
+            $assignee,
+            $request->user,
+            $task->title,
+            '',
+            route('requests.tasks'),
+            null,
+            ($isVacation ? 'отпуску ' : 'командировке ') . $task->requestNumber(),
+        );
+
+        $this->notifications->notify($assignee, 'trip_task_assigned', [
+            'title'   => $task->title,
+            'trip_id' => $isVacation ? null : $request->id,
+        ], mail: false);
     }
 
     public function take(TripTask $task): void

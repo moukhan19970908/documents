@@ -120,9 +120,7 @@ class AssignmentController extends Controller
         $this->attachParticipants($assignment, $request, $allowed);
         $this->event($assignment, 'created');
         $this->audit->log('assignment_created', $assignment);
-        $this->notifications->notify($assignment->executor, 'assignment_created', [
-            'title' => $assignment->title, 'assignment_id' => $assignment->id,
-        ]);
+        $this->notifyAssigned($assignment);
 
         return redirect()->route('assignments.show', $assignment)->with('success', "Поручение {$assignment->number} поставлено.");
     }
@@ -199,9 +197,7 @@ class AssignmentController extends Controller
         $this->event($child, 'created');
         $this->event($assignment, 'subassignment_created', null, ['child_id' => $child->id, 'child_number' => $child->number]);
         $this->audit->log('assignment_subassignment_created', $child);
-        $this->notifications->notify($child->executor, 'assignment_created', [
-            'title' => $child->title, 'assignment_id' => $child->id,
-        ]);
+        $this->notifyAssigned($child);
 
         return redirect()->route('assignments.show', $assignment)->with('success', "Подпоручение {$child->number} поставлено.");
     }
@@ -399,6 +395,31 @@ class AssignmentController extends Controller
         ]);
 
         return back()->with('success', 'Заявка на перенос срока отклонена.');
+    }
+
+    /**
+     * Исполнителю — письмо о поставленном поручении (постановщик — инициатор),
+     * уведомление при этом остаётся только в интерфейсе: письмо уже ушло.
+     */
+    private function notifyAssigned(\App\Models\Assignment $assignment): void
+    {
+        if (! $assignment->executor) {
+            return;
+        }
+
+        app(\App\Services\TaskDispatchService::class)->mail(
+            $assignment->executor,
+            $assignment->initiator,
+            $assignment->title,
+            strip_tags((string) $assignment->body_html),
+            route('assignments.show', $assignment->id),
+            $assignment->due_at,
+            'поручению ' . $assignment->number,
+        );
+
+        $this->notifications->notify($assignment->executor, 'assignment_created', [
+            'title' => $assignment->title, 'assignment_id' => $assignment->id,
+        ], mail: false);
     }
 
     private function applyNewDeadline(Assignment $assignment, string $due, ?string $comment, bool $notifyInitiator = true): void

@@ -17,6 +17,7 @@ use App\Models\ProcedureTask;
 use App\Models\Task;
 use App\Models\Workflow;
 use App\Models\TripRequest;
+use App\Models\TripTask;
 use App\Models\VacationRequest;
 use App\Policies\ChatPolicy;
 use App\Policies\DocumentPolicy;
@@ -138,9 +139,20 @@ class AppServiceProvider extends ServiceProvider
                         ->whereHas('procedure', fn($q) => $q->where('initiator_id', $user->id))->count()
                 : 0;
 
-            // Заявки: командировки и отпуска, ждущие моего согласования (заявки + реестры).
+            // Задания из заявок (вкладка «Мои задания»): мои и тех, кого я замещаю.
+            $menuRequestTasks = $user->canSeeMenu('menu.processes.jobs')
+                ? TripTask::where(fn ($q) => $q->where('assignee_id', $user->id)
+                        ->orWhereIn('assignee_id', \App\Models\Substitution::coveredUserIds($user)))
+                    ->where('status', '!=', 'done')
+                    ->count()
+                : 0;
+
+            // Заявки: всё, что ждёт действия — согласование (заявки + реестры) и задания.
+            // Без заданий исполнитель (например, офис-менеджер) не видел бы в меню, что
+            // на нём что-то висит: они не проходят ни по одному из счётчиков согласования.
             $menuRequests = $user->canSeeMenu('menu.processes.requests')
-                ? $menuTripApprovals + $menuTripRegistries + $menuVacationApprovals + $menuVacationRegistries
+                ? $menuTripApprovals + $menuTripRegistries + $menuVacationApprovals
+                    + $menuVacationRegistries + $menuRequestTasks
                 : 0;
 
             $view->with(compact(

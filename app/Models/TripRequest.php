@@ -30,6 +30,16 @@ class TripRequest extends Model
         'flow_tasks'           => 'array',
     ];
 
+    /** Подпись транспорта так, как её выбирают в форме заявки. */
+    public function getTransportTypeLabelAttribute(): string
+    {
+        return match ($this->transport_type) {
+            'own'     => 'Свой',
+            'company' => 'Организации',
+            default   => (string) $this->transport_type,
+        };
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);

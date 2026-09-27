@@ -263,7 +263,21 @@ class ProcedureService
             ]);
             $count++;
 
-            $this->notifyUser($entry->executor_id, 'procedure_task_assigned', $procedure, ['task' => $task->title]);
+            // Исполнителю — письмо о задаче (постановщик — инициатор процедуры);
+            // уведомление остаётся только в интерфейсе, письмо уже ушло.
+            if ($assignee = User::find($entry->executor_id)) {
+                app(\App\Services\TaskDispatchService::class)->mail(
+                    $assignee,
+                    $procedure->initiator,
+                    $task->title,
+                    (string) $task->description,
+                    route('procedures.tasks.index'),
+                    null,
+                    'процедуре «' . $procedure->title . '»',
+                );
+            }
+
+            $this->notifyUser($entry->executor_id, 'procedure_task_assigned', $procedure, ['task' => $task->title], mail: false);
         }
 
         $this->event($procedure, null, 'tasks_generated', null, ['count' => $count]);
@@ -371,7 +385,7 @@ class ProcedureService
         ]);
     }
 
-    private function notifyUser(int $userId, string $type, Procedure $procedure, array $extra): void
+    private function notifyUser(int $userId, string $type, Procedure $procedure, array $extra, bool $mail = true): void
     {
         $user = User::find($userId);
         if (! $user) {
@@ -380,6 +394,6 @@ class ProcedureService
         $this->notifications->notify($user, $type, array_merge([
             'title'        => $procedure->title,
             'procedure_id' => $procedure->id,
-        ], $extra));
+        ], $extra), $mail);
     }
 }

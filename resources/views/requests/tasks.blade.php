@@ -47,7 +47,7 @@
                                 <dt class="text-gray-400">Город</dt><dd class="text-gray-800 font-medium">{{ $parent->city }}</dd>
                             @endif
                             @if($parent->transport_type)
-                                <dt class="text-gray-400">Транспорт</dt><dd class="text-gray-800 font-medium">{{ $parent->transport_type }}</dd>
+                                <dt class="text-gray-400">Транспорт</dt><dd class="text-gray-800 font-medium">{{ $parent->transport_type_label }}</dd>
                             @endif
                             @if($parent->purpose)
                                 <dt class="text-gray-400">Цель</dt><dd class="text-gray-700">{{ $parent->purpose }}</dd>

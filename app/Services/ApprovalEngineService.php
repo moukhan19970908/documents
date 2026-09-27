@@ -18,6 +18,7 @@ use App\Models\WorkflowStage;
 use App\Models\WorkflowStageApprover;
 use App\Models\Task;
 use App\Services\Bitrix24Service;
+use App\Services\TaskDispatchService;
 use App\Services\ChatService;
 use Illuminate\Support\Facades\DB;
 
@@ -28,6 +29,7 @@ class ApprovalEngineService
         private AuditService $auditService,
         private ChatService $chatService,
         private Bitrix24Service $bitrix24,
+        private TaskDispatchService $tasks,
         private DocumentNumberService $numberService,
         private DocumentNamingService $namingService,
         private ArchiveService $archiveService,
@@ -778,13 +780,11 @@ class ApprovalEngineService
 
         if ($result === 'requires_changes') {
             $text = $this->reworkTaskText($document, null);
-            Task::create([
+            $this->tasks->dispatchTask($document->initiator, $document->initiator, [
                 'document_id' => $document->id,
-                'assignee_id' => $document->initiator_id,
                 'title'       => $text['title'],
                 'description' => $text['description'],
-                'status'      => 'pending',
-            ]);
+            ], route('documents.show', $document->id), 'документу «' . $document->title . '»');
         }
     }
 
@@ -939,14 +939,8 @@ class ApprovalEngineService
             'document_id' => $document->id,
         ]);
 
-        $this->bitrix24->createRejectionTask(
-            $document,
-            $document->initiator,
-            $user,
-            $comment,
-            $stage->deadline_at
-        );
-
+        // Задача в Битрикс24 больше не ставится: об отклонении инициатор узнаёт
+        // уведомлением выше, оно же уходит ему на почту.
         event(new DocumentRejected($document, $user, $comment));
     }
 
@@ -975,25 +969,14 @@ class ApprovalEngineService
         ]);
 
         // Инициатору ставится задача «Доработайте документ …» с комментарием руководителя.
+        // Документ вернули на доработку — постановщиком тут выступает тот, кто вернул.
         $text = $this->reworkTaskText($document, $comment);
-        $task = Task::create([
+        $this->tasks->dispatchTask($document->initiator, $user, [
             'document_id' => $document->id,
-            'assignee_id' => $document->initiator_id,
             'title'       => $text['title'],
             'description' => $text['description'],
-            'status'      => 'pending',
             'deadline_at' => $stage->deadline_at,
-        ]);
-
-        $bitrix24TaskId = $this->bitrix24->createTask(
-            $document->initiator,
-            $text['title'],
-            $text['description'],
-            $stage->deadline_at,
-        );
-        if ($bitrix24TaskId) {
-            $task->update(['bitrix24_task_id' => $bitrix24TaskId]);
-        }
+        ], route('documents.show', $document->id), 'документу «' . $document->title . '»');
 
         event(new DocumentRejected($document, $user, $comment));
     }
@@ -1033,15 +1016,13 @@ class ApprovalEngineService
             // решением, а тому, кому делегировали, её надо выдать — иначе действовать
             // он может, а в «Моих задачах» документа не увидит.
             $text = $this->documentTaskText($stage->workflowStage->phase, $document);
-            Task::create([
+            $this->tasks->dispatchTask($newUser, $document->initiator, [
                 'document_id'                => $document->id,
                 'document_approval_stage_id' => $stage->id,
-                'assignee_id'                => $newUser->id,
                 'title'                      => $text['title'],
                 'description'                => $text['description'],
-                'status'                     => 'pending',
                 'deadline_at'                => $stage->deadline_at,
-            ]);
+            ], route('documents.show', $document->id), 'документу «' . $document->title . '»');
 
             $this->notificationService->notify($newUser, 'delegated_to_you', [
                 'title'       => $document->title,
@@ -1101,30 +1082,19 @@ class ApprovalEngineService
         $approvers = User::whereIn('id', $approverIds)->get();
 
         foreach ($approvers as $approver) {
-            $task = Task::create([
+            $this->tasks->dispatchTask($approver, $document->initiator, [
                 'document_id'                => $document->id,
                 'document_approval_stage_id' => $stage->id,
-                'assignee_id'                => $approver->id,
                 'title'                      => $text['title'],
                 'description'                => $text['description'],
-                'status'                     => 'pending',
                 'deadline_at'                => $stage->deadline_at,
-            ]);
+            ], route('documents.show', $document->id), 'документу «' . $document->title . '»');
 
-            $bitrix24TaskId = $this->bitrix24->createTask(
-                $approver,
-                $text['title'],
-                $text['description'],
-                $stage->deadline_at,
-            );
-            if ($bitrix24TaskId) {
-                $task->update(['bitrix24_task_id' => $bitrix24TaskId]);
-            }
-
+            // Письмо ушло вместе с задачей — уведомление остаётся только в интерфейсе.
             $this->notificationService->notify($approver, 'new_document', [
                 'title'       => $document->title,
                 'document_id' => $document->id,
-            ]);
+            ], mail: false);
         }
 
         // A non-blocking stage (ознакомление) hands out its tasks but does not hold the route:

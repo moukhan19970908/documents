@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class Task extends Model
 {
     protected $fillable = [
-        'document_id', 'order_id', 'document_approval_stage_id', 'assignee_id',
+        'document_id', 'order_id', 'document_approval_stage_id', 'assignee_id', 'created_by',
         'title', 'description', 'status', 'deadline_at', 'completed_at', 'bitrix24_task_id',
     ];
 
@@ -35,6 +35,12 @@ class Task extends Model
     public function assignee(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assignee_id');
+    }
+
+    /** Постановщик — инициатор документа, приказа или заявки. */
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 
     public function isOverdue(): bool

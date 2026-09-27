@@ -10,7 +10,11 @@ use App\Models\User;
 
 class NotificationService
 {
-    public function notify(User $user, string $type, array $data): void
+    /**
+     * @param bool $mail слать ли письмо. false — когда по этому же событию уже ушло
+     *                   письмо о задаче: иначе человек получит два письма на одно действие.
+     */
+    public function notify(User $user, string $type, array $data, bool $mail = true): void
     {
         $titles = [
             'new_document'      => 'Новый документ на согласование',
@@ -98,7 +102,9 @@ class NotificationService
             'channel' => 'push',
         ]);
 
-        SendApprovalNotification::dispatch($notification, $user)->onQueue('notifications');
+        if ($mail) {
+            SendApprovalNotification::dispatch($notification, $user)->onQueue('notifications');
+        }
 
         // In-page toast (open tab) + Web Push (works even when the site is closed).
         $this->pushToBrowser($user->id, $type, $title, $body, $this->resolveUrl($type, $data));
@@ -136,10 +142,10 @@ class NotificationService
         };
     }
 
-    public function notifyMany(iterable $users, string $type, array $data): void
+    public function notifyMany(iterable $users, string $type, array $data, bool $mail = true): void
     {
         foreach ($users as $user) {
-            $this->notify($user, $type, $data);
+            $this->notify($user, $type, $data, $mail);
         }
     }
 }

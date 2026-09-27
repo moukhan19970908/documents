@@ -32,6 +32,18 @@ class RequestsController extends Controller
         private RegistryService $registries,
     ) {}
 
+    /** Кэш на запрос: очередь согласования тянет все pending-заявки с маршрутами. */
+    private ?array $incoming = null;
+
+    /** @return array{trip: int, vacation: int} сколько заявок ждёт решения этого человека */
+    private function incomingCounts(User $user): array
+    {
+        return $this->incoming ??= [
+            'trip'     => $this->approvals->getPendingForApprover($user, 'trip')->count(),
+            'vacation' => $this->approvals->getPendingForApprover($user, 'vacation')->count(),
+        ];
+    }
+
     // ── Вкладка «Мои заявки» ─────────────────────────────────────────────
 
     public function index(Request $request)
@@ -265,9 +277,10 @@ class RequestsController extends Controller
         $canSeeApprovals = $this->canSeeApprovals($user);
         $canSeeTasks     = $this->canSeeTasks($user);
 
+        $counts  = $this->incomingCounts($user);
         $pending = [
-            'trip'         => $canSeeApprovals ? $this->approvals->getPendingForApprover($user, 'trip')->count() : 0,
-            'vacation'     => $canSeeApprovals ? $this->approvals->getPendingForApprover($user, 'vacation')->count() : 0,
+            'trip'         => $canSeeApprovals ? $counts['trip'] : 0,
+            'vacation'     => $canSeeApprovals ? $counts['vacation'] : 0,
             'trip_reg'     => $canSeeApprovals && $user->isManager() ? $this->approvals->getPendingRegistriesForApprover($user, 'trip')->count() : 0,
             'vacation_reg' => $canSeeApprovals && $user->isManager() ? $this->approvals->getPendingRegistriesForApprover($user, 'vacation')->count() : 0,
         ];
@@ -293,10 +306,20 @@ class RequestsController extends Controller
         ];
     }
 
-    /** «На согласовании» — тем, кто согласует командировки или отпуска (матрица прав, не линейным). */
+    /**
+     * «На согласовании» — тем, кто согласует командировки или отпуска по матрице прав,
+     * и тем, кого маршрут назначил согласующим прямо сейчас. Второе обязательно: граф-
+     * процесс ставит звеном конкретного человека любой роли, и у линейного сотрудника
+     * права из матрицы нет — без этой проверки назначенная на него заявка была бы
+     * не видна ни во вкладке, ни в счётчике, а прямой заход давал бы 403.
+     */
     private function canSeeApprovals(User $user): bool
     {
-        return $user->canSeeMenu('menu.trips.approvals') || $user->canSeeMenu('menu.vacations.approvals');
+        if ($user->canSeeMenu('menu.trips.approvals') || $user->canSeeMenu('menu.vacations.approvals')) {
+            return true;
+        }
+
+        return array_sum($this->incomingCounts($user)) > 0;
     }
 
     /** «Мои задания» — исполнителям заданий (матрица прав, ключ «Задания»). */

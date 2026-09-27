@@ -29,6 +29,7 @@ class OrderController extends Controller
         private NotificationService $notifications,
         private AuditService $audit,
         private Bitrix24Service $bitrix,
+        private \App\Services\TaskDispatchService $tasks,
         private ArchiveService $archive,
     ) {}
 
@@ -285,22 +286,15 @@ class OrderController extends Controller
     /** Метки ролей согласующих (ТЗ 16.1). */
     private const APPROVER_ROLES = ['legal' => 'Юрист', 'hr' => 'Кадры', 'finance' => 'Финансы'];
 
-    /** Поставить задачу по приказу (в «Мои задачи» + Битрикс). Постановщик — инициатор приказа. */
+    /** Поставить задачу по приказу (в «Мои задачи» + письмо). Постановщик — инициатор приказа. */
     private function createOrderTask(Order $order, User $assignee, string $title, string $description, $deadline = null): void
     {
-        $task = Task::create([
+        $this->tasks->dispatchTask($assignee, $order->initiator, [
             'order_id'    => $order->id,
-            'assignee_id' => $assignee->id,
             'title'       => $title,
             'description' => $description,
-            'status'      => 'pending',
             'deadline_at' => $deadline,
-        ]);
-
-        $bitrixId = $this->bitrix->createTask($assignee, $title, $description, $deadline);
-        if ($bitrixId) {
-            $task->update(['bitrix24_task_id' => $bitrixId]);
-        }
+        ], route('orders.show', $order->id), 'приказу «' . $order->title . '»');
     }
 
     /** Закрыть незавершённые задачи приказа (одного адресата или всех) со статусом completed|cancelled. */

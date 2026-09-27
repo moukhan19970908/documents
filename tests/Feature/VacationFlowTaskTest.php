@@ -9,6 +9,10 @@ use App\Models\User;
 use App\Models\VacationRequest;
 use App\Services\RequestFlowService;
 use App\Services\VacationService;
+use App\Mail\TaskAssigned;
+use App\Jobs\SendApprovalNotification;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -122,6 +126,28 @@ class VacationFlowTaskTest extends TestCase
         $this->assertSame($this->settingsUser->id, $vacation->refresh()->tasks()->first()?->assignee_id);
     }
 
+    public function test_assignee_gets_a_task_mail_with_the_initiator_as_assigner(): void
+    {
+        Mail::fake();
+        Queue::fake();
+
+        $vacation = $this->submit();
+        app(VacationService::class)->approve($vacation, $this->hr);
+
+        $initiator = $vacation->refresh()->user;
+
+        Mail::assertQueued(TaskAssigned::class, function (TaskAssigned $mail) use ($initiator) {
+            return $mail->hasTo($this->hr->email)
+                && $mail->assigner?->is($initiator)
+                && $mail->taskTitle === 'Оформить отпуск сотруднику';
+        });
+
+        // По самой задаче второго письма нет — уведомление о ней осталось в интерфейсе.
+        // (Письмо согласующему о поданной заявке — отдельное событие, оно уходит как прежде.)
+        Queue::assertNotPushed(SendApprovalNotification::class,
+            fn (SendApprovalNotification $job) => $job->notification->type === 'trip_task_assigned');
+    }
+
     public function test_task_is_not_duplicated_on_repeated_generation(): void
     {
         $vacation = $this->submit();
@@ -161,6 +187,25 @@ class VacationFlowTaskTest extends TestCase
             ->assertSee('Задания по отпуску')
             ->assertSee('Оформить отпуск сотруднику')
             ->assertSee($this->hr->name);
+    }
+
+    public function test_sidebar_badge_counts_the_assignees_task(): void
+    {
+        $vacation = $this->submit();
+        app(VacationService::class)->approve($vacation, $this->hr);
+
+        $this->hr->update(['agreement_accepted_at' => now(), 'role' => 'admin']);
+        $this->actingAs($this->hr->fresh());
+
+        // Счётчик пункта «Заявки» собирает AppServiceProvider — читаем то, что уходит во вьюху.
+        $badge = null;
+        \Illuminate\Support\Facades\View::composer('*', function ($view) use (&$badge) {
+            $badge ??= $view->getData()['menuRequests'] ?? null;
+        });
+
+        $this->get(route('requests.tasks'))->assertOk();
+
+        $this->assertSame(1, $badge, 'Задание исполнителя должно попадать в бейдж раздела «Заявки».');
     }
 
     public function test_backfill_command_creates_tasks_for_already_approved_vacations(): void

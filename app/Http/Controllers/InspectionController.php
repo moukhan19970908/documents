@@ -123,9 +123,7 @@ class InspectionController extends Controller
 
         $this->event($inspection, 'created');
         $this->audit->log('inspection_created', $inspection);
-        $this->notifications->notify($inspection->executor, 'inspection_created', [
-            'title' => $inspection->title, 'inspection_id' => $inspection->id,
-        ]);
+        $this->notifyInspectionAssigned($inspection);
 
         return redirect()->route('inspections.show', $inspection)->with('success', "Проверка {$inspection->number} создана.");
     }
@@ -194,9 +192,7 @@ class InspectionController extends Controller
         $this->event($child, 'created');
         $this->event($inspection, 'subrequest_created', null, ['child_id' => $child->id, 'child_number' => $child->number]);
         $this->audit->log('inspection_subrequest_created', $child);
-        $this->notifications->notify($child->executor, 'inspection_created', [
-            'title' => $child->title, 'inspection_id' => $child->id,
-        ]);
+        $this->notifyInspectionAssigned($child);
 
         return redirect()->route('inspections.show', $inspection)->with('success', "Запрос данных {$child->number} создан.");
     }
@@ -341,9 +337,21 @@ class InspectionController extends Controller
 
         $this->event($inspection, 'assignment_spawned', null, ['assignment_id' => $assignment->id, 'assignment_number' => $assignment->number]);
         $this->audit->log('inspection_assignment_spawned', $assignment);
-        $this->notifications->notify($assignment->executor, 'assignment_created', [
-            'title' => $assignment->title, 'assignment_id' => $assignment->id,
-        ]);
+        if ($assignment->executor) {
+            app(\App\Services\TaskDispatchService::class)->mail(
+                $assignment->executor,
+                $assignment->initiator,
+                $assignment->title,
+                strip_tags((string) $assignment->body_html),
+                route('assignments.show', $assignment->id),
+                $assignment->due_at,
+                'поручению ' . $assignment->number,
+            );
+
+            $this->notifications->notify($assignment->executor, 'assignment_created', [
+                'title' => $assignment->title, 'assignment_id' => $assignment->id,
+            ], mail: false);
+        }
 
         return redirect()->route('assignments.show', $assignment)
             ->with('success', "По итогам проверки поставлено поручение {$assignment->number}.");
@@ -370,6 +378,31 @@ class InspectionController extends Controller
     }
 
     // ── helpers ──────────────────────────────────────────────────────────
+
+    /**
+     * Исполнителю — письмо о назначенной проверке (постановщик — инициатор),
+     * уведомление остаётся только в интерфейсе: письмо уже ушло.
+     */
+    private function notifyInspectionAssigned(\App\Models\Inspection $inspection): void
+    {
+        if (! $inspection->executor) {
+            return;
+        }
+
+        app(\App\Services\TaskDispatchService::class)->mail(
+            $inspection->executor,
+            $inspection->initiator,
+            $inspection->title,
+            strip_tags((string) $inspection->body_html),
+            route('inspections.show', $inspection->id),
+            $inspection->due_at,
+            'проверке ' . $inspection->number,
+        );
+
+        $this->notifications->notify($inspection->executor, 'inspection_created', [
+            'title' => $inspection->title, 'inspection_id' => $inspection->id,
+        ], mail: false);
+    }
 
     private function resolveObjectLabel(?string $type, ?int $id): ?string
     {
