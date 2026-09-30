@@ -43,4 +43,8 @@ return [
         'webhook_url'   => env('BITRIX24_WEBHOOK_URL'),
     ],
 
+    'checko' => [
+        'key' => env('CHECKO_API_KEY'),
+    ],
+
 ];

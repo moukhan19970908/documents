@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Mail\TaskAssigned;
 use App\Models\Task;
 use App\Models\User;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
 /**
@@ -46,7 +47,20 @@ class TaskDispatchService
     ): void {
         // Уважаем ту же настройку, что и остальные письма, и не пишем на технические адреса,
         // которыми Bitrix24Service затыкает пользователей без почты.
-        if (! $assignee->notification_email || ! $assignee->email || str_ends_with($assignee->email, '@noemail.local')) {
+        $skip = match (true) {
+            ! $assignee->notification_email                       => 'письма отключены в профиле',
+            ! $assignee->email                                    => 'нет адреса',
+            str_ends_with($assignee->email, '@noemail.local')     => 'заглушечный адрес из Битрикс24',
+            default                                               => null,
+        };
+
+        if ($skip) {
+            Log::info('Письмо о задаче не отправлено', [
+                'assignee_id' => $assignee->id,
+                'task'        => $title,
+                'reason'      => $skip,
+            ]);
+
             return;
         }
 
@@ -54,5 +68,13 @@ class TaskDispatchService
             (new TaskAssigned($assignee, $assigner, $title, $description, $url, $deadline, $context))
                 ->onQueue('notifications')
         );
+
+        Log::info('Письмо о задаче поставлено в очередь', [
+            'assignee_id' => $assignee->id,
+            'to'          => $assignee->email,
+            'assigner_id' => $assigner?->id,
+            'task'        => $title,
+            'queue'       => 'notifications',
+        ]);
     }
 }

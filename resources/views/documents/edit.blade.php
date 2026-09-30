@@ -64,6 +64,12 @@
                                         <textarea name="data[{{ $field->field_key }}]" rows="3"
                                                   {{ $field->is_required ? 'required' : '' }}
                                                   class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">{{ $val }}</textarea>
+                                    @elseif($field->field_key === 'counterparty')
+                                        {{-- Контрагент — выбор из справочника, а не свободный текст --}}
+                                        <div x-data="counterpartyPicker(@js($val))" @click.outside="open = false" class="relative">
+                                            @include('counterparties._picker')
+                                            <input type="hidden" name="data[{{ $field->field_key }}]" :value="value">
+                                        </div>
                                     @else
                                         <input type="text" name="data[{{ $field->field_key }}]" value="{{ $val }}"
                                                {{ $field->is_required ? 'required' : '' }}
@@ -96,4 +102,6 @@
             </div>
         </form>
     </div>
+
+    @include('counterparties._picker_script')
 </x-app-layout>

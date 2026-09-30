@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Gate;
@@ -40,6 +42,8 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(TripRequest::class, TripRequestPolicy::class);
         Gate::policy(VacationRequest::class, VacationRequestPolicy::class);
         // URL::forceScheme('https');
+
+        $this->logMailDelivery();
 
         // Sidebar badge counters: active tasks assigned to the user and
         // documents awaiting their approval decision. Recomputed per request
@@ -163,5 +167,36 @@ class AppServiceProvider extends ServiceProvider
                 'menuRequests', 'menuCreditCommittee', 'menuInspections',
             ));
         });
+    }
+
+    /**
+     * Журнал доставки писем. Без него по логам нельзя понять, ушло письмо или нет:
+     * раньше писались только окончательные провалы, да и то после всех попыток.
+     * Пишем в тот же канал, что и остальное приложение (storage/logs/laravel.log).
+     */
+    private function logMailDelivery(): void
+    {
+        Event::listen(\Illuminate\Mail\Events\MessageSent::class, function ($event) {
+            Log::info('Письмо отправлено', [
+                'to'      => $this->addresses($event->message->getTo()),
+                'subject' => $event->message->getSubject(),
+            ]);
+        });
+
+        // Письмо не ушло: SMTP отказал, таймаут, неверные доступы. Именно эта запись
+        // отвечает на вопрос «почему на почту ничего не пришло».
+        Event::listen(\Illuminate\Queue\Events\JobFailed::class, function ($event) {
+            Log::error('Задание очереди провалилось', [
+                'queue'     => $event->job->getQueue(),
+                'job'       => $event->job->resolveName(),
+                'exception' => $event->exception->getMessage(),
+            ]);
+        });
+    }
+
+    /** @return array<int, string> */
+    private function addresses(array $recipients): array
+    {
+        return array_map(fn ($address) => $address->getAddress(), $recipients);
     }
 }

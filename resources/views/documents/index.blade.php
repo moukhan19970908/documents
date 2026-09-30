@@ -222,6 +222,10 @@
                                 </span>
                                 @php
                                     $stages = $doc->activeApproval?->stages ?? collect();
+                                    // Те же решения, что на схеме процесса: заключения, ознакомление
+                                    // и исполнение тоже красят сегмент, а не только «согласовал/отклонил».
+                                    $positiveActions = ['approve', 'process_approve', 'opinion_yes', 'acknowledge', 'execute'];
+                                    $negativeActions = ['reject', 'process_reject', 'opinion_no'];
                                     if ($doc->status === 'draft') {
                                         $segments = collect([['color' => '#D1D5DB', 'label' => 'Черновик']]);
                                     } elseif ($doc->status === 'rejected') {
@@ -241,8 +245,8 @@
                                             } elseif (($stage->workflowStage?->stage_type ?? 'sequential') === 'sequential') {
                                                 // "Любой из согласующих": одной подписи достаточно, этап
                                                 // завершён — показываем один сегмент, а не по каждому.
-                                                $approved = $stage->decisions->whereIn('action', ['approve', 'process_approve'])->sortByDesc('decided_at')->first();
-                                                $rejected = $stage->decisions->whereIn('action', ['reject', 'process_reject'])->sortByDesc('decided_at')->first();
+                                                $approved = $stage->decisions->whereIn('action', $positiveActions)->sortByDesc('decided_at')->first();
+                                                $rejected = $stage->decisions->whereIn('action', $negativeActions)->sortByDesc('decided_at')->first();
                                                 $signerName = fn($uid) => $approvers->firstWhere('approver_id', $uid)?->user?->name
                                                     ?? \App\Models\User::find($uid)?->name ?? '—';
                                                 if ($approved) {
@@ -262,10 +266,10 @@
                                                     $decision = $stage->decisions->where('user_id', $ap->approver_id)->sortByDesc('decided_at')->first();
                                                     $action   = $decision?->action;
                                                     $name     = $ap->user?->name ?? '—';
-                                                    if (in_array($action, ['approve', 'process_approve'])) {
+                                                    if (in_array($action, $positiveActions)) {
                                                         $color = '#22C55E';
                                                         $label = 'Подписал: ' . $name;
-                                                    } elseif (in_array($action, ['reject', 'process_reject'])) {
+                                                    } elseif (in_array($action, $negativeActions)) {
                                                         $color = '#EF4444';
                                                         $label = 'Не одобрил: ' . $name;
                                                     } elseif ($action === 'delegate') {

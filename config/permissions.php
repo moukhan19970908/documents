@@ -41,6 +41,7 @@ return [
             ['key' => 'menu.employees', 'label' => 'Сотрудники', 'except' => ['external', 'observer', 'linear', 'process_owner', 'registrar']],
             ['key' => 'menu.analytics', 'label' => 'Аналитика', 'narrow' => true, 'except' => ['external', 'observer', 'linear', 'registrar']],
             ['key' => 'menu.feedback',  'label' => 'Обратная связь', 'except' => []],
+            ['key' => 'menu.counterparties', 'label' => 'Справочник контрагентов', 'narrow' => true, 'only' => ['admin']],
 
             ['key' => 'menu.trips',            'label' => 'Командировки',    'except' => ['external', 'observer']],
             ['key' => 'menu.trips.my',         'label' => 'Мои заявки',      'depth' => 1, 'except' => ['external', 'observer']],

@@ -6,6 +6,7 @@ use App\Http\Controllers\Auth\BitrixSocialiteController;
 use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FeedbackController;
+use App\Http\Controllers\CounterpartyController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\ApprovalController;
@@ -79,6 +80,14 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
     Route::get('/feedback/{feedback}', [FeedbackController::class, 'show'])->name('feedback.show');
     Route::post('/feedback/{feedback}/messages', [FeedbackController::class, 'reply'])->name('feedback.reply');
     Route::patch('/feedback/{feedback}/status', [FeedbackController::class, 'updateStatus'])->name('feedback.status');
+
+    // Справочник контрагентов (данные из Checko по ИНН)
+    Route::get('/counterparties', [CounterpartyController::class, 'index'])->name('counterparties.index');
+    Route::post('/counterparties', [CounterpartyController::class, 'store'])->name('counterparties.store');
+    Route::post('/counterparties/{counterparty}/refresh', [CounterpartyController::class, 'refresh'])->name('counterparties.refresh');
+    // Поле «counterparty» в формах документов: поиск и добавление без доступа к разделу
+    Route::get('/counterparties/search', [CounterpartyController::class, 'search'])->name('counterparties.search');
+    Route::post('/counterparties/quick', [CounterpartyController::class, 'quickStore'])->name('counterparties.quick');
 
     // База знаний (чтение — всем авторизованным)
     Route::get('knowledge', [KnowledgeController::class, 'index'])->name('knowledge.index');

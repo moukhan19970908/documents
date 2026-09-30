@@ -317,7 +317,15 @@
                                 </label>
 
                                 {{-- Варианты выбора рисуем кнопками — так виден весь набор сразу --}}
-                                <template x-if="['select', 'radio', 'boolean'].includes(parameter.type)">
+                                {{-- Контрагент — выбор из справочника, а не свободный текст --}}
+                                <template x-if="parameter.key === 'counterparty'">
+                                    <div x-data="counterpartyPicker()" x-modelable="value" x-model="answers[parameter.key]"
+                                         @click.outside="open = false" class="relative">
+                                        @include('counterparties._picker')
+                                    </div>
+                                </template>
+
+                                <template x-if="parameter.key !== 'counterparty' && ['select', 'radio', 'boolean'].includes(parameter.type)">
                                     <div class="flex flex-wrap gap-2">
                                         <template x-for="option in optionsOf(parameter)" :key="option">
                                             <button type="button" @click="answers[parameter.key] = option"
@@ -329,7 +337,7 @@
                                     </div>
                                 </template>
 
-                                <template x-if="['number', 'date', 'reference'].includes(parameter.type)">
+                                <template x-if="parameter.key !== 'counterparty' && ['number', 'date', 'reference'].includes(parameter.type)">
                                     <input :type="parameter.type === 'number' ? 'number' : (parameter.type === 'date' ? 'date' : 'text')"
                                            x-model="answers[parameter.key]"
                                            class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
@@ -680,18 +688,27 @@
                                     <span x-show="field.is_required" class="text-red-500">*</span>
                                 </label>
 
-                                <template x-if="['text', 'number', 'date'].includes(field.field_type)">
+                                {{-- Контрагент — выбор из справочника, а не свободный текст --}}
+                                <template x-if="field.field_key === 'counterparty'">
+                                    <div x-data="counterpartyPicker()" x-modelable="value" x-model="values[field.field_key]"
+                                         @click.outside="open = false" class="relative">
+                                        @include('counterparties._picker')
+                                        <input type="hidden" :name="`data[${field.field_key}]`" :value="values[field.field_key] ?? ''">
+                                    </div>
+                                </template>
+
+                                <template x-if="field.field_key !== 'counterparty' && ['text', 'number', 'date'].includes(field.field_type)">
                                     <input :type="field.field_type === 'text' ? 'text' : field.field_type"
                                            :name="`data[${field.field_key}]`" x-model="values[field.field_key]"
                                            class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
                                 </template>
 
-                                <template x-if="field.field_type === 'textarea'">
+                                <template x-if="field.field_key !== 'counterparty' && field.field_type === 'textarea'">
                                     <textarea :name="`data[${field.field_key}]`" x-model="values[field.field_key]" rows="3"
                                               class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]"></textarea>
                                 </template>
 
-                                <template x-if="field.field_type === 'select'">
+                                <template x-if="field.field_key !== 'counterparty' && field.field_type === 'select'">
                                     <select :name="`data[${field.field_key}]`" x-model="values[field.field_key]"
                                             class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
                                         <option value="">—</option>
@@ -701,7 +718,7 @@
                                     </select>
                                 </template>
 
-                                <template x-if="field.field_type === 'boolean'">
+                                <template x-if="field.field_key !== 'counterparty' && field.field_type === 'boolean'">
                                     <select :name="`data[${field.field_key}]`" x-model="values[field.field_key]"
                                             class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
                                         <option value="">—</option>
@@ -710,7 +727,7 @@
                                     </select>
                                 </template>
 
-                                <template x-if="field.field_type === 'reference'">
+                                <template x-if="field.field_key !== 'counterparty' && field.field_type === 'reference'">
                                     <select :name="`data[${field.field_key}]`" x-model="values[field.field_key]"
                                             class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
                                         <option value="">—</option>
@@ -842,6 +859,8 @@
             </div>
         </form>
     </div>
+
+    @include('counterparties._picker_script')
 
     <script>
     function documentCreate() {
@@ -1293,8 +1312,8 @@
             },
 
             counterparty() {
-                const key = Object.keys(this.values).find(k => k.toLowerCase().includes('контрагент'));
-                return key ? this.values[key] : '';
+                const key = Object.keys(this.values).find(k => k.toLowerCase() === 'counterparty' || k.toLowerCase().includes('контрагент'));
+                return (key ? this.values[key] : '') || this.answers.counterparty || '';
             },
 
             initials(name) {

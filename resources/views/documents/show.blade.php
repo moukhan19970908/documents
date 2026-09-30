@@ -674,9 +674,9 @@
                                 </div>
                             @endif
 
-                            <textarea x-model="comment" rows="3"
+                            <textarea x-model="comment" rows="14" style="resize: vertical"
                                       placeholder="Добавить комментарий..."
-                                      class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8] resize-none text-gray-700 placeholder-gray-300"></textarea>
+                                      class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8] text-gray-700 placeholder-gray-300"></textarea>
                         </div>
                     @endif
 

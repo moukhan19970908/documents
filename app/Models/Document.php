@@ -195,6 +195,7 @@ class Document extends Model
             'requires_changes' => 'Требует изменений',
             'approved'         => 'Одобрено',
             'signed'           => 'Подписано',
+            'rejected'         => 'Отклонено',
             'archived'         => 'Архив',
             default            => $this->status,
         };
