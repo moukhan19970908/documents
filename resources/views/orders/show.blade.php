@@ -42,7 +42,7 @@
         @endif
     </div>
     <p class="text-sm text-gray-500 mb-6">
-        Инициатор: {{ $order->initiator->name }}@if($order->initiator->department), {{ $order->initiator->department->name }}@endif · {{ $order->kindLabel() }}
+        Инициатор: {{ $order->initiator->name }}@if($order->initiator->department), {{ $order->initiator->department->name }}@endif @if($order->kindLabel())· {{ $order->kindLabel() }}@endif
     </p>
 
     @if(session('success'))
@@ -52,11 +52,13 @@
     @if($order->status !== 'published')
         {{-- ── Черновик ── --}}
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div class="lg:col-span-2 bg-white border border-gray-200 rounded-xl p-8">
+            <div class="lg:col-span-2 bg-white border border-gray-200 rounded-xl overflow-hidden">
                 @if($order->file_path)
-                    <a href="{{ route('orders.file', $order) }}" class="text-[#5B4FE8] hover:underline text-sm">📎 {{ $order->file_name }}</a>
+                    @include('orders.partials.file-preview')
                 @else
-                    <div class="prose max-w-none text-sm">{!! $order->renderedBody() !!}</div>
+                    <div class="bg-gray-100 p-8 overflow-x-auto">
+                        <div class="blank-sheet">{!! $order->renderedBody() !!}</div>
+                    </div>
                 @endif
             </div>
             <div class="space-y-4">
@@ -135,41 +137,44 @@
             </div>
         </div>
     @else
-        {{-- ── Опубликован: трекинг ознакомления ── --}}
-        <div class="grid grid-cols-1 lg:grid-cols-[16rem_1fr] gap-6 mb-6">
-            <div>
-                <div class="bg-gray-50 border border-gray-200 rounded-xl h-56 flex items-center justify-center">
-                    <svg class="w-12 h-12 text-gray-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                </div>
-                @if($order->file_path)
-                    <a href="{{ route('orders.file', $order) }}" class="mt-3 flex items-center justify-center gap-2 w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">Скачать файл</a>
-                @else
-                    <a href="{{ route('orders.pdf', $order) }}" target="_blank" class="mt-3 flex items-center justify-center gap-2 w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">
+        {{-- ── Опубликован: текст приказа (адресат ознакамливается здесь же) + трекинг ознакомления ── --}}
+        <div class="bg-white border border-gray-200 rounded-xl overflow-hidden mb-6">
+            @if($order->file_path)
+                @include('orders.partials.file-preview')
+            @else
+                <div class="flex justify-end px-6 py-3 border-b border-gray-100">
+                    <a href="{{ route('orders.pdf', $order) }}" target="_blank" class="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">
                         <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
                         Скачать PDF
                     </a>
-                @endif
-            </div>
-
-            <div class="bg-white border border-gray-200 rounded-xl px-6 py-5 flex items-center gap-6">
-                <div class="text-4xl font-bold text-gray-900 shrink-0">{{ $pct }}%</div>
-                <div class="flex-1">
-                    <p class="text-sm {{ $overdue ? 'text-red-600' : 'text-gray-500' }} mb-2">Ознакомлено {{ $acknowledged->count() }} из {{ $total }}</p>
-                    <div class="h-2.5 rounded-full bg-gray-100 overflow-hidden">
-                        <div class="h-full rounded-full {{ $overdue ? 'bg-red-500' : 'bg-emerald-500' }}" style="width: {{ $pct }}%"></div>
+                </div>
+                <div class="bg-gray-100 p-8 overflow-x-auto">
+                    <div class="blank-sheet">
+                        {!! $order->renderedBody() !!}
+                        @include('orders.partials.cert-stamp')
                     </div>
                 </div>
-                @if($order->ack_deadline)
-                    <div class="text-right shrink-0">
-                        <p class="text-xs text-gray-400">Срок ознакомления</p>
-                        <p class="text-sm font-semibold text-gray-900">{{ $order->ack_deadline->format('d.m.Y') }}</p>
-                        @php $days = now()->startOfDay()->diffInDays($order->ack_deadline, false); @endphp
-                        <p class="text-xs {{ $days < 0 ? 'text-red-500' : 'text-amber-500' }}">
-                            {{ $days < 0 ? 'просрочено' : 'осталось ' . $days . ' ' . \Illuminate\Support\Str::plural('день', $days) }}
-                        </p>
-                    </div>
-                @endif
+            @endif
+        </div>
+
+        <div class="bg-white border border-gray-200 rounded-xl px-6 py-5 flex items-center gap-6 mb-6">
+            <div class="text-4xl font-bold text-gray-900 shrink-0">{{ $pct }}%</div>
+            <div class="flex-1">
+                <p class="text-sm {{ $overdue ? 'text-red-600' : 'text-gray-500' }} mb-2">Ознакомлено {{ $acknowledged->count() }} из {{ $total }}</p>
+                <div class="h-2.5 rounded-full bg-gray-100 overflow-hidden">
+                    <div class="h-full rounded-full {{ $overdue ? 'bg-red-500' : 'bg-emerald-500' }}" style="width: {{ $pct }}%"></div>
+                </div>
             </div>
+            @if($order->ack_deadline)
+                <div class="text-right shrink-0">
+                    <p class="text-xs text-gray-400">Срок ознакомления</p>
+                    <p class="text-sm font-semibold text-gray-900">{{ $order->ack_deadline->format('d.m.Y') }}</p>
+                    @php $days = now()->startOfDay()->diffInDays($order->ack_deadline, false); @endphp
+                    <p class="text-xs {{ $days < 0 ? 'text-red-500' : 'text-amber-500' }}">
+                        {{ $days < 0 ? 'просрочено' : 'осталось ' . $days . ' ' . \Illuminate\Support\Str::plural('день', $days) }}
+                    </p>
+                </div>
+            @endif
         </div>
 
         {{-- Кнопка «ознакомиться» для адресата --}}

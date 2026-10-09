@@ -180,6 +180,7 @@ class RequestsController extends Controller
 
         return [
             'kind'        => $kind,
+            'request'     => $r,
             'type_label'  => $isTrip ? 'Командировка' : ($r->vacation_type === 'sick_leave' ? 'Больничный' : 'Отпуск'),
             'initiator'   => $r->user?->name ?? '—',
             'position'    => $r->user?->position ?: ($r->user?->department?->name ?? ''),

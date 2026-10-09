@@ -411,6 +411,11 @@
                 <div class="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-lg px-4 py-2.5 text-xs text-gray-500">
                     Подтип → Сценарий — ключ маршрутизации. При создании документа система подставит привязанный сценарий автоматически.
                 </div>
+                @if($documentType?->slug === \App\Models\DocumentType::ORDER_SLUG)
+                    <div class="bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-2.5 text-xs text-[#5B4FE8]">
+                        Подтипы этого типа — виды приказа: активные подтипы предлагаются в поле «Вид приказа» при издании приказа.
+                    </div>
+                @endif
 
                 <template x-for="(subtype, index) in subtypes" :key="subtype.uid">
                     <div class="bg-white rounded-xl border border-gray-200 p-5 space-y-3">

@@ -207,6 +207,7 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
     Route::post('orders/{order}/acknowledge', [OrderController::class, 'acknowledge'])->name('orders.acknowledge');
     Route::post('orders/{order}/remind', [OrderController::class, 'remind'])->name('orders.remind');
     Route::get('orders/{order}/file', [OrderController::class, 'file'])->name('orders.file');
+    Route::get('orders/{order}/file/preview', [OrderController::class, 'filePreview'])->name('orders.file.preview');
     Route::get('orders/{order}/pdf', [OrderController::class, 'pdf'])->name('orders.pdf');
     Route::post('orders/{order}/approve', [OrderController::class, 'approve'])->name('orders.approve');
     Route::post('orders/{order}/reject', [OrderController::class, 'reject'])->name('orders.reject');

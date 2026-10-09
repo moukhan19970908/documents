@@ -45,6 +45,12 @@ class DocumentSubtype extends Model
         return $this->hasMany(Document::class);
     }
 
+    /** Приказы этого вида — только у подтипов типа «Приказ». */
+    public function orders(): HasMany
+    {
+        return $this->hasMany(Order::class);
+    }
+
     /** The mask actually used: subtype override wins, otherwise the type's. */
     public function effectiveNameTemplate(): ?string
     {

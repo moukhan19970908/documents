@@ -61,6 +61,15 @@ class VacationRequest extends Model
         return $this->hasOne(Substitution::class, 'vacation_request_id');
     }
 
+    /** Замещающего линейного сотрудника выбирает первый согласующий — пока заявка на первом шаге и замещения нет. */
+    public function awaitsDeputyFromApprover(): bool
+    {
+        return $this->status === 'pending'
+            && (int) $this->current_step === 1
+            && $this->substitution === null
+            && $this->user?->isLinearEmployee() === true;
+    }
+
     public function getVacationTypeLabelAttribute(): string
     {
         return match($this->vacation_type) {

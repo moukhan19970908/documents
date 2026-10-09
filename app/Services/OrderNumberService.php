@@ -18,22 +18,24 @@ class OrderNumberService
 {
     public function assign(Order $order): string
     {
-        // Привязка вида приказа к нумератору (страница «Нумерация») имеет приоритет
-        // над глобальным потоком «order».
-        $binding = NumeratorBinding::with('numerator')
-            ->where('classifier_type', 'order_kind')
-            ->where('classifier_id', $order->kind)
-            ->first();
+        // Привязка вида приказа (подтипа «Приказ») к нумератору на странице «Нумерация»
+        // имеет приоритет над глобальным потоком «order».
+        $binding = $order->document_subtype_id
+            ? NumeratorBinding::with('numerator')
+                ->where('classifier_type', 'document_subtype')
+                ->where('classifier_id', (string) $order->document_subtype_id)
+                ->first()
+            : null;
 
         $numerator = $binding?->numerator ?? Numerator::where('key', 'order')->firstOrFail();
 
         // Отдельная последовательность на каждый вид, если счётчик не сквозной.
         $scopeKey = ($binding && ! $numerator->shared_counter)
-            ? 'order_kind:' . $order->kind . '|' . $numerator->periodKey()
+            ? 'document_subtype:' . $order->document_subtype_id . '|' . $numerator->periodKey()
             : $numerator->periodKey();
 
         $seq    = $this->nextValue($numerator, $scopeKey);
-        $number = $numerator->format($seq, ['{вид}' => Order::KINDS[$order->kind] ?? $order->kind]);
+        $number = $numerator->format($seq, ['{вид}' => $order->kindLabel() ?? '']);
 
         $order->forceFill(['seq' => $seq, 'number' => $number])->save();
 

@@ -174,8 +174,9 @@ class RequestFlowExecutor
      * `role_level`: оно приходит из Битрикса и месту в дереве не соответствует.
      * Уровень — по отделу, которым человек руководит (если руководит несколькими,
      * берём высший); кто никем не руководит — по назначенным ролям.
+     * Публичный: по нему же заявки решают, кто линейный (User::isLinearEmployee).
      */
-    private function initiatorLevel(User $initiator): int
+    public function initiatorLevel(User $initiator): int
     {
         $levels = Department::where('head_user_id', $initiator->id)
             ->pluck('id')

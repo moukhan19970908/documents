@@ -27,3 +27,6 @@ Thumbs.db
 
 # Local watermark tooling (platform-specific qpdf binary)
 /storage/tools/
+
+# Personal, gitignored notes for this project (see CLAUDE.local.md.example)
+CLAUDE.local.md

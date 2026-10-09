@@ -5,11 +5,14 @@ namespace App\Services;
 use App\Models\Document;
 use App\Models\DocumentApproval;
 use App\Models\DocumentFile;
+use App\Models\Order;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Symfony\Component\Process\Process;
 
 /**
- * Впечатывает штамп-удостоверение «Документ согласован» в байты скачиваемого файла.
+ * Впечатывает штамп-удостоверение в байты скачиваемого файла: «Документ согласован» у
+ * согласованного документа, «Документ утвержден» у опубликованного приказа.
  *
  * PDF: штамп-оверлей генерируется чистым PHP (TCPDF, кириллица) и накладывается на
  * исходник нативной утилитой qpdf — векторный текст оригинала сохраняется, работают
@@ -30,28 +33,24 @@ class FileWatermarkService
     /** Можно ли (и нужно ли) штамповать этот файл. */
     public function canStamp(DocumentFile $file, Document $document): bool
     {
-        if (! $this->isCertified($document)) {
-            return false;
-        }
-
-        $mime = $this->mime($file);
-
-        if ($mime === 'application/pdf') {
-            return $this->qpdfBin() !== null;
-        }
-
-        if ($this->isDocx($file)) {
-            return class_exists(\ZipArchive::class);
-        }
-
-        return in_array($mime, self::IMAGE_MIME, true) && $this->fontPath() !== null;
+        return $this->isCertified($document) && $this->canStampFormat($this->format($file));
     }
 
-    /** DOCX по mime или по расширению — libmagic на проде нередко отдаёт docx как application/zip. */
-    private function isDocx(DocumentFile $file): bool
+    /** Формат файла для штампа: DOCX по mime или по расширению — libmagic на проде нередко отдаёт docx как application/zip. */
+    private function format(DocumentFile $file): string
     {
-        return $this->mime($file) === self::DOCX_MIME
-            || str_ends_with(strtolower((string) $file->file_name), '.docx');
+        $mime = strtolower((string) $file->mime_type);
+
+        return str_ends_with(strtolower((string) $file->file_name), '.docx') ? self::DOCX_MIME : $mime;
+    }
+
+    private function canStampFormat(string $mime): bool
+    {
+        return match (true) {
+            $mime === 'application/pdf' => $this->qpdfBin() !== null,
+            $mime === self::DOCX_MIME   => class_exists(\ZipArchive::class),
+            default                     => in_array($mime, self::IMAGE_MIME, true) && $this->fontPath() !== null,
+        };
     }
 
     /** Возвращает байты со штампом либо исходные — если формат не поддержан или что-то пошло не так. */
@@ -62,18 +61,44 @@ class FileWatermarkService
         }
 
         try {
-            $mime = $this->mime($file);
-
-            return match (true) {
-                $mime === 'application/pdf' => $this->stampPdf($bytes, $document) ?? $bytes,
-                $this->isDocx($file)        => $this->stampDocx($bytes, $document) ?? $bytes,
-                default                     => $this->stampImage($bytes, $mime, $document) ?? $bytes,
-            };
+            return $this->stampFormat($bytes, $this->format($file), 'СОГЛАСОВАНО', $this->stampLines($document)) ?? $bytes;
         } catch (\Throwable $e) {
             Log::warning("Watermark: файл {$file->id} не проштампован: {$e->getMessage()}");
 
             return $bytes;
         }
+    }
+
+    /** Загруженный файл опубликованного приказа штампуется «Документ утвержден» (формат — по имени файла). */
+    public function canStampOrder(Order $order): bool
+    {
+        $mime = $order->filePreviewMime();
+
+        return $order->isPublished() && $mime !== null && $this->canStampFormat($mime);
+    }
+
+    public function stampOrder(string $bytes, Order $order): string
+    {
+        if (! $this->canStampOrder($order)) {
+            return $bytes;
+        }
+
+        try {
+            return $this->stampFormat($bytes, $order->filePreviewMime(), 'УТВЕРЖДЕНО', $this->orderStampLines($order)) ?? $bytes;
+        } catch (\Throwable $e) {
+            Log::warning("Watermark: файл приказа {$order->id} не проштампован: {$e->getMessage()}");
+
+            return $bytes;
+        }
+    }
+
+    private function stampFormat(string $bytes, string $mime, string $mark, array $lines): ?string
+    {
+        return match ($mime) {
+            'application/pdf' => $this->stampPdf($bytes, $mark, $lines),
+            self::DOCX_MIME   => $this->stampDocx($bytes, $lines),
+            default           => $this->stampImage($bytes, $mime, $mark, $lines),
+        };
     }
 
     /**
@@ -88,7 +113,7 @@ class FileWatermarkService
         }
 
         try {
-            return $this->stampPdf($bytes, $document) ?? $bytes;
+            return $this->stampPdf($bytes, 'СОГЛАСОВАНО', $this->stampLines($document)) ?? $bytes;
         } catch (\Throwable $e) {
             Log::warning("Watermark: PDF документа {$document->id} не проштампован: {$e->getMessage()}");
 
@@ -101,14 +126,9 @@ class FileWatermarkService
         return in_array($document->status, ['approved', 'signed', 'archived'], true);
     }
 
-    private function mime(DocumentFile $file): string
-    {
-        return strtolower((string) $file->mime_type);
-    }
-
     // ── PDF (TCPDF + qpdf) ───────────────────────────────────────────────────
 
-    private function stampPdf(string $bytes, Document $document): ?string
+    private function stampPdf(string $bytes, string $mark, array $lines): ?string
     {
         $qpdf = $this->qpdfBin();
         if (! $qpdf) {
@@ -126,7 +146,7 @@ class FileWatermarkService
             $pages = min(3000, max(1, $this->pdfPageCount($qpdf, $in)));
             [$w, $h] = $this->pdfPageSize($qpdf, $in, $bytes);
 
-            file_put_contents($stamp, $this->buildStampPdf($this->stampLines($document), $w, $h, $pages));
+            file_put_contents($stamp, $this->buildStampPdf($lines, $mark, $w, $h, $pages));
 
             $proc = new Process([$qpdf, '--overlay', $stamp, '--', $in, $out]);
             $proc->setTimeout(60);
@@ -202,7 +222,7 @@ class FileWatermarkService
     }
 
     /** Прозрачная страница-оверлей со штампом; повторяется на каждую страницу документа. */
-    private function buildStampPdf(array $lines, float $w, float $h, int $pages): string
+    private function buildStampPdf(array $lines, string $mark, float $w, float $h, int $pages): string
     {
         $pdf = new \TCPDF('P', 'pt', [$w, $h], true, 'UTF-8', false);
         $pdf->setPrintHeader(false);
@@ -214,16 +234,15 @@ class FileWatermarkService
         for ($p = 0; $p < $pages; $p++) {
             $pdf->AddPage('P', [$w, $h]);
 
-            // Диагональный водяной знак «СОГЛАСОВАНО».
+            // Диагональный водяной знак («СОГЛАСОВАНО» / «УТВЕРЖДЕНО»).
             $big = max(24.0, $w / 9);
             $pdf->SetFont('dejavusans', 'B', $big);
             $pdf->SetTextColor(10, 125, 60);
             $pdf->SetAlpha(0.10);
-            $text = 'СОГЛАСОВАНО';
-            $tw = $pdf->GetStringWidth($text);
+            $tw = $pdf->GetStringWidth($mark);
             $pdf->StartTransform();
             $pdf->Rotate(28, $w / 2, $h / 2);
-            $pdf->Text($w / 2 - $tw / 2, $h / 2 - $big / 2, $text);
+            $pdf->Text($w / 2 - $tw / 2, $h / 2 - $big / 2, $mark);
             $pdf->StopTransform();
             $pdf->SetAlpha(1);
 
@@ -264,7 +283,7 @@ class FileWatermarkService
 
     // ── Картинки (GD) ────────────────────────────────────────────────────────
 
-    private function stampImage(string $bytes, string $mime, Document $document): ?string
+    private function stampImage(string $bytes, string $mime, string $mark, array $lines): ?string
     {
         $img = @imagecreatefromstring($bytes);
         if (! $img) {
@@ -283,16 +302,14 @@ class FileWatermarkService
         $green = imagecolorallocate($img, 10, 125, 60);
         $faint = imagecolorallocatealpha($img, 10, 125, 60, 100);
 
-        // 1) Крупная полупрозрачная надпись «СОГЛАСОВАНО» по диагонали через центр.
+        // 1) Крупная полупрозрачная надпись по диагонали через центр.
         $big  = max(14, (int) ($w / 12));
-        $text = 'СОГЛАСОВАНО';
-        $bb   = imagettfbbox($big, 30, $font, $text);
+        $bb   = imagettfbbox($big, 30, $font, $mark);
         $tw   = abs($bb[2] - $bb[0]);
         $thh  = abs($bb[5] - $bb[1]);
-        imagettftext($img, $big, 30, (int) (($w - $tw) / 2), (int) (($h + $thh) / 2), $faint, $font, $text);
+        imagettftext($img, $big, 30, (int) (($w - $tw) / 2), (int) (($h + $thh) / 2), $faint, $font, $mark);
 
         // 2) Компактный штамп-бокс в нижнем правом углу.
-        $lines = $this->stampLines($document);
         $fs    = max(9, (int) ($w / 55));
         $pad   = (int) ($fs * 0.9);
         $lineH = (int) ($fs * 1.55);
@@ -333,7 +350,7 @@ class FileWatermarkService
     // ── DOCX (ZipArchive) ────────────────────────────────────────────────────
 
     /** Впечатывает блок-удостоверение в начало тела документа word/document.xml. */
-    private function stampDocx(string $bytes, Document $document): ?string
+    private function stampDocx(string $bytes, array $lines): ?string
     {
         if (! class_exists(\ZipArchive::class)) {
             return null;
@@ -358,7 +375,7 @@ class FileWatermarkService
 
             // Блок штампа — сразу после открывающего <w:body>, до содержимого документа.
             $pos     = $m[0][1] + strlen($m[0][0]);
-            $patched = substr($xml, 0, $pos) . $this->docxStampXml($this->stampLines($document)) . substr($xml, $pos);
+            $patched = substr($xml, 0, $pos) . $this->docxStampXml($lines) . substr($xml, $pos);
 
             $zip->addFromString('word/document.xml', $patched);
             $zip->close();
@@ -422,6 +439,21 @@ class FileWatermarkService
             'ID ' . $document->id . ($document->number ? '   ·   ' . $document->number : ''),
             'Действителен, изменения запрещены',
         ];
+    }
+
+    /** Строки штампа приказа — те же поля, что в HTML-штампе на листе бланка. */
+    private function orderStampLines(Order $order): array
+    {
+        $lines = ['ДОКУМЕНТ УТВЕРЖДЕН', 'Внутренний штамп-удостоверение'];
+
+        // Название может быть длинным, а бокс растёт по самой длинной строке — обрезаем.
+        foreach ($order->certificateFields() as $label => $value) {
+            $lines[] = $label . ': ' . Str::limit($value, 60);
+        }
+
+        $lines[] = 'Действителен, изменения запрещены';
+
+        return $lines;
     }
 
     /** «Утвердил»: решение в фазе утверждения, иначе последнее «Согласовать» по маршруту. */

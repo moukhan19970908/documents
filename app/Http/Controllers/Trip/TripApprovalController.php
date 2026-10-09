@@ -7,6 +7,7 @@ use App\Models\TripRequest;
 use App\Services\TripService;
 use App\Services\ApprovalService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class TripApprovalController extends Controller
 {
@@ -24,8 +25,11 @@ class TripApprovalController extends Controller
 
     public function approve(Request $request, TripRequest $trip)
     {
-        $request->validate(['comment' => ['nullable', 'string', 'max:1000']]);
-        $this->tripService->approve($trip, auth()->user(), $request->comment);
+        $request->validate([
+            'comment'   => ['nullable', 'string', 'max:1000'],
+            'deputy_id' => ['nullable', 'integer', Rule::in($trip->user->deputyCandidates()->pluck('id'))],
+        ]);
+        $this->tripService->approve($trip, auth()->user(), $request->comment, $request->integer('deputy_id') ?: null);
         return back()->with('success', 'Заявка согласована.');
     }
 

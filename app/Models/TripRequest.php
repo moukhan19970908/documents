@@ -72,6 +72,15 @@ class TripRequest extends Model
         return $this->hasOne(Substitution::class, 'trip_request_id');
     }
 
+    /** Замещающего линейного сотрудника выбирает первый согласующий — пока заявка на первом шаге и замещения нет. */
+    public function awaitsDeputyFromApprover(): bool
+    {
+        return $this->status === 'pending'
+            && (int) $this->current_step === 1
+            && $this->substitution === null
+            && $this->user?->isLinearEmployee() === true;
+    }
+
     /** Порождаемые задания командировки (ТЗ 18.3). */
     public function tripTasks(): HasMany
     {

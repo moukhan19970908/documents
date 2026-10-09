@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\BlankTemplate;
+use App\Models\DocumentSubtype;
 use App\Models\DocumentType;
 use Illuminate\Database\Seeder;
 
@@ -10,11 +11,18 @@ class OrderSeeder extends Seeder
 {
     public function run(): void
     {
-        // Тип «Приказ» существует, чтобы к нему привязать бланки приказа.
+        // Тип «Приказ» существует, чтобы к нему привязать бланки приказа; его подтипы — виды приказа.
         $type = DocumentType::firstOrCreate(
             ['slug' => DocumentType::ORDER_SLUG],
             ['name' => 'Приказ', 'code' => 'ПРК', 'icon' => 'order', 'is_active' => true]
         );
+
+        foreach (['По основной деятельности', 'Кадровый', 'Об утверждении'] as $i => $kind) {
+            DocumentSubtype::firstOrCreate(
+                ['document_type_id' => $type->id, 'name' => $kind],
+                ['is_active' => true, 'sort_order' => $i]
+            );
+        }
 
         $title = '<h2 style="text-align:center;margin:0"><strong>ПРИКАЗ</strong> № {номер} от {дата}</h2>'
             . '<p style="text-align:center;color:#9ca3af;font-size:12px;margin:2px 0 0">Номер присваивается при публикации</p>'

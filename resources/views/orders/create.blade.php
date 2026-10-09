@@ -41,7 +41,7 @@
             <input type="hidden" name="action" :value="action">
             <input type="hidden" name="source" :value="source">
             <input type="hidden" name="blank_template_id" :value="source === 'blank' ? blankId : ''">
-            <input type="hidden" name="kind" :value="kind">
+            <input type="hidden" name="document_subtype_id" :value="kind">
             <input type="hidden" name="title" :value="title">
             <input type="hidden" name="effective_at" :value="effectiveAt">
             <input type="hidden" name="ack_deadline" :value="ackDeadline">
@@ -98,6 +98,9 @@
                                     <option value="{{ $value }}">{{ $label }}</option>
                                 @endforeach
                             </select>
+                            @if($kinds->isEmpty())
+                                <p class="text-xs text-amber-600 mt-1">Виды приказа не настроены — их задаёт администратор в «Классификаторах и типах», тип «Приказ».</p>
+                            @endif
                         </div>
                         <div>
                             <label class="text-xs text-gray-500 block mb-1">Краткое название</label>
@@ -270,7 +273,7 @@
             source: @js($editing && $order->file_path ? 'file' : 'blank'),
             blankId: @js($editing ? $order->blank_template_id : null),
 
-            kind: @js($editing ? $order->kind : 'operational'),
+            kind: @js($editing ? $order->document_subtype_id : $kinds->keys()->first()),
             title: @js($editing ? $order->title : ''),
             effectiveAt: @js($editing ? optional($order->effective_at)->format('Y-m-d') : $today),
             ackDeadline: @js($editing ? optional($order->ack_deadline)->format('Y-m-d') : now()->addDays(10)->format('Y-m-d')),

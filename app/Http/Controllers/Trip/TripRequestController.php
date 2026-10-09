@@ -40,18 +40,13 @@ class TripRequestController extends Controller
 
     public function create()
     {
-        $norms    = $this->normService->payloadFor(auth()->user());
-        $deputies = $this->deputyCandidates();
-        return view('trips.create', compact('norms', 'deputies'));
-    }
+        $user = auth()->user();
 
-    /** Кандидаты в замещающие: активные коллеги по отделу (или все, если отдел не задан), кроме себя. */
-    private function deputyCandidates()
-    {
-        return \App\Models\User::where('is_active', true)
-            ->where('id', '!=', auth()->id())
-            ->when(auth()->user()->department_id, fn ($q, $d) => $q->where('department_id', $d))
-            ->orderBy('name')->get(['id', 'name', 'position']);
+        return view('trips.create', [
+            'norms'            => $this->normService->payloadFor($user),
+            'deputies'         => $user->deputyCandidates(),
+            'deputyByApprover' => $user->isLinearEmployee(),
+        ]);
     }
 
     public function store(Request $request)
@@ -85,7 +80,10 @@ class TripRequestController extends Controller
         $submit = $request->boolean('submit');
         $trip   = $this->tripService->create($user, $data, $submit);
 
-        \App\Models\Substitution::assign($user, $deputyId, $request->date_start, $request->date_end, 'trip_request_id', $trip->id);
+        // Линейному замещающего назначает первый согласующий (TripService::approve), не он сам.
+        if (! $user->isLinearEmployee()) {
+            \App\Models\Substitution::assign($user, $deputyId, $request->date_start, $request->date_end, 'trip_request_id', $trip->id);
+        }
 
         $msg = $submit ? 'Заявка отправлена на согласование.' : 'Черновик сохранён.';
         return redirect()->route('trips.show', $trip)->with('success', $msg);

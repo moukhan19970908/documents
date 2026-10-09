@@ -91,6 +91,9 @@
                             {{ $trip->substitution->deputy?->name ?? '—' }}
                             <span class="text-gray-400 font-normal">· {{ $trip->substitution->date_from->format('d.m') }}–{{ $trip->substitution->date_to->format('d.m') }}</span>
                         </dd>
+                    @elseif($trip->awaitsDeputyFromApprover())
+                        <dt class="text-gray-400">Замещение</dt>
+                        <dd class="text-gray-500">назначит первый согласующий</dd>
                     @endif
 
                     <dt class="text-gray-400">Создано</dt>
@@ -200,8 +203,9 @@
                         <textarea x-model="comment" rows="2"
                             placeholder="Комментарий (необязательно)..."
                             class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-3 resize-none focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]/30 focus:border-[#5B4FE8]"></textarea>
+                        @include('requests.partials.approver-deputy-select', ['item' => $trip, 'form' => 'trip-approve', 'class' => 'mb-3'])
                         <div class="flex gap-2">
-                            <form action="{{ route('trips.approve', $trip) }}" method="POST" class="flex-1">
+                            <form id="trip-approve" action="{{ route('trips.approve', $trip) }}" method="POST" class="flex-1">
                                 @csrf
                                 <input type="hidden" name="comment" x-bind:value="comment">
                                 <button type="submit" class="w-full py-2 bg-[#5B4FE8] text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">

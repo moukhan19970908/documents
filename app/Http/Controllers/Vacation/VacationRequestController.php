@@ -32,12 +32,12 @@ class VacationRequestController extends Controller
 
     public function create()
     {
-        $deputies = \App\Models\User::where('is_active', true)
-            ->where('id', '!=', auth()->id())
-            ->when(auth()->user()->department_id, fn ($q, $d) => $q->where('department_id', $d))
-            ->orderBy('name')->get(['id', 'name', 'position']);
+        $user = auth()->user();
 
-        return view('vacations.create', compact('deputies'));
+        return view('vacations.create', [
+            'deputies'         => $user->deputyCandidates(),
+            'deputyByApprover' => $user->isLinearEmployee(),
+        ]);
     }
 
     public function store(Request $request)
@@ -63,7 +63,10 @@ class VacationRequestController extends Controller
         $submit   = $request->boolean('submit');
         $vacation = $this->vacationService->create($user, $data, $submit);
 
-        \App\Models\Substitution::assign($user, $deputyId, $request->date_start, $request->date_end, 'vacation_request_id', $vacation->id);
+        // Линейному замещающего назначает первый согласующий (VacationService::approve), не он сам.
+        if (! $user->isLinearEmployee()) {
+            \App\Models\Substitution::assign($user, $deputyId, $request->date_start, $request->date_end, 'vacation_request_id', $vacation->id);
+        }
 
         $msg = $submit ? 'Заявка отправлена на согласование.' : 'Черновик сохранён.';
         return redirect()->route('vacations.show', $vacation)->with('success', $msg);

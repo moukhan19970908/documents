@@ -8,7 +8,6 @@ use App\Models\DocumentCounter;
 use App\Models\DocumentType;
 use App\Models\Numerator;
 use App\Models\NumeratorBinding;
-use App\Models\Order;
 use App\Services\AuditService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -78,8 +77,8 @@ class NumberingController extends Controller
             )->values(),
         ])->filter(fn ($g) => $g['departments']->isNotEmpty())->values();
 
-        $types      = DocumentType::with('subtypes')->orderBy('name')->get();
-        $orderKinds = Order::KINDS;
+        // Виды приказа — подтипы типа «Приказ», поэтому привязываются здесь же, как подтипы.
+        $types = DocumentType::with('subtypes')->orderBy('name')->get();
 
         // Человекочитаемые подписи привязок для чипов.
         $classifierLabels = [];
@@ -88,9 +87,6 @@ class NumberingController extends Controller
             foreach ($type->subtypes as $subtype) {
                 $classifierLabels['document_subtype:' . $subtype->id] = $type->name . ' → ' . $subtype->name;
             }
-        }
-        foreach ($orderKinds as $code => $label) {
-            $classifierLabels['order_kind:' . $code] = 'Приказ: ' . $label;
         }
 
         // Уже занятые классификаторы: «тип:id» => имя нумератора (подсказка в форме).
@@ -102,7 +98,7 @@ class NumberingController extends Controller
         }
 
         return view('admin.numbering.index', compact(
-            'numerators', 'custom', 'types', 'orderKinds', 'classifierLabels', 'boundTokens',
+            'numerators', 'custom', 'types', 'classifierLabels', 'boundTokens',
             'directions', 'directionId', 'departments', 'departmentId', 'deptGroups'
         ));
     }
@@ -235,10 +231,6 @@ class NumberingController extends Controller
                 $tokens[] = 'document_subtype:' . $subtype->id;
             }
         });
-
-        foreach (array_keys(Order::KINDS) as $code) {
-            $tokens[] = 'order_kind:' . $code;
-        }
 
         return $tokens;
     }

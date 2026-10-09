@@ -389,10 +389,11 @@ class DocumentTypeController extends Controller
             $keptIds[] = $subtype->id;
         }
 
-        // A subtype with documents is kept — deleting it would orphan them.
+        // A subtype with documents (or orders, for the order type) is kept — deleting it would orphan them.
         $type->subtypes()
             ->whereNotIn('id', $keptIds ?: [0])
             ->whereDoesntHave('documents')
+            ->whereDoesntHave('orders')
             ->get()
             ->each->delete();
     }

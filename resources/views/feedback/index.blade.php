@@ -1,5 +1,5 @@
 <x-app-layout>
-    <x-slot name="title">Обратная связь — Vamin</x-slot>
+    <x-slot name="title">Тех поддержка — Vamin</x-slot>
 
     @php
         $statusClasses = ['blue' => 'bg-blue-50 text-blue-600', 'amber' => 'bg-amber-50 text-amber-600', 'violet' => 'bg-violet-50 text-violet-600', 'gray' => 'bg-gray-100 text-gray-600'];
@@ -8,7 +8,7 @@
 
     <div class="flex items-center justify-between mb-6">
         <div>
-            <h1 class="text-2xl font-bold text-gray-900">Обратная связь</h1>
+            <h1 class="text-2xl font-bold text-gray-900">Тех поддержка</h1>
             <p class="text-sm text-gray-500 mt-1">{{ $canViewAll ? 'Все обращения пользователей.' : 'Ваши обращения: ошибки, пожелания, вопросы.' }}</p>
         </div>
         <a href="{{ route('feedback.create') }}" class="flex items-center gap-2 bg-[#5B4FE8] text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-indigo-700">

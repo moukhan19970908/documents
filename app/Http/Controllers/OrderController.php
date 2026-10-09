@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\BlankTemplate;
 use App\Models\Department;
+use App\Models\DocumentSubtype;
 use App\Models\DocumentType;
 use App\Models\Order;
 use App\Models\Task;
@@ -11,15 +12,18 @@ use App\Models\User;
 use App\Services\ArchiveService;
 use App\Services\AuditService;
 use App\Services\Bitrix24Service;
+use App\Services\FileWatermarkService;
 use App\Services\NotificationService;
 use App\Services\OrderAudienceService;
 use App\Services\OrderNumberService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Mews\Purifier\Facades\Purifier;
+use Symfony\Component\HttpFoundation\HeaderUtils;
 
 class OrderController extends Controller
 {
@@ -31,6 +35,7 @@ class OrderController extends Controller
         private Bitrix24Service $bitrix,
         private \App\Services\TaskDispatchService $tasks,
         private ArchiveService $archive,
+        private FileWatermarkService $watermark,
     ) {}
 
     public function index(Request $request)
@@ -60,18 +65,31 @@ class OrderController extends Controller
             }
         }
 
+        // Набор фильтров зависит от роли: издающий ищет по статусу и адресату,
+        // знакомящийся (перспектива «Сотрудник» и вкладка ознакомления) — по виду приказа.
+        $acknowledging = $tab === 'ack' || $perspective === 'employee';
+
         if ($search = $request->get('search')) {
             $query->where(fn ($q) => $q->where('title', 'like', "%{$search}%")
                 ->orWhere('number', 'like', "%{$search}%"));
         }
-        if ($status = $request->get('status')) {
-            $query->where('status', $status);
-        }
-        if ($initiator = $request->get('initiator')) {
-            $query->where('initiator_id', $initiator);
-        }
-        if ($dept = $request->get('department')) {
-            $query->whereJsonContains('audience->department_ids', (int) $dept);
+        if ($acknowledging) {
+            if ($kind = $request->integer('kind')) {
+                $query->where('document_subtype_id', $kind);
+            }
+        } else {
+            if ($status = $request->get('status')) {
+                $query->where('status', $status);
+            }
+            // Адресат — любой отдел направления: в адресаты отмечают и отдельные подотделы.
+            if ($direction = $request->integer('direction')) {
+                $memberIds = Department::directionMemberIds($direction);
+                $query->where(function ($q) use ($memberIds) {
+                    foreach ($memberIds as $id) {
+                        $q->orWhereJsonContains('audience->department_ids', $id);
+                    }
+                });
+            }
         }
         if ($from = $request->get('date_from')) {
             $query->whereDate('published_at', '>=', $from);
@@ -87,10 +105,13 @@ class OrderController extends Controller
             ->whereHas('acknowledgments', fn ($q) => $q->where('user_id', $user->id)->whereNull('acknowledged_at'))
             ->count();
 
-        $initiators = User::whereIn('id', Order::query()->select('initiator_id'))->orderBy('name')->get(['id', 'name']);
         $directions = Department::whereNull('parent_id')->orderBy('name')->get(['id', 'name']);
+        // В фильтре — все виды, включая отключённые: приказы прошлых видов тоже ищут.
+        $kinds = DocumentSubtype::whereHas('type', fn ($q) => $q->where('slug', DocumentType::ORDER_SLUG))
+            ->orderBy('sort_order')
+            ->pluck('name', 'id');
 
-        return view('orders.index', compact('orders', 'perspective', 'tab', 'ackPending', 'initiators', 'directions'));
+        return view('orders.index', compact('orders', 'perspective', 'tab', 'ackPending', 'acknowledging', 'directions', 'kinds'));
     }
 
     public function create()
@@ -251,7 +272,19 @@ class OrderController extends Controller
     {
         abort_unless($order->file_path && Storage::exists($order->file_path), 404);
 
-        return Storage::download($order->file_path, $order->file_name);
+        return $this->orderFileResponse($order, 'attachment');
+    }
+
+    /** Файл приказа inline — для предпросмотра на странице приказа (только безопасные форматы). */
+    public function filePreview(Order $order)
+    {
+        $mime = $order->filePreviewMime();
+        abort_unless($mime && Storage::exists($order->file_path), 404);
+
+        return $this->orderFileResponse($order, 'inline', [
+            'Content-Type'           => $mime,
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
     }
 
     public function pdf(Order $order)
@@ -282,6 +315,23 @@ class OrderController extends Controller
     }
 
     // ── helpers ──────────────────────────────────────────────────────────
+
+    /** Опубликованный приказ отдаётся со штампом-удостоверением, впечатанным в файл, — как согласованный документ. */
+    private function orderFileResponse(Order $order, string $disposition, array $headers = [])
+    {
+        if (! $this->watermark->canStampOrder($order)) {
+            return Storage::response($order->file_path, $order->file_name, $headers, $disposition);
+        }
+
+        $bytes = $this->watermark->stampOrder(Storage::get($order->file_path), $order);
+        $fallbackName = str_replace('%', '', Str::ascii($order->file_name));
+
+        return response($bytes, 200, $headers + [
+            'Content-Type'        => $order->filePreviewMime(),
+            'Content-Length'      => strlen($bytes),
+            'Content-Disposition' => HeaderUtils::makeDisposition($disposition, $order->file_name, $fallbackName),
+        ]);
+    }
 
     /** Метки ролей согласующих (ТЗ 16.1). */
     private const APPROVER_ROLES = ['legal' => 'Юрист', 'hr' => 'Кадры', 'finance' => 'Финансы'];
@@ -431,7 +481,7 @@ class OrderController extends Controller
     private function fillFromRequest(Order $order, Request $request, array $data): void
     {
         $order->fill([
-            'kind'         => $data['kind'],
+            'document_subtype_id' => $data['document_subtype_id'],
             'title'        => $data['title'],
             'effective_at' => $data['effective_at'] ?? null,
             'ack_deadline' => $data['ack_deadline'] ?? null,
@@ -472,7 +522,7 @@ class OrderController extends Controller
     private function validateOrder(Request $request): array
     {
         return $request->validate([
-            'kind'              => ['required', Rule::in(array_keys(Order::KINDS))],
+            'document_subtype_id' => ['required', Rule::in(Order::availableKinds()->keys())],
             'title'             => ['required', 'string', 'max:255'],
             'effective_at'      => ['nullable', 'date'],
             'ack_deadline'      => ['nullable', 'date'],
@@ -506,7 +556,7 @@ class OrderController extends Controller
             ->values();
 
         return [
-            'kinds'  => Order::KINDS,
+            'kinds'  => Order::availableKinds(),
             'blanks' => $blanks,
             'tree'   => $tree,
             'people' => $people,

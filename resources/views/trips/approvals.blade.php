@@ -33,6 +33,7 @@
                             <td class="px-5 py-3.5">
                                 <div class="font-medium text-gray-900">{{ $trip->user->name }}</div>
                                 <div class="text-xs text-gray-400">{{ $trip->user->department?->name }}</div>
+                                @include('requests.partials.approver-deputy-select', ['item' => $trip, 'form' => 'trip-approve-' . $trip->id, 'class' => 'mt-1.5'])
                             </td>
                             <td class="px-5 py-3.5">
                                 <div class="font-medium text-gray-800">{{ $trip->city }}</div>
@@ -53,7 +54,7 @@
                                        class="p-1.5 text-gray-400 hover:text-[#5B4FE8] rounded transition-colors" title="Открыть">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
                                     </a>
-                                    <form action="{{ route('trips.approve', $trip) }}" method="POST">
+                                    <form id="trip-approve-{{ $trip->id }}" action="{{ route('trips.approve', $trip) }}" method="POST">
                                         @csrf
                                         <button type="submit" class="p-1.5 text-gray-400 hover:text-green-600 rounded transition-colors" title="Согласовать">
                                             <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>

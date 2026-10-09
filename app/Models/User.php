@@ -261,6 +261,24 @@ class User extends Authenticatable
             || $this->headsAnyDepartment();
     }
 
+    /**
+     * Линейный сотрудник по оргструктуре — уровень 1 в маршрутах заявок (никем не руководит,
+     * руководящих ролей нет). Поля role/role_level из Битрикса для этого не годятся.
+     */
+    public function isLinearEmployee(): bool
+    {
+        return app(\App\Services\RequestFlowExecutor::class)->initiatorLevel($this) === 1;
+    }
+
+    /** Кандидаты в замещающие на период отсутствия: активные коллеги по отделу (или все, если отдел не задан). */
+    public function deputyCandidates(): \Illuminate\Support\Collection
+    {
+        return self::where('is_active', true)
+            ->where('id', '!=', $this->id)
+            ->when($this->department_id, fn ($q, $d) => $q->where('department_id', $d))
+            ->orderBy('name')->get(['id', 'name', 'position']);
+    }
+
     private ?bool $headsAnyDepartmentCache = null;
 
     /** Руководит ли пользователь хотя бы одним отделом (head_user_id) — по оргструктуре. */

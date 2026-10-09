@@ -1,4 +1,5 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
     "allow": [
       "Bash(xargs grep -l \"document_fields\")",
@@ -95,11 +96,69 @@
       "PowerShell(cd c:\\\\xampp\\\\htdocs\\\\documents; php artisan view:clear 2>&1; php -r \"require 'vendor/autoload.php'; \\\\$app=require 'bootstrap/app.php'; \\\\$k=\\\\$app->make\\(Illuminate\\\\Contracts\\\\Console\\\\Kernel::class\\); \\\\$k->bootstrap\\(\\); echo 'rows='.DB::table\\('role_permissions'\\)->count\\(\\).'; roles='.DB::table\\('roles'\\)->count\\(\\).PHP_EOL; \\\\$s=DB::table\\('role_permissions'\\)->join\\('roles','roles.id','=','role_permissions.role_id'\\)->where\\('roles.code','external'\\)->pluck\\('permission'\\)->all\\(\\); echo 'external: '.implode\\(',',\\\\$s\\).PHP_EOL;\")",
       "Bash(rm -f /tmp/check.php /tmp/check2.php /tmp/check3.php)",
       "Bash(grep -n 'class Document\\\\|function approvals\\\\|function initiator\\\\|public function scope\\\\|protected $fillable' app/Models/Document.php)",
-      "Bash(grep -n \"^use App\\\\\\\\\\\\\\\\Models\" app/Http/Controllers/DocumentController.php)"
+      "Bash(grep -n \"^use App\\\\\\\\\\\\\\\\Models\" app/Http/Controllers/DocumentController.php)",
+      "mcp__claude-in-chrome__tabs_context_mcp",
+      "ClaudeInChromeDomain(localhost:8000)",
+      "ClaudeInChromeDomain(localhost:8001)"
+    ],
+    "deny": [
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(**/secrets/**)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)",
+      "Write(**/.env)",
+      "Write(**/.env.*)",
+      "Write(**/secrets/**)",
+      "Write(**/*.pem)",
+      "Write(**/*.key)",
+      "Edit(**/.env)",
+      "Edit(**/.env.*)",
+      "Edit(**/secrets/**)",
+      "Edit(**/*.pem)",
+      "Edit(**/*.key)"
     ],
     "additionalDirectories": [
       "C:\\xampp\\php",
       "\\tmp"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/protect-files.sh",
+            "timeout": 10,
+            "statusMessage": "Checking file protections..."
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-large-files.sh",
+            "timeout": 10,
+            "statusMessage": "Checking for build artifacts..."
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/scan-secrets.sh",
+            "timeout": 10,
+            "statusMessage": "Scanning for secrets..."
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-dangerous-commands.sh",
+            "timeout": 10,
+            "statusMessage": "Checking command safety..."
+          }
+        ]
+      }
     ]
   }
 }

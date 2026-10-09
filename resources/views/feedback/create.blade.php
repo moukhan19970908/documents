@@ -2,7 +2,7 @@
     <x-slot name="title">Новое обращение — Vamin</x-slot>
 
     <div class="flex items-center gap-2 text-sm text-gray-400 mb-3">
-        <a href="{{ route('feedback.index') }}" class="hover:text-gray-700">Обратная связь</a>
+        <a href="{{ route('feedback.index') }}" class="hover:text-gray-700">Тех поддержка</a>
         <span>›</span>
         <span class="text-gray-600">Новое обращение</span>
     </div>

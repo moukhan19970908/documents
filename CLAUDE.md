@@ -1,65 +1,34 @@
-# CLAUDE.md
+# Documents — СЭД
 
-Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
+Электронный документооборот: согласование по маршрутам, приказы, поручения, проверки, заявки, ECM-архив. Сотрудники синхронизируются из Bitrix24.
 
-**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
+## Commands
 
-## 1. Think Before Coding
-
-**Don't assume. Don't hide confusion. Surface tradeoffs.**
-
-Before implementing:
-- State your assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them - don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-- If something is unclear, stop. Name what's confusing. Ask.
-
-## 2. Simplicity First
-
-**Minimum code that solves the problem. Nothing speculative.**
-
-- No features beyond what was asked.
-- No abstractions for single-use code.
-- No "flexibility" or "configurability" that wasn't requested.
-- No error handling for impossible scenarios.
-- If you write 200 lines and it could be 50, rewrite it.
-
-Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
-
-## 3. Surgical Changes
-
-**Touch only what you must. Clean up only your own mess.**
-
-When editing existing code:
-- Don't "improve" adjacent code, comments, or formatting.
-- Don't refactor things that aren't broken.
-- Match existing style, even if you'd do it differently.
-- If you notice unrelated dead code, mention it - don't delete it.
-
-When your changes create orphans:
-- Remove imports/variables/functions that YOUR changes made unused.
-- Don't remove pre-existing dead code unless asked.
-
-The test: Every changed line should trace directly to the user's request.
-
-## 4. Goal-Driven Execution
-
-**Define success criteria. Loop until verified.**
-
-Transform tasks into verifiable goals:
-- "Add validation" → "Write tests for invalid inputs, then make them pass"
-- "Fix the bug" → "Write a test that reproduces it, then make it pass"
-- "Refactor X" → "Ensure tests pass before and after"
-
-For multi-step tasks, state a brief plan:
-```
-1. [Step] → verify: [check]
-2. [Step] → verify: [check]
-3. [Step] → verify: [check]
+```bash
+composer dev                    # serve + queue:listen + pail + vite
+composer test                   # config:clear + artisan test
+php artisan test --filter=Имя   # один тест
+npm run build
+vendor/bin/pint                 # стиль PHP; целиком ещё не прогонялся
 ```
 
-Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+## Architecture
 
----
+- Контроллер → сервис. Вся логика согласования в `ApprovalEngineService`, где сосуществуют два движка: линейный (`activateStage`/`moveToNextStage`) и графовый (`enterNode`/`advanceGraph`).
+- Единого слоя авторизации нет: 5 политик, `abort_unless($user->hasMatrixPermission(...))` в теле экшенов, middleware `role` и `ExternalRestriction`.
+- Номера выдают `*NumberService` через `lockForUpdate` в транзакции — не обходить.
 
-**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+## Key Decisions
+
+- Пользовательский HTML санируется `Purifier::clean(..., 'blank')` **на записи**, поэтому `{!! !!}` в blade намеренно.
+- Роли лежат в двух местах: legacy-колонка `users.role` и pivot `roles`; `User::roleCodes()` их сливает. Проверять через `hasRole`/`hasAnyRole`, никогда через `$user->role`.
+- `ExternalRestriction` — deny-by-default allowlist по **именам** маршрутов: новый маршрут для внешнего участника надо явно добавить в `ALLOWED_PREFIXES`.
+
+## Domain Knowledge
+
+Звено — шаг маршрута согласования. Направление (`direction_id`) — слой над деревом отделов из Bitrix24. Composed-сценарий (`launch_mode=composed`) — инициатор собирает маршрут сам при запуске. Матрица прав — `role_permissions`, отдельно от ролей. Бланк — HTML-шаблон документа с токенами.
+
+## Don'ts
+
+- Аналитика использует MySQL-специфичный `DATE_FORMAT`, а тесты идут на sqlite `:memory:` — такие места проверять на MySQL.
+- Загрузки расползлись по дискам: `chats`/`related`/`avatars` → s3, `assignments`/`inspections`/`orders` → локальный. Известный долг, не править попутно.

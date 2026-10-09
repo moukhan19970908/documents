@@ -49,7 +49,7 @@
                         <span class="shrink-0 text-xs px-2.5 py-1 rounded-full {{ $row['kind'] === 'trip' ? 'bg-blue-50 text-blue-600' : 'bg-emerald-50 text-emerald-600' }}">{{ $row['type_label'] }}</span>
 
                         <div class="flex items-center gap-2 shrink-0">
-                            <form action="{{ $row['approve_url'] }}" method="POST">
+                            <form id="approve-{{ $row['kind'] }}-{{ $row['request']->id }}" action="{{ $row['approve_url'] }}" method="POST">
                                 @csrf
                                 <button type="submit" class="px-3.5 py-1.5 bg-emerald-500 text-white rounded-lg text-sm font-medium hover:bg-emerald-600 transition">Согласовать</button>
                             </form>
@@ -58,6 +58,12 @@
                             <a href="{{ $row['show_url'] }}" class="px-3.5 py-1.5 border border-gray-200 text-gray-700 rounded-lg text-sm hover:border-[#5B4FE8]/40 hover:text-[#5B4FE8] transition">Посмотреть</a>
                         </div>
                     </div>
+
+                    @include('requests.partials.approver-deputy-select', [
+                        'item'  => $row['request'],
+                        'form'  => 'approve-' . $row['kind'] . '-' . $row['request']->id,
+                        'class' => 'mt-3 pl-13',
+                    ])
 
                     {{-- Панель отклонения с обязательным комментарием --}}
                     <form x-show="rejecting" x-cloak x-transition action="{{ $row['reject_url'] }}" method="POST" class="mt-3 flex items-start gap-2">

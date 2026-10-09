@@ -126,22 +126,6 @@
                     @endif
                 </div>
             @endforeach
-
-            <div class="px-3 py-2">
-                <p class="text-sm font-medium text-gray-800 mb-1.5">Виды приказов</p>
-                <div class="ml-0 flex flex-col gap-1">
-                    @foreach($orderKinds as $code => $label)
-                        @php $ktok = 'order_kind:' . $code; @endphp
-                        <label class="flex items-center gap-2 text-sm text-gray-600">
-                            <input type="checkbox" name="classifiers[]" value="{{ $ktok }}" @checked(in_array($ktok, $selected)) class="rounded text-[#5B4FE8] focus:ring-[#5B4FE8]">
-                            {{ $label }}
-                            @if(($boundTokens[$ktok] ?? null) && ! in_array($ktok, $selected))
-                                <span class="text-xs text-amber-600">— занят «{{ $boundTokens[$ktok] }}»</span>
-                            @endif
-                        </label>
-                    @endforeach
-                </div>
-            </div>
         </div>
         <p class="text-xs text-gray-400 mt-1">Классификатор можно привязать только к одной нумерации — выбор перенесёт его сюда.</p>
     </div>

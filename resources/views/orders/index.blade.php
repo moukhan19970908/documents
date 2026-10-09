@@ -37,24 +37,27 @@
             <input type="text" name="search" value="{{ request('search') }}" placeholder="Поиск по номеру, названию…"
                    class="w-full text-sm border border-gray-200 rounded-lg pl-10 pr-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
         </div>
-        <select name="status" onchange="this.form.submit()" class="text-sm border border-gray-200 rounded-lg px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
-            <option value="">Статус: Все</option>
-            <option value="draft" @selected(request('status')==='draft')>Черновик</option>
-            <option value="on_approval" @selected(request('status')==='on_approval')>На согласовании</option>
-            <option value="published" @selected(request('status')==='published')>Опубликован</option>
-        </select>
-        <select name="initiator" onchange="this.form.submit()" class="text-sm border border-gray-200 rounded-lg px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
-            <option value="">Инициатор: Все</option>
-            @foreach($initiators as $i)
-                <option value="{{ $i->id }}" @selected(request('initiator')==$i->id)>{{ $i->name }}</option>
-            @endforeach
-        </select>
-        <select name="department" onchange="this.form.submit()" class="text-sm border border-gray-200 rounded-lg px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
-            <option value="">Направление-адресат: Все</option>
-            @foreach($directions as $d)
-                <option value="{{ $d->id }}" @selected(request('department')==$d->id)>{{ $d->name }}</option>
-            @endforeach
-        </select>
+        @if($acknowledging)
+            <select name="kind" onchange="this.form.submit()" class="text-sm border border-gray-200 rounded-lg px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                <option value="">Вид приказа: Все</option>
+                @foreach($kinds as $id => $name)
+                    <option value="{{ $id }}" @selected(request('kind') == $id)>{{ $name }}</option>
+                @endforeach
+            </select>
+        @else
+            <select name="status" onchange="this.form.submit()" class="text-sm border border-gray-200 rounded-lg px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                <option value="">Статус: Все</option>
+                <option value="draft" @selected(request('status')==='draft')>Черновик</option>
+                <option value="on_approval" @selected(request('status')==='on_approval')>На согласовании</option>
+                <option value="published" @selected(request('status')==='published')>Опубликован</option>
+            </select>
+            <select name="direction" onchange="this.form.submit()" class="text-sm border border-gray-200 rounded-lg px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
+                <option value="">Направление-адресат: Все</option>
+                @foreach($directions as $d)
+                    <option value="{{ $d->id }}" @selected(request('direction') == $d->id)>{{ $d->name }}</option>
+                @endforeach
+            </select>
+        @endif
     </form>
 
     {{-- Вкладки --}}

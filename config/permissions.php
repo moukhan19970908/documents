@@ -40,7 +40,7 @@ return [
             ['key' => 'menu.archive',   'label' => 'Архив',     'except' => ['external', 'process_owner']],
             ['key' => 'menu.employees', 'label' => 'Сотрудники', 'except' => ['external', 'observer', 'linear', 'process_owner', 'registrar']],
             ['key' => 'menu.analytics', 'label' => 'Аналитика', 'narrow' => true, 'except' => ['external', 'observer', 'linear', 'registrar']],
-            ['key' => 'menu.feedback',  'label' => 'Обратная связь', 'except' => []],
+            ['key' => 'menu.feedback',  'label' => 'Тех поддержка', 'except' => []],
             ['key' => 'menu.counterparties', 'label' => 'Справочник контрагентов', 'narrow' => true, 'only' => ['admin']],
 
             ['key' => 'menu.trips',            'label' => 'Командировки',    'except' => ['external', 'observer']],
@@ -105,7 +105,7 @@ return [
 
     [
         'key'   => 'feedback',
-        'label' => 'Обратная связь',
+        'label' => 'Тех поддержка',
         'items' => [
             // Обработка обращений — можно выдать выделенному специалисту поддержки (ТЗ 29).
             ['key' => 'feedback.view_all', 'label' => 'Видеть все обращения', 'narrow' => true, 'only' => ['admin', 'chief_of_staff']],

@@ -89,6 +89,11 @@
                                 <span class="text-gray-400 font-normal">· {{ $vacation->substitution->date_from->format('d.m') }}–{{ $vacation->substitution->date_to->format('d.m') }}</span>
                             </dd>
                         </div>
+                    @elseif($vacation->awaitsDeputyFromApprover())
+                        <div class="col-span-2">
+                            <dt class="text-gray-400 text-xs">Замещение</dt>
+                            <dd class="text-gray-500 mt-0.5">назначит первый согласующий</dd>
+                        </div>
                     @endif
                 </dl>
             </div>

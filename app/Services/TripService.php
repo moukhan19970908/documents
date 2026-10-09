@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Substitution;
 use App\Models\TripRequest;
 use App\Models\User;
 use Carbon\Carbon;
@@ -105,9 +106,14 @@ class TripService
         $this->notifyCurrentApprover($trip);
     }
 
-    public function approve(TripRequest $trip, User $approver, ?string $comment = null): void
+    public function approve(TripRequest $trip, User $approver, ?string $comment = null, ?int $deputyId = null): void
     {
-        DB::transaction(function () use ($trip, $approver, $comment) {
+        DB::transaction(function () use ($trip, $approver, $comment, $deputyId) {
+            // Замещающего линейного сотрудника назначает первый согласующий — до перехода к следующему шагу.
+            if ($trip->awaitsDeputyFromApprover()) {
+                Substitution::assign($trip->user, $deputyId, $trip->date_start, $trip->date_end, 'trip_request_id', $trip->id);
+            }
+
             $steps     = $trip->route?->steps ?? collect();
             $stepCount = $steps->count();
 

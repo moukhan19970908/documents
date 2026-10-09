@@ -5,11 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Collection;
 
 class Order extends Model
 {
     protected $fillable = [
-        'number', 'seq', 'kind', 'title', 'body_html', 'blank_template_id',
+        'number', 'seq', 'document_subtype_id', 'title', 'body_html', 'blank_template_id',
         'file_path', 'file_name', 'initiator_id', 'effective_at', 'ack_deadline',
         'audience', 'requires_approval', 'status', 'published_at',
     ];
@@ -22,12 +23,35 @@ class Order extends Model
         'published_at'      => 'datetime',
     ];
 
-    /** Виды приказа (подтипы из ТЗ 16.1). */
-    public const KINDS = [
-        'operational' => 'По основной деятельности',
-        'personnel'   => 'Кадровый',
-        'approval'    => 'Об утверждении',
+    /**
+     * Форматы загруженного файла, которые показываем прямо на странице приказа.
+     * Тип отдаём свой, а не пришедший с файлом: загрузить можно что угодно, и HTML/SVG,
+     * открытые inline, выполнились бы на нашем домене.
+     */
+    private const PREVIEW_MIMES = [
+        'pdf'  => 'application/pdf',
+        'png'  => 'image/png',
+        'jpg'  => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'gif'  => 'image/gif',
+        'webp' => 'image/webp',
+        'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     ];
+
+    /** Виды приказа, из которых выбирает инициатор: активные подтипы типа «Приказ» в классификаторе. */
+    public static function availableKinds(): Collection
+    {
+        return DocumentSubtype::where('is_active', true)
+            ->whereHas('type', fn ($q) => $q->where('slug', DocumentType::ORDER_SLUG))
+            ->orderBy('sort_order')
+            ->pluck('name', 'id');
+    }
+
+    /** Вид приказа (ТЗ 16.1) — подтип типа «Приказ». */
+    public function kind(): BelongsTo
+    {
+        return $this->belongsTo(DocumentSubtype::class, 'document_subtype_id');
+    }
 
     public function initiator(): BelongsTo
     {
@@ -65,9 +89,38 @@ class Order extends Model
         return $user->isAdmin() || $this->initiator_id === $user->id;
     }
 
-    public function kindLabel(): string
+    public function kindLabel(): ?string
     {
-        return self::KINDS[$this->kind] ?? $this->kind;
+        return $this->kind?->name;
+    }
+
+    /**
+     * Поля штампа-удостоверения опубликованного приказа (подпись => значение) — общие для
+     * HTML-штампа на листе бланка и штампа, впечатываемого в загруженный файл.
+     */
+    public function certificateFields(): array
+    {
+        $issuer = $this->initiator;
+
+        return [
+            'Наименование'    => $this->title,
+            'Дата публикации' => $this->published_at?->format('d.m.Y') ?? '—',
+            'Приказ издан'    => $issuer ? $issuer->name . ($issuer->position ? " ({$issuer->position})" : '') : '—',
+            'ID документа'    => $this->id . ($this->number ? ' · ' . $this->number : ''),
+            'Подлинность'     => route('orders.show', $this->id),
+        ];
+    }
+
+    /** MIME для предпросмотра загруженного файла; null — формат не показываем, только скачивание. */
+    public function filePreviewMime(): ?string
+    {
+        if (! $this->file_path) {
+            return null;
+        }
+
+        $extension = strtolower(pathinfo((string) $this->file_name, PATHINFO_EXTENSION));
+
+        return self::PREVIEW_MIMES[$extension] ?? null;
     }
 
     /** Тело бланка с подставленными токенами {номер} и {дата}. */

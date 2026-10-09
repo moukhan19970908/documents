@@ -13,7 +13,6 @@ class NumeratorBinding extends Model
     public const TYPES = [
         'document_type'    => 'Тип документа',
         'document_subtype' => 'Подтип документа',
-        'order_kind'       => 'Вид приказа',
     ];
 
     public function numerator(): BelongsTo

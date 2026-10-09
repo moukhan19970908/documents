@@ -7,6 +7,7 @@ use App\Models\VacationRequest;
 use App\Services\VacationService;
 use App\Services\ApprovalService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class VacationApprovalController extends Controller
 {
@@ -24,8 +25,11 @@ class VacationApprovalController extends Controller
 
     public function approve(Request $request, VacationRequest $vacation)
     {
-        $request->validate(['comment' => ['nullable', 'string', 'max:1000']]);
-        $this->vacationService->approve($vacation, auth()->user(), $request->comment);
+        $request->validate([
+            'comment'   => ['nullable', 'string', 'max:1000'],
+            'deputy_id' => ['nullable', 'integer', Rule::in($vacation->user->deputyCandidates()->pluck('id'))],
+        ]);
+        $this->vacationService->approve($vacation, auth()->user(), $request->comment, $request->integer('deputy_id') ?: null);
         return back()->with('success', 'Заявка согласована.');
     }
 
