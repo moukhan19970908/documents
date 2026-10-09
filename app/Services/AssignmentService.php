@@ -3,10 +3,13 @@
 namespace App\Services;
 
 use App\Models\Assignment;
+use App\Models\AssignmentFile;
 use App\Models\AssignmentSetting;
 use App\Models\Department;
 use App\Models\User;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Правила постановки поручений (ТЗ 17.1). Значения берутся из настроек
@@ -69,6 +72,36 @@ class AssignmentService
         $ids = $this->scopeUserIds($initiator, $scope);
 
         return $base->whereIn('id', $ids)->get(['id', 'name', 'position', 'department_id']);
+    }
+
+    /**
+     * Удалить узел вместе со всеми подпоручениями: без этого они остались бы в базе без родителя
+     * (parent_id обнуляется). Файлы удаляемых узлов убираются из хранилища и из «Собранных
+     * материалов» предков — при приёмке туда копируются записи с тем же путём.
+     *
+     * @return int сколько узлов удалено
+     */
+    public function deleteWithSubtree(Assignment $node): int
+    {
+        $ids = [$node->id];
+        for ($level = [$node->id]; $level !== []; ) {
+            $level = Assignment::whereIn('parent_id', $level)->pluck('id')->all();
+            array_push($ids, ...$level);
+        }
+
+        $paths = AssignmentFile::whereIn('assignment_id', $ids)
+            ->whereNull('source_assignment_id')
+            ->pluck('path')->filter()->unique()->values()->all();
+
+        // События, файлы и соисполнители удаляемых узлов уходят каскадом.
+        DB::transaction(function () use ($ids, $paths) {
+            AssignmentFile::whereIn('path', $paths)->delete();
+            Assignment::whereIn('id', $ids)->delete();
+        });
+
+        Storage::delete($paths);
+
+        return count($ids);
     }
 
     /** ID сотрудников в области «подчинённые» или «своё направление». */

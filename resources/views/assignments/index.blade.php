@@ -67,8 +67,8 @@
     {{-- Список --}}
     <div class="space-y-2">
         @forelse($assignments as $a)
-            <a href="{{ route('assignments.show', $a) }}"
-               class="flex items-center gap-4 bg-white border border-gray-200 rounded-xl px-5 py-4 hover:shadow-sm hover:border-[#5B4FE8]/40 transition">
+            {{-- Вся строка кликабельна (ссылка растянута на строку), кнопка удаления лежит поверх неё. --}}
+            <div class="relative flex items-center gap-4 bg-white border border-gray-200 rounded-xl px-5 py-4 hover:shadow-sm hover:border-[#5B4FE8]/40 transition">
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2 flex-wrap">
                         <span class="font-mono text-xs text-gray-400">{{ $a->number ?? 'ПОР-…' }}</span>
@@ -76,7 +76,9 @@
                             <span class="text-[10px] uppercase tracking-wide text-gray-400">подпоручение</span>
                         @endif
                     </div>
-                    <h3 class="font-semibold text-gray-900 truncate">{{ $a->title }}</h3>
+                    <h3 class="font-semibold text-gray-900 truncate">
+                        <a href="{{ route('assignments.show', $a) }}" class="after:absolute after:inset-0 after:rounded-xl focus:outline-none focus-visible:underline">{{ $a->title }}</a>
+                    </h3>
                     <p class="text-xs text-gray-500 mt-0.5">
                         Постановщик: {{ $a->initiator->name }} · Исполнитель: {{ $a->executor->name }}
                     </p>
@@ -90,7 +92,19 @@
                 @endif
 
                 <span class="shrink-0 text-xs px-2.5 py-1 rounded-full {{ $statusColors[$a->status] ?? 'bg-gray-100 text-gray-600' }}">{{ $a->statusLabel() }}</span>
-            </a>
+
+                @if($a->canBeDeletedBy(auth()->user()))
+                    @php $confirm = "Удалить поручение {$a->number}?" . ($a->children_count > 0 ? ' Вместе с ним удалятся все его подпоручения.' : ''); @endphp
+                    <form method="POST" action="{{ route('assignments.destroy', $a) }}" class="relative z-10 shrink-0"
+                          onsubmit="return confirm({{ \Illuminate\Support\Js::from($confirm) }})">
+                        @csrf @method('DELETE')
+                        <button type="submit" title="Удалить поручение" aria-label="Удалить поручение {{ $a->number }}"
+                                class="p-2 border border-gray-200 rounded-lg text-gray-400 hover:text-red-600 hover:border-red-200 hover:bg-red-50">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                        </button>
+                    </form>
+                @endif
+            </div>
         @empty
             <div class="text-center text-gray-400 bg-gray-50 border border-dashed border-gray-200 rounded-xl py-16">
                 Поручений нет.

@@ -121,6 +121,23 @@ class Assignment extends Model
         return $rootInitiatorId === $user->id;
     }
 
+    /**
+     * Кто видит узел по послойной видимости — без админов и права view_all (как visibleTo).
+     * Нужен переключателю «что видит участник»; ожидает загруженных coExecutors.
+     */
+    public function viewerIds(int $rootInitiatorId): array
+    {
+        return $this->coExecutors->pluck('id')
+            ->push($this->initiator_id, $this->executor_id, $this->controller_id, $rootInitiatorId)
+            ->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+    }
+
+    /** Удалять узел (вместе с его подпоручениями) может его постановщик или админ — в любом статусе. */
+    public function canBeDeletedBy(User $user): bool
+    {
+        return $this->initiator_id === $user->id || $user->isAdmin();
+    }
+
     /** Участник исполнения: основной исполнитель или соисполнитель. */
     public function isParticipant(User $user): bool
     {

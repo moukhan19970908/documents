@@ -13,6 +13,7 @@ use App\Services\AuditService;
 use App\Services\InspectionNumberService;
 use App\Services\InspectionService;
 use App\Services\NotificationService;
+use App\Services\TreeViewService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -38,7 +39,7 @@ class InspectionController extends Controller
             $tab = 'incoming';
         }
 
-        $query = Inspection::with(['initiator', 'executor', 'parent'])->latest('id');
+        $query = Inspection::with(['initiator', 'executor', 'parent'])->withCount('children')->latest('id');
 
         match ($tab) {
             'incoming' => $query->where('executor_id', $user->id),
@@ -128,38 +129,44 @@ class InspectionController extends Controller
         return redirect()->route('inspections.show', $inspection)->with('success', "Проверка {$inspection->number} создана.");
     }
 
-    public function show(Inspection $inspection)
+    public function show(Inspection $inspection, TreeViewService $tree)
     {
         $user = auth()->user();
         abort_unless($inspection->visibleTo($user), 403);
 
         $inspection->load([
             'initiator.department', 'executor.department', 'parent',
-            'events.user', 'files.source',
-            'children.executor', 'children.initiator',
+            'events.user', 'files.source.executor.department',
         ]);
 
-        $children = $inspection->children->filter(fn ($c) => $c->visibleTo($user))->values();
-        $canSub   = $this->service->canSubRequest($user, $inspection);
+        [$visibleCount, $totalCount] = $tree->attachVisibleTree($inspection, $user, ['initiator.department', 'executor.department']);
+
+        $canSub      = $this->service->canSubRequest($user, $inspection);
         $isInitiator = $inspection->initiator_id === $user->id;
+        // Те же условия, что проверяет spawnAssignment().
+        $canSpawn    = $inspection->isDone() && ($isInitiator || $user->isAdmin())
+            && ($user->hasMatrixPermission('assignments.issue') || $user->isAdmin());
 
         return view('inspections.show', [
             'inspection'    => $inspection,
-            'children'      => $children,
+            // Переключатель «что видит участник» — только тому, кто сам видит всё дерево.
+            'perspectives'  => $visibleCount === $totalCount && $totalCount > 1 ? $tree->perspectives($inspection, 'Проверяющий') : collect(),
+            'rootInitiatorId' => $tree->rootInitiatorId($inspection),
             'isExecutor'    => $inspection->executor_id === $user->id,
             'isInitiator'   => $isInitiator,
             'canSubRequest' => $canSub,
-            'executors'     => ($canSub || ($isInitiator && $inspection->isDone())) ? $this->service->assignableExecutors($user) : collect(),
+            'canSpawn'      => $canSpawn,
+            'executors'     => ($canSub || $canSpawn) ? $this->service->assignableExecutors($user) : collect(),
             'parentVisible' => $inspection->parent && $inspection->parent->visibleTo($user),
             'verdicts'      => Inspection::VERDICTS,
         ]);
     }
 
-    /** Создать подпроверку-запрос данных под текущим узлом (ТЗ 20.2). */
+    /** Создать подпроверку под текущим узлом (ТЗ 20.2). */
     public function storeSub(Request $request, Inspection $inspection)
     {
         $user = auth()->user();
-        abort_unless($this->service->canSubRequest($user, $inspection), 403, 'Запрос данных недоступен (нет прав или превышена глубина).');
+        abort_unless($this->service->canSubRequest($user, $inspection), 403, 'Подпроверка недоступна (нет прав или превышена глубина).');
 
         $allowed = $this->service->assignableExecutors($user)->pluck('id')->all();
 
@@ -194,7 +201,7 @@ class InspectionController extends Controller
         $this->audit->log('inspection_subrequest_created', $child);
         $this->notifyInspectionAssigned($child);
 
-        return redirect()->route('inspections.show', $inspection)->with('success', "Запрос данных {$child->number} создан.");
+        return redirect()->route('inspections.show', $inspection)->with('success', "Подпроверка {$child->number} создана.");
     }
 
     public function start(Inspection $inspection)
@@ -230,7 +237,7 @@ class InspectionController extends Controller
         abort_unless(in_array($inspection->status, ['in_progress', 'returned'], true), 403);
 
         if ($inspection->openMandatoryChildren()->exists()) {
-            return back()->with('error', 'Сначала примите обязательные запросы данных — только потом можно сдать акт.');
+            return back()->with('error', 'Сначала примите обязательные подпроверки — только потом можно сдать акт.');
         }
 
         $data = $request->validate([
@@ -368,13 +375,24 @@ class InspectionController extends Controller
     public function destroy(Inspection $inspection)
     {
         $user = auth()->user();
-        abort_unless($inspection->initiator_id === $user->id || $user->isAdmin(), 403);
-        abort_unless($inspection->children()->doesntExist() && $inspection->status === 'assigned', 422);
+        abort_unless($inspection->canBeDeletedBy($user), 403);
+
+        $parent = $inspection->parent;
+        $deletedOwnPage = url()->previous() === route('inspections.show', $inspection);
 
         $this->audit->log('inspection_deleted', $inspection);
-        $inspection->delete();
+        $count = $this->service->deleteWithSubtree($inspection);
 
-        return redirect()->route('inspections.index')->with('success', 'Проверка удалена.');
+        $message = "Проверка {$inspection->number} удалена" . ($count > 1 ? ' вместе с подпроверками (' . ($count - 1) . ').' : '.');
+
+        // Со своей страницы узла уходим к родителю (или в список) — сама страница уже не существует.
+        if ($deletedOwnPage) {
+            return ($parent && $parent->visibleTo($user)
+                ? redirect()->route('inspections.show', $parent)
+                : redirect()->route('inspections.index'))->with('success', $message);
+        }
+
+        return back()->with('success', $message);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────

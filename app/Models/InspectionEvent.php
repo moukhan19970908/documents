@@ -15,7 +15,7 @@ class InspectionEvent extends Model
         'created'            => 'Проверка создана',
         'started'            => 'Взята в работу',
         'contributed'        => 'Приложены материалы',
-        'subrequest_created' => 'Создан запрос данных',
+        'subrequest_created' => 'Создана подпроверка',
         'submitted'          => 'Акт сдан на приёмку',
         'accepted'           => 'Акт принят',
         'returned'           => 'Возвращена на доработку',

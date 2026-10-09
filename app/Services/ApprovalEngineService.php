@@ -153,6 +153,45 @@ class ApprovalEngineService
         });
     }
 
+    /**
+     * Повторный запуск после доработки — по тому же маршруту, с теми же ответами и выбором
+     * инициатора. У графа workflow согласования — лишь рабочая копия с материализованными
+     * звеньями, узлов схемы в ней нет: запуск по ней сразу «доходил до конца» и одобрял
+     * документ. Поэтому граф перезапускается по своей опубликованной версии.
+     */
+    public function restartApproval(Document $doc, DocumentApproval $previous): DocumentApproval
+    {
+        $runtime = $previous->runtime_data ?? [];
+
+        if ($graphId = $runtime['graph_workflow_id'] ?? null) {
+            return $this->startApproval(
+                $doc,
+                $this->graphDefinition(Workflow::findOrFail($graphId)),
+                $previous->parameter_values ?? [],
+                $runtime['adhoc'] ?? [],
+                $runtime['role_picks'] ?? [],
+            );
+        }
+
+        return $this->startApproval($doc, $previous->workflow, $previous->parameter_values ?? []);
+    }
+
+    /**
+     * Версия графа со схемой. Согласования, запущенные прежней повторной отправкой, ссылаются
+     * на рабочую копию без узлов — поднимаемся по parent_workflow_id до версии, где схема есть.
+     */
+    private function graphDefinition(Workflow $workflow): Workflow
+    {
+        for ($candidate = $workflow, $hops = 0; $candidate && $hops < 10; $hops++) {
+            if ($candidate->nodes()->exists()) {
+                return $candidate;
+            }
+            $candidate = $candidate->parent_workflow_id ? Workflow::find($candidate->parent_workflow_id) : null;
+        }
+
+        return $workflow;
+    }
+
     /** @param array<string, int[]> $adhoc */
     private function hasAdhoc(array $adhoc): bool
     {
@@ -529,6 +568,12 @@ class ApprovalEngineService
         array $adhoc,
         array $rolePicks
     ): DocumentApproval {
+        // Опубликованный граф всегда со схемой; без неё — это рабочая копия чужого запуска.
+        // Пройти такой «маршрут» — значит сразу одобрить документ, поэтому падаем громко.
+        if (! $this->graph->firstNode($definition)) {
+            throw new \RuntimeException("У маршрута «{$definition->name}» нет ни одного шага — запускать нечего.");
+        }
+
         return DB::transaction(function () use ($doc, $definition, $parameterValues, $adhoc, $rolePicks) {
             $this->registerDocument($doc, 'on_launch');
             $this->closeReworkTasks($doc);

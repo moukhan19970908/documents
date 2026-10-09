@@ -1,11 +1,15 @@
 <x-app-layout>
     <x-slot name="title">Новая проверка — Vamin</x-slot>
 
-    <div class="max-w-3xl mx-auto">
-        <a href="{{ route('inspections.index') }}" class="text-sm text-gray-400 hover:text-gray-600">← Проверки</a>
-        <h1 class="text-2xl font-bold text-gray-900 mt-1 mb-6">Новая проверка</h1>
+    <div class="max-w-3xl">
+        <div class="mb-6">
+            <a href="{{ route('inspections.index') }}" class="text-xs text-gray-400 hover:text-gray-600">← Проверки</a>
+            <h1 class="text-2xl font-bold text-gray-900 mt-1">Новая проверка</h1>
+        </div>
 
-        @if($errors->any())<div class="mb-4 px-4 py-3 rounded-lg bg-red-50 text-red-700 text-sm">{{ $errors->first() }}</div>@endif
+        @if($errors->any())
+            <div class="mb-4 bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-4 py-3">{{ $errors->first() }}</div>
+        @endif
 
         <form method="POST" action="{{ route('inspections.store') }}"
               x-data="{ objectType: '{{ old('object_type', '') }}' }"

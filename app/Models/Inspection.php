@@ -158,6 +158,22 @@ class Inspection extends Model
         return $this->root && $this->root->initiator_id === $user->id;
     }
 
+    /**
+     * Кто видит узел по послойной видимости — без админов и права view_all (как visibleTo).
+     * Нужен переключателю «что видит участник».
+     */
+    public function viewerIds(int $rootInitiatorId): array
+    {
+        return collect([$this->initiator_id, $this->executor_id, $rootInitiatorId])
+            ->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+    }
+
+    /** Удалять проверку (вместе с её подпроверками) может её постановщик или админ — в любом статусе. */
+    public function canBeDeletedBy(User $user): bool
+    {
+        return $this->initiator_id === $user->id || $user->isAdmin();
+    }
+
     public function isParticipant(User $user): bool
     {
         return $this->executor_id === $user->id;

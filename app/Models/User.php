@@ -270,6 +270,15 @@ class User extends Authenticatable
         return app(\App\Services\RequestFlowExecutor::class)->initiatorLevel($this) === 1;
     }
 
+    /** Инициалы для аватара-кружка: первые буквы двух первых слов имени. */
+    public function initials(): string
+    {
+        return collect(preg_split('/\s+/u', trim((string) $this->name)))
+            ->filter()->take(2)
+            ->map(fn ($word) => mb_strtoupper(mb_substr($word, 0, 1)))
+            ->join('');
+    }
+
     /** Кандидаты в замещающие на период отсутствия: активные коллеги по отделу (или все, если отдел не задан). */
     public function deputyCandidates(): \Illuminate\Support\Collection
     {

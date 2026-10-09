@@ -85,9 +85,11 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
     Route::get('/counterparties', [CounterpartyController::class, 'index'])->name('counterparties.index');
     Route::post('/counterparties', [CounterpartyController::class, 'store'])->name('counterparties.store');
     Route::post('/counterparties/{counterparty}/refresh', [CounterpartyController::class, 'refresh'])->name('counterparties.refresh');
+    Route::put('/counterparties/{counterparty}', [CounterpartyController::class, 'update'])->name('counterparties.update');
     // Поле «counterparty» в формах документов: поиск и добавление без доступа к разделу
     Route::get('/counterparties/search', [CounterpartyController::class, 'search'])->name('counterparties.search');
     Route::post('/counterparties/quick', [CounterpartyController::class, 'quickStore'])->name('counterparties.quick');
+    Route::post('/counterparties/manual', [CounterpartyController::class, 'storeManual'])->name('counterparties.manual');
 
     // База знаний (чтение — всем авторизованным)
     Route::get('knowledge', [KnowledgeController::class, 'index'])->name('knowledge.index');

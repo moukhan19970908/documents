@@ -12,6 +12,8 @@
             creating: false,
             results: [],
             error: '',
+            manual: false,
+            manualForm: { short_name: '', inn: '', legal_address: '' },
 
             init() {
                 this.$nextTick(() => { this.query = this.value ?? ''; });
@@ -20,13 +22,14 @@
             },
 
             isInn() {
-                return /^\d{10}$/.test(this.query.trim());
+                return /^(\d{10}|\d{12})$/.test(this.query.trim());
             },
 
             async search() {
                 this.value = '';
                 this.inn = '';
                 this.error = '';
+                this.manual = false;
                 const q = this.query.trim();
                 if (q.length < 2) {
                     this.results = [];
@@ -72,6 +75,40 @@
                         this.error = data.message || 'Не удалось добавить организацию.';
                         return;
                     }
+                    this.pick(data);
+                } finally {
+                    this.creating = false;
+                }
+            },
+
+            // Иностранную компанию Checko не знает — её вносят вручную; набранный текст — название или ИНН.
+            startManual() {
+                const q = this.query.trim();
+                this.manualForm = { short_name: this.isInn() ? '' : q, inn: this.isInn() ? q : '', legal_address: '' };
+                this.error = '';
+                this.manual = true;
+            },
+
+            async createManual() {
+                if (this.creating || !this.manualForm.short_name.trim()) return;
+                this.creating = true;
+                this.error = '';
+                try {
+                    const response = await fetch(@js(route('counterparties.manual')), {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': @js(csrf_token()),
+                        },
+                        body: JSON.stringify(this.manualForm),
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        this.error = Object.values(data.errors ?? {})[0]?.[0] || data.message || 'Не удалось добавить контрагента.';
+                        return;
+                    }
+                    this.manual = false;
                     this.pick(data);
                 } finally {
                     this.creating = false;

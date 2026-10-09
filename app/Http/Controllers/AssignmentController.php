@@ -12,6 +12,7 @@ use App\Services\AssignmentNumberService;
 use App\Services\AssignmentService;
 use App\Services\AuditService;
 use App\Services\NotificationService;
+use App\Services\TreeViewService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -38,7 +39,7 @@ class AssignmentController extends Controller
             $tab = 'incoming';
         }
 
-        $query = Assignment::with(['initiator', 'executor', 'parent'])->latest('id');
+        $query = Assignment::with(['initiator', 'executor', 'parent'])->withCount('children')->latest('id');
 
         match ($tab) {
             'incoming' => $query->where('executor_id', $user->id),
@@ -125,7 +126,7 @@ class AssignmentController extends Controller
         return redirect()->route('assignments.show', $assignment)->with('success', "Поручение {$assignment->number} поставлено.");
     }
 
-    public function show(Assignment $assignment)
+    public function show(Assignment $assignment, TreeViewService $tree)
     {
         $user = auth()->user();
         abort_unless($assignment->visibleTo($user), 403);
@@ -133,18 +134,19 @@ class AssignmentController extends Controller
         $assignment->load([
             'initiator.department', 'executor.department', 'parent',
             'controller', 'coExecutors',
-            'events.user', 'files.source',
-            'children.executor', 'children.initiator',
+            'events.user', 'files.source.executor.department',
         ]);
 
-        // Послойная видимость применяется и к детям.
-        $children = $assignment->children->filter(fn ($c) => $c->visibleTo($user))->values();
+        [$visibleCount, $totalCount] = $tree->attachVisibleTree($assignment, $user, ['initiator.department', 'executor.department', 'coExecutors']);
 
         $canSub = $this->service->canSubAssign($user, $assignment);
 
         return view('assignments.show', [
             'assignment'    => $assignment,
-            'children'      => $children,
+            // Переключатель «что видит участник» — только тому, кто сам видит всё дерево: иначе
+            // вкладка «Инициатор» показывала бы лишь пересечение с его собственной видимостью.
+            'perspectives'  => $visibleCount === $totalCount && $totalCount > 1 ? $tree->perspectives($assignment, 'Исполнитель') : collect(),
+            'rootInitiatorId' => $tree->rootInitiatorId($assignment),
             'isExecutor'    => $assignment->executor_id === $user->id,
             'isInitiator'   => $assignment->initiator_id === $user->id,
             'isParticipant' => $assignment->isParticipant($user),
@@ -450,13 +452,24 @@ class AssignmentController extends Controller
     public function destroy(Assignment $assignment)
     {
         $user = auth()->user();
-        abort_unless(($assignment->initiator_id === $user->id || $user->isAdmin()), 403);
-        abort_unless($assignment->children()->doesntExist() && $assignment->status === 'assigned', 422);
+        abort_unless($assignment->canBeDeletedBy($user), 403);
+
+        $parent = $assignment->parent;
+        $deletedOwnPage = url()->previous() === route('assignments.show', $assignment);
 
         $this->audit->log('assignment_deleted', $assignment);
-        $assignment->delete();
+        $count = $this->service->deleteWithSubtree($assignment);
 
-        return redirect()->route('assignments.index')->with('success', 'Поручение удалено.');
+        $message = "Поручение {$assignment->number} удалено" . ($count > 1 ? ' вместе с подпоручениями (' . ($count - 1) . ').' : '.');
+
+        // Со своей страницы узла уходим к родителю (или в список) — сама страница уже не существует.
+        if ($deletedOwnPage) {
+            return ($parent && $parent->visibleTo($user)
+                ? redirect()->route('assignments.show', $parent)
+                : redirect()->route('assignments.index'))->with('success', $message);
+        }
+
+        return back()->with('success', $message);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────

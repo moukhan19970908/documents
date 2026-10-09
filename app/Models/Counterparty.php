@@ -5,7 +5,10 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-/** Организация из справочника контрагентов; данные синхронизируются с Checko по ИНН. */
+/**
+ * Контрагент из справочника: организация или ИП — данные синхронизируются с Checko по ИНН;
+ * иностранную компанию вносят вручную (без ИНН, synced_at пуст).
+ */
 class Counterparty extends Model
 {
     protected $fillable = [

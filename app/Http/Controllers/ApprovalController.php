@@ -66,13 +66,18 @@ class ApprovalController extends Controller
             return back()->with('error', 'Документ не готов к повторному согласованию.');
         }
 
-        // Reuse the workflow from the most recent approval
-        $previousApproval = $document->approvals()->latest()->first();
+        // Маршрут и ответы инициатора — из последнего настоящего запуска: отменённые согласования
+        // (например, ложные одобрения, снятые вручную) за основу не берём.
+        $previousApproval = $document->approvals()->where('status', '!=', 'cancelled')->latest('id')->first();
         if (!$previousApproval) {
             return back()->with('error', 'Предыдущее согласование не найдено.');
         }
 
-        $this->engine->startApproval($document, $previousApproval->workflow);
+        $this->engine->restartApproval($document, $previousApproval);
+
+        // Без этой записи в истории не видно, что после доработки документ ушёл на второй круг.
+        // «начал процесс» — ключевая фраза, по которой вкладка «История» и дашборд отбирают события.
+        $this->audit->log(auth()->user()->name . ' повторно начал процесс «' . $document->title . '»', $document);
 
         return back()->with('success', 'Документ отправлен на повторное согласование.');
     }
