@@ -99,6 +99,23 @@ class GraphRequestChangesTest extends TestCase
         $this->assertSame('Согласование Рук Деп', $this->document->refresh()->activeApproval?->activeStage()?->workflowStage?->name);
     }
 
+    /** Прод, СЗ-0152: после ручного исправления вкладка показывала отменённый пустой запуск вместо маршрута. */
+    public function test_document_page_shows_real_route_instead_of_cancelled_false_approval(): void
+    {
+        $this->requestChangesOnFirstStage();
+        $runtimeCopy = $this->document->approvals()->first()->workflow_id;
+        $this->document->approvals()->create([
+            'workflow_id'  => $runtimeCopy,
+            'runtime_data' => ['graph_workflow_id' => $runtimeCopy],
+            'status'       => 'cancelled',
+            'started_at'   => now(),
+        ]);
+
+        $this->actingAs($this->document->initiator)
+            ->get(route('documents.show', $this->document))
+            ->assertDontSee('Отменён');
+    }
+
     public function test_route_without_steps_is_not_approved_silently(): void
     {
         $runtimeCopy = $this->document->approvals()->first()->workflow;

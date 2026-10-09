@@ -295,14 +295,15 @@ class ApprovalController extends Controller
             'approvals.stages.workflowStage',
         ]);
 
+        // Последний настоящий запуск: отменённый (ложное одобрение, снятое вручную) — пустой.
+        $approval = $document->latestApproval()->with(['stages.decisions.user', 'stages.workflowStage'])->first();
+
         if (class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
-            $approval = $document->approvals()->latest()->first();
             $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.approval_sheet', compact('document', 'approval'));
             return $pdf->download('approval_sheet.pdf');
         }
 
         // Fallback: render HTML in browser (user can print/save as PDF)
-        $approval = $document->approvals()->with(['stages.decisions.user', 'stages.workflowStage'])->latest()->first();
         $html = view('pdf.approval_sheet', compact('document', 'approval'))->render();
 
         // Inject print button

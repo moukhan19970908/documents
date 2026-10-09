@@ -109,9 +109,16 @@ class Document extends Model
         return $this->hasOne(DocumentApproval::class)->where('status', 'in_progress')->latestOfMany();
     }
 
+    /**
+     * Последний настоящий запуск согласования. Отменённые (например, ложные одобрения,
+     * снятые вручную) пропускаем — иначе вместо маршрута показывался бы пустой запуск.
+     */
     public function latestApproval(): HasOne
     {
-        return $this->hasOne(DocumentApproval::class)->latestOfMany();
+        return $this->hasOne(DocumentApproval::class)->ofMany(
+            ['id' => 'max'],
+            fn ($query) => $query->where('status', '!=', 'cancelled'),
+        );
     }
 
     public function notes(): HasMany

@@ -18,7 +18,10 @@
             $statusBadge = 'bg-amber-100 text-amber-700';
         }
 
-        $approval     = $document->activeApproval ?? $document->approvals->sortByDesc('id')->first();
+        // Отменённый запуск (ложное одобрение, снятое вручную) не показываем вместо настоящего маршрута.
+        $approval     = $document->activeApproval
+            ?? $document->approvals->where('status', '!=', 'cancelled')->sortByDesc('id')->first()
+            ?? $document->approvals->sortByDesc('id')->first();
         $activeStage  = $document->activeApproval?->activeStage();
 
         // Ознакомление не держит маршрут: звено ack сразу «approved», а документ идёт
