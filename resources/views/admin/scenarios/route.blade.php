@@ -318,15 +318,9 @@
                                     </p>
                                 </div>
 
-                                <div x-show="types[editing.type].branching">
-                                    <label class="text-xs text-gray-500 block mb-1">Если ветка «Нет» пуста</label>
-                                    <select x-model="editing.config.on_reject"
-                                            class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
-                                        @foreach(WorkflowStage::ON_REJECT as $value => $label)
-                                            <option value="{{ $value }}">{{ $label }}</option>
-                                        @endforeach
-                                    </select>
-                                    <p class="text-xs text-gray-400 mt-1">Когда в ветке «Нет» есть блоки, документ идёт по ней.</p>
+                                <div x-show="types[editing.type].branching" class="text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
+                                    Если ветка «Нет» пуста: «Отклонить» — документ отклонён, «Отправить на доработку» — возвращается инициатору.
+                                    Когда в ветке «Нет» есть блоки, документ идёт по ней — закончите её блоком «Завершение процесса».
                                 </div>
                             </div>
                         </template>

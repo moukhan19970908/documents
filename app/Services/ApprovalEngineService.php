@@ -685,7 +685,6 @@ class ApprovalEngineService
             'policy'               => $node->cfg('policy', 'all'),
             'sla_days'             => $node->cfg('sla_days'),
             'is_blocking'          => (bool) $node->cfg('is_blocking', true),
-            'on_reject'            => $node->cfg('on_reject', 'return_initiator'),
             'sort_order'           => (int) WorkflowStage::where('workflow_id', $approval->workflow_id)->max('sort_order') + 1,
         ]);
 
@@ -966,13 +965,9 @@ class ApprovalEngineService
             return;
         }
 
-        // v2 stages may choose to send the document back for revision instead of killing it.
-        // v1 stages default to 'reject', so their behaviour is unchanged.
-        if ($stage->workflowStage->on_reject === 'return_initiator') {
-            $this->handleRequestChanges($stage, $approval, $document, $user, $comment);
-            return;
-        }
-
+        // «Отклонить» всегда отклоняет документ: вернуть его инициатору — отдельная кнопка
+        // «Отправить на доработку». Прежняя настройка звена «Вернуть инициатору» делала из
+        // отказа вторую доработку, и отклонённый документ выглядел как «Требует изменений».
         $stage->update(['status' => 'rejected', 'completed_at' => now()]);
         $this->cancelTasksForStage($stage);
         $approval->update(['status' => 'rejected', 'completed_at' => now()]);

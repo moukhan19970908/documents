@@ -69,6 +69,16 @@ class GraphRequestChangesTest extends TestCase
         $this->assertSame('requires_changes', $this->document->refresh()->status);
     }
 
+    /** Прод, СЗ-0079: «Отклонить» уводил документ в «Требует изменений», как вторая кнопка доработки. */
+    public function test_reject_without_negative_branch_rejects_document(): void
+    {
+        $stage = $this->document->refresh()->activeApproval->activeStage();
+
+        app(ApprovalEngineService::class)->processDecision($stage, $this->head, 'reject', 'Цены не подтверждены');
+
+        $this->assertSame('rejected', $this->document->refresh()->status);
+    }
+
     /** Прод, СЗ-0158: после доработки повторная отправка сразу давала «Одобрено» — маршрут пропускался целиком. */
     public function test_resubmit_after_changes_goes_through_the_route_again(): void
     {

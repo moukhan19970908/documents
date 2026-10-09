@@ -196,7 +196,6 @@ class RouteGraphService
                 // Не держать маршрут вправе только совещательное звено: согласование,
                 // утверждение и приём ждут решения всегда.
                 'is_blocking'          => in_array($type, ['ack', 'opinion'], true) ? (bool) ($config['is_blocking'] ?? true) : true,
-                'on_reject'            => ($config['on_reject'] ?? 'return_initiator') === 'reject' ? 'reject' : 'return_initiator',
                 // Ключ секции бланка: комментарий этого звена подставится как ${ключ}.
                 'comment_key'          => $text($config['comment_key'] ?? null, 64),
             ],
@@ -293,7 +292,6 @@ class RouteGraphService
                     'policy'               => $node->cfg('policy', 'all'),
                     'sla_days'             => $node->cfg('sla_days'),
                     'is_blocking'          => (bool) $node->cfg('is_blocking', true),
-                    'on_reject'            => $node->cfg('on_reject', 'return_initiator'),
                     'condition_key'        => $condition['key'] ?? null,
                     'condition_operator'   => $condition['operator'] ?? null,
                     'condition_value'      => $condition['value'] ?? null,

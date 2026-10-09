@@ -329,7 +329,7 @@ function defaultConfig(type) {
         case 'intake':
             return {
                 resolver: 'user', approver_ids: [], group_department_ids: [], group_role: '',
-                policy: 'all', sla_days: 2, is_blocking: true, on_reject: 'return_initiator',
+                policy: 'all', sla_days: 2, is_blocking: true,
             };
         case 'condition':
             return {
