@@ -45,6 +45,43 @@ class Document extends Model
         return $this->belongsTo(BlankTemplate::class, 'blank_template_id');
     }
 
+    /**
+     * Поля карточки «О документе», которые инициатор правит на доработке. Источник тот же,
+     * что у показа: поля процесса сценария, иначе атрибуты типа и подтипа, иначе
+     * дополнительные поля «Своего сценария» (ключи, заданные инициатором при создании).
+     *
+     * @return \Illuminate\Support\Collection<int, array{key: string, label: string, type: string, options: array, reference_to: ?string, required: bool}>
+     */
+    public function editableFields(): \Illuminate\Support\Collection
+    {
+        $field = fn (string $key, string $label, string $type = 'text', array $options = [], ?string $referenceTo = null, bool $required = false) => [
+            'key' => $key, 'label' => $label, 'type' => $type,
+            'options' => $options, 'reference_to' => $referenceTo, 'required' => $required,
+        ];
+
+        if ($this->data && $this->workflow?->process_fields) {
+            return collect($this->workflow->process_fields)
+                ->reject(fn ($f) => ($f['type'] ?? null) === 'file')
+                ->map(fn ($f) => $field($f['name'], $f['name'], in_array($f['type'] ?? null, ['number', 'date'], true) ? $f['type'] : 'text'))
+                ->values();
+        }
+
+        if ($this->type) {
+            return $this->type->fields
+                ->concat($this->subtype?->fields ?? [])
+                ->map(fn (DocumentField $f) => $field(
+                    $f->field_key, $f->label, $f->field_type ?? 'text', $f->options ?? [], $f->reference_to, (bool) $f->is_required,
+                ))
+                ->values();
+        }
+
+        return collect($this->data ?? [])
+            ->filter(fn ($value) => is_scalar($value) || $value === null)
+            ->keys()
+            ->map(fn ($key) => $field((string) $key, (string) $key))
+            ->values();
+    }
+
     public function isRegistered(): bool
     {
         return $this->number !== null;

@@ -152,9 +152,75 @@
 
                 {{-- Left: О документе --}}
                 <div class="w-64 shrink-0">
-                    <div class="bg-white rounded-xl border border-gray-200 p-4">
-                        <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">О документе</p>
-                        <div class="space-y-4">
+                    <div class="bg-white rounded-xl border border-gray-200 p-4" x-data="{ editingFields: @js($errors->has('data.*')) }">
+                        <div class="flex items-center justify-between mb-4">
+                            <p class="text-xs font-semibold text-gray-400 uppercase tracking-widest">О документе</p>
+                            @if($editableFields->isNotEmpty())
+                                <button type="button" x-show="!editingFields" @click="editingFields = true"
+                                        class="text-xs text-[#5B4FE8] hover:underline font-medium">
+                                    Изменить
+                                </button>
+                            @endif
+                        </div>
+
+                        {{-- Правка полей: в черновике и на доработке (см. DocumentPolicy::update) --}}
+                        @if($editableFields->isNotEmpty())
+                            <form x-show="editingFields" x-cloak method="POST" action="{{ route('documents.update', $document) }}" class="space-y-3">
+                                @csrf
+                                @method('PUT')
+                                @foreach($editableFields as $field)
+                                    @php
+                                        $inputId = 'doc-field-' . $loop->index;
+                                        $val = old("data.{$field['key']}", $document->data[$field['key']] ?? '');
+                                        $inputClass = 'w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]';
+                                    @endphp
+                                    <div>
+                                        <label for="{{ $inputId }}" class="text-xs text-gray-500 block mb-1">
+                                            {{ $field['label'] }}
+                                            @if($field['required'])<span class="text-red-500">*</span>@endif
+                                        </label>
+                                        @if($field['key'] === 'counterparty')
+                                            {{-- Контрагент — выбор из справочника, а не свободный текст --}}
+                                            <div x-data="counterpartyPicker(@js($val))" @click.outside="open = false" class="relative">
+                                                @include('counterparties._picker')
+                                                <input type="hidden" name="data[{{ $field['key'] }}]" :value="value">
+                                            </div>
+                                        @elseif($field['type'] === 'textarea')
+                                            <textarea id="{{ $inputId }}" name="data[{{ $field['key'] }}]" rows="3" class="{{ $inputClass }}">{{ $val }}</textarea>
+                                        @elseif(in_array($field['type'], ['select', 'boolean', 'reference'], true))
+                                            @php
+                                                $options = match ($field['type']) {
+                                                    'boolean'   => ['Да', 'Нет'],
+                                                    'reference' => $referenceOptions[$field['reference_to']] ?? [],
+                                                    default     => $field['options'],
+                                                };
+                                            @endphp
+                                            <select id="{{ $inputId }}" name="data[{{ $field['key'] }}]" class="{{ $inputClass }}">
+                                                <option value="">—</option>
+                                                @foreach($options as $option)
+                                                    <option value="{{ $option }}" @selected((string) $val === (string) $option)>{{ $option }}</option>
+                                                @endforeach
+                                            </select>
+                                        @else
+                                            <input id="{{ $inputId }}" type="{{ in_array($field['type'], ['number', 'date'], true) ? $field['type'] : 'text' }}"
+                                                   name="data[{{ $field['key'] }}]" value="{{ $val }}" class="{{ $inputClass }}">
+                                        @endif
+                                        @error("data.{$field['key']}")<p class="text-xs text-red-500 mt-1">{{ $message }}</p>@enderror
+                                    </div>
+                                @endforeach
+                                <div class="flex items-center gap-2 pt-1">
+                                    <button type="submit" class="px-3 py-1.5 text-xs bg-[#5B4FE8] text-white rounded-lg font-medium hover:bg-indigo-700">
+                                        Сохранить
+                                    </button>
+                                    <button type="button" @click="editingFields = false"
+                                            class="px-3 py-1.5 text-xs border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50">
+                                        Отмена
+                                    </button>
+                                </div>
+                            </form>
+                        @endif
+
+                        <div x-show="!editingFields" class="space-y-4">
                             <div>
                                 <p class="text-xs text-gray-400">Тип документа</p>
                                 <p class="text-sm font-medium text-gray-900 mt-0.5">{{ $document->workflow?->name ?? $document->type?->name ?? 'Свой сценарий' }}</p>
@@ -169,7 +235,7 @@
                                     @endif
                                 @endforeach
                             @elseif($document->data && $document->type)
-                                @foreach($document->type->fields ?? [] as $field)
+                                @foreach($document->type->fields->concat($document->subtype?->fields ?? []) as $field)
                                     @if(isset($document->data[$field->field_key]))
                                         <div>
                                             <p class="text-xs text-gray-400">{{ $field->label }}</p>
@@ -1319,6 +1385,9 @@
 
     </div>
 
+    @if($editableFields->contains('key', 'counterparty'))
+        @include('counterparties._picker_script')
+    @endif
 </x-app-layout>
 
 <script>

@@ -480,6 +480,7 @@ class DocumentController extends Controller
 
         $document->load([
             'type.fields',
+            'subtype.fields',
             'workflow.parameters',
             'latestApproval',
             'blank',
@@ -541,7 +542,14 @@ class DocumentController extends Controller
             ])
             ->values();
 
-        return view('documents.show', compact('document', 'approvers', 'chat', 'blankBody', 'launchParameters'));
+        // Поля карточки, которые инициатор правит в черновике и на доработке.
+        $editableFields = $user->can('update', $document) ? $document->editableFields() : collect();
+        $referenceOptions = $editableFields->contains('type', 'reference') ? [
+            'department' => \App\Models\Department::orderBy('name')->pluck('name'),
+            'user'       => User::where('is_active', true)->orderBy('name')->pluck('name'),
+        ] : [];
+
+        return view('documents.show', compact('document', 'approvers', 'chat', 'blankBody', 'launchParameters', 'editableFields', 'referenceOptions'));
     }
 
     /** Тело документа, заполняемого по бланку. Токены в нём остаются — их подставит показ. */
@@ -612,15 +620,37 @@ class DocumentController extends Controller
         return view('documents.edit', compact('document', 'documentTypes'));
     }
 
-    public function update(Request $request, Document $document)
+    public function update(Request $request, Document $document, DocumentNamingService $namingService)
     {
         $this->authorize('update', $document);
 
+        $request->validate([
+            'title'  => ['nullable', 'string', 'max:255'],
+            'data'   => ['nullable', 'array'],
+            'data.*' => ['nullable', 'string', 'max:2048'],
+        ]);
+
+        // Принимаем только поля карточки документа — посторонние ключи в data не пишем.
+        $fields = $document->editableFields()->keyBy('key');
+        $input  = collect($request->input('data', []))->only($fields->keys());
+
+        $missing = $fields->filter(fn ($f) => $f['required'] && $input->has($f['key']) && blank($input[$f['key']]));
+        if ($missing->isNotEmpty()) {
+            throw \Illuminate\Validation\ValidationException::withMessages(
+                $missing->mapWithKeys(fn ($f) => ["data.{$f['key']}" => "Поле «{$f['label']}» обязательно."])->all()
+            );
+        }
+
         $old = $document->toArray();
         $document->update([
-            'title' => $request->title,
-            'data'  => $request->data ?? $document->data,
+            'title' => $request->filled('title') ? $request->title : $document->title,
+            'data'  => array_merge($document->data ?? [], $input->map(fn ($v) => $v ?? '')->all()),
         ]);
+
+        // Название — проекция полей: после правки пересобираем его по маске типа.
+        if ($name = $namingService->forDocument($document)) {
+            $document->update(['title' => $name]);
+        }
 
         $this->auditService->log('document_updated', $document, $old, $document->toArray());
 
