@@ -73,6 +73,26 @@
     $approver = $approveDecision?->user;
     $certDate = optional($approval?->completed_at)->format('d.m.Y') ?: optional($document->registered_at)->format('d.m.Y');
     $docLink  = route('documents.show', $document->id);
+
+    // Решение в листе: набор действий шире пары «согласовать / отклонить» — заключение,
+    // ознакомление и приём иначе выглядели бы как «ожидает», то есть не попадали бы в лист.
+    $decisionLabel = fn ($action) => match ($action) {
+        'approve'                        => 'Подписано',
+        'reject'                         => 'ОТКЛОНЕНО',
+        'opinion_yes', 'process_approve' => 'Одобрено',
+        'opinion_no', 'process_reject'   => 'Не одобрено',
+        'acknowledge'                    => 'Ознакомлен',
+        'accept'                         => 'Принято к исполнению',
+        'execute'                        => 'Исполнено',
+        'request_changes'                => 'На доработку',
+        'delegate'                       => 'Делегировано',
+        default                          => 'ОЖИДАЕТ',
+    };
+    $decisionBadge = fn ($action) => match ($action) {
+        'approve', 'opinion_yes', 'process_approve', 'acknowledge', 'execute' => 'badge-approved',
+        'reject', 'opinion_no', 'process_reject', 'request_changes'           => 'badge-rejected',
+        default                                                              => 'badge-pending',
+    };
 @endphp
 
 @if($isCertified)
@@ -141,7 +161,11 @@
             <table>
                 <thead>
                     <tr>
-                        <th colspan="5">Этап {{ $loop->iteration }}: {{ $stage->workflowStage?->name ?? 'Этап согласования' }}</th>
+                        <th colspan="5">Этап {{ $loop->iteration }}: {{ $stage->workflowStage?->name ?? 'Этап согласования' }}
+                            @if(($kind = $stage->workflowStage?->kind() ?? 'approval') !== 'approval')
+                                <span style="font-weight:normal;text-transform:none;color:#555">· {{ \App\Models\WorkflowStage::PHASES[$kind] ?? $kind }}</span>
+                            @endif
+                        </th>
                     </tr>
                     <tr>
                         <th>Согласующий</th>
@@ -157,13 +181,7 @@
                             <td>{{ $decision->user->name }}</td>
                             <td>{{ $decision->user->department?->name ?? '—' }}</td>
                             <td>
-                                @if($decision->action === 'approve')
-                                    <span class="badge badge-approved">Подписано</span>
-                                @elseif($decision->action === 'reject')
-                                    <span class="badge badge-rejected">ОТКЛОНЕНО</span>
-                                @else
-                                    <span class="badge badge-pending">ОЖИДАЕТ</span>
-                                @endif
+                                <span class="badge {{ $decisionBadge($decision->action) }}">{{ $decisionLabel($decision->action) }}</span>
                             </td>
                             <td>{{ $decision->decided_at ? $decision->decided_at->format('d.m.Y H:i') : '—' }}</td>
                             <td class="comment-cell">{{ $decision->comment ?? '—' }}</td>

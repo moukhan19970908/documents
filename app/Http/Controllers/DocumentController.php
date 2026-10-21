@@ -130,13 +130,7 @@ class DocumentController extends Controller
             });
         };
 
-        if ($user->isAdmin()) {
-            // Admin: by default show only documents where they participate;
-            // pass ?scope=all to see all documents in the workspace.
-            if ($request->get('scope') !== 'all') {
-                $restrictWith($isInvolved);
-            }
-        } elseif ($docAccess === 'department' && $user->department_id) {
+        if ($docAccess === 'department' && $user->department_id) {
             // Учитываем кросс-видимость направления (visibleScopeIds).
             $accessibleDeptIds = Department::visibleScopeIds($user->department_id);
             $restrictWith(fn($q) => $q
@@ -150,7 +144,15 @@ class DocumentController extends Controller
         } elseif ($docAccess === 'own') {
             $restrictWith($isInvolved);
         }
-        // full access non-admin: no restriction — all documents visible
+        // Доступ «full» (в том числе у админа) ограничений не накладывает.
+
+        // Чьи документы показывать. По умолчанию — свои: иначе сотрудник ищет свой
+        // документ среди документов всего отдела. Права доступа выше этот фильтр не
+        // расширяет — он только сужает то, что человеку и так видно.
+        $scopes = $this->availableScopes($user);
+        $scope  = $request->get('scope');
+        $scope  = isset($scopes[$scope]) ? $scope : 'my';
+        $this->applyScope($query, $user, $scope);
 
         $documents = $query->paginate(25)->withQueryString();
 
@@ -198,7 +200,57 @@ class DocumentController extends Controller
 
         $processMeta = $this->processMeta($process);
 
-        return view('documents.index', compact('documents', 'documentTypes', 'directions', 'approverCandidates', 'processMeta'));
+        return view('documents.index', compact('documents', 'documentTypes', 'directions', 'approverCandidates', 'processMeta', 'scopes', 'scope'));
+    }
+
+    /** Варианты фильтра отображения списка. */
+    private const SCOPES = [
+        'my'         => 'Мои документы',
+        'department' => 'Мой отдел',
+        'subtree'    => 'Отдел и подотделы',
+        'all'        => 'Все документы',
+    ];
+
+    /** Роли, которым в фильтре доступны подотделы: руководитель департамента и выше. */
+    private const SUBTREE_ROLES = ['head_department', 'director', 'ceo', 'chief_of_staff'];
+
+    /**
+     * Какие варианты фильтра предложить пользователю. Чем выше роль, тем шире обзор:
+     * свои документы — всем, отдел — сотруднику отдела, подотделы — руководителю
+     * департамента и выше, все документы — администратору.
+     *
+     * @return array<string, string>
+     */
+    private function availableScopes(User $user): array
+    {
+        $keys = ['my'];
+
+        if ($user->department_id) {
+            $keys[] = 'department';
+
+            if ($user->isAdmin() || $user->hasAnyRole(self::SUBTREE_ROLES)) {
+                $keys[] = 'subtree';
+            }
+        }
+
+        if ($user->isAdmin()) {
+            $keys[] = 'all';
+        }
+
+        return array_intersect_key(self::SCOPES, array_flip($keys));
+    }
+
+    /** Сужает список до выбранной области. «Все документы» ничего не добавляют к правам. */
+    private function applyScope($query, User $user, string $scope): void
+    {
+        if ($scope === 'my') {
+            $query->where('initiator_id', $user->id);
+        } elseif ($scope === 'department') {
+            $query->whereHas('initiator', fn ($q) => $q->where('department_id', $user->department_id));
+        } elseif ($scope === 'subtree') {
+            $deptIds = Department::getDescendantIds((int) $user->department_id);
+            $query->whereHas('initiator', fn ($q) => $q->whereIn('department_id', $deptIds));
+        }
     }
 
     /** Сценарии без указанного процесса относятся к общему документообороту (legacy). */

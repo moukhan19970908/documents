@@ -55,11 +55,36 @@ class BlankPdfService
             . 'table.table-borderless th, table.table-borderless td { border: none; }'
             . 'table.table-borderless th { background-color: transparent; font-weight: normal; }'
             . '</style>'
-            . $bodyHtml;
+            . $this->replaceFonts($bodyHtml);
 
         $pdf->writeHTML($html, true, false, true, false, '');
 
         return $pdf->Output('blank.pdf', 'S');
+    }
+
+    /**
+     * Перебивает font-family в теле бланка на встроенные DejaVu: имена вида «Times New Roman»
+     * TCPDF сводит к базовому PDF-шрифту с cp1252, и кириллица в нём становится «?».
+     */
+    private function replaceFonts(string $html): string
+    {
+        return preg_replace_callback('/font-family\s*:\s*([^;"]+)/i', function ($m) {
+            return 'font-family:' . $this->pdfFont($m[1]);
+        }, $html) ?? $html;
+    }
+
+    /** Ближайший к объявленному семейству DejaVu: ими TCPDF рисует кириллицу. */
+    private function pdfFont(string $declaration): string
+    {
+        $families = mb_strtolower($declaration);
+
+        return match (true) {
+            str_contains($families, 'monospace'), str_contains($families, 'courier') => 'dejavusansmono',
+            str_contains($families, 'sans-serif'), str_contains($families, 'arial'),
+            str_contains($families, 'helvetica'), str_contains($families, 'calibri'),
+            str_contains($families, 'verdana'), str_contains($families, 'tahoma')    => 'dejavusans',
+            default                                                                  => 'dejavuserif',
+        };
     }
 
     /** Готовит <img> к рендеру: data-URI оставляем, внешние скачиваем в data-URI, остальное убираем. */

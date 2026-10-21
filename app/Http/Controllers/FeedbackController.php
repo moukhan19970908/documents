@@ -16,7 +16,7 @@ class FeedbackController extends Controller
     public function index(Request $request)
     {
         $user = auth()->user();
-        $canViewAll = $user->hasMatrixPermission('feedback.view_all');
+        $canViewAll = $user->canViewAllFeedback();
 
         $query = Feedback::with('user')->withCount('messages')->latest('id');
 
@@ -77,14 +77,14 @@ class FeedbackController extends Controller
 
         return view('feedback.show', [
             'feedback'   => $feedback,
-            'canRespond' => auth()->user()->hasMatrixPermission('feedback.reply'),
+            'canRespond' => auth()->user()->canReplyToFeedback(),
             'isOwner'    => $feedback->user_id === auth()->id(),
         ]);
     }
 
     public function reply(Request $request, Feedback $feedback)
     {
-        $canRespond = auth()->user()->hasMatrixPermission('feedback.reply');
+        $canRespond = auth()->user()->canReplyToFeedback();
         $isOwner = $feedback->user_id === auth()->id();
         abort_unless($isOwner || $canRespond, 403);
 
@@ -104,7 +104,7 @@ class FeedbackController extends Controller
 
     public function updateStatus(Request $request, Feedback $feedback)
     {
-        abort_unless(auth()->user()->hasMatrixPermission('feedback.reply'), 403);
+        abort_unless(auth()->user()->canReplyToFeedback(), 403);
 
         $data = $request->validate(['status' => ['required', Rule::in(array_keys(Feedback::STATUSES))]]);
         $feedback->update($data);
@@ -116,6 +116,6 @@ class FeedbackController extends Controller
     private function authorizeView(Feedback $feedback): void
     {
         $user = auth()->user();
-        abort_unless($feedback->user_id === $user->id || $user->hasMatrixPermission('feedback.view_all'), 403);
+        abort_unless($feedback->user_id === $user->id || $user->canViewAllFeedback(), 403);
     }
 }

@@ -12,6 +12,7 @@ use App\Models\Assignment;
 use App\Models\Chat;
 use App\Models\Document;
 use App\Models\DocumentApprovalStage;
+use App\Models\Feedback;
 use App\Models\Inspection;
 use App\Models\Order;
 use App\Models\Procedure;
@@ -58,6 +59,7 @@ class AppServiceProvider extends ServiceProvider
                     'menuVacationApprovals' => 0, 'menuVacationRegistries' => 0,
                     'menuOrderAcks' => 0, 'menuAssignments' => 0, 'menuProcedures' => 0,
                     'menuRequests' => 0, 'menuCreditCommittee' => 0, 'menuInspections' => 0,
+                    'menuNewFeedback' => 0,
                 ]);
                 return;
             }
@@ -159,12 +161,20 @@ class AppServiceProvider extends ServiceProvider
                     + $menuVacationRegistries + $menuRequestTasks
                 : 0;
 
+            // Тех поддержка: сколько обращений ещё никто не взял. Видно тем, кто их
+            // разбирает, — назначенным обработчикам (Админ → Тех поддержка) и ролям с
+            // правом «Видеть все обращения».
+            $menuNewFeedback = $user->canViewAllFeedback()
+                ? Feedback::where('status', 'new')->count()
+                : 0;
+
             $view->with(compact(
                 'menuActiveTasks', 'menuPendingApprovals', 'menuUnreadChats',
                 'menuTripApprovals', 'menuTripRegistries',
                 'menuVacationApprovals', 'menuVacationRegistries',
                 'menuOrderAcks', 'menuAssignments', 'menuProcedures',
                 'menuRequests', 'menuCreditCommittee', 'menuInspections',
+                'menuNewFeedback',
             ));
         });
     }

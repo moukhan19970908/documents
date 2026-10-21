@@ -28,17 +28,15 @@
         @endif
     </div>
 
-    {{-- Admin scope toggle --}}
-    @if(auth()->user()->isAdmin())
+    {{-- Чьи документы показывать. Набор вариантов задаёт роль, по умолчанию — свои. --}}
+    @if(count($scopes) > 1)
     <div class="flex gap-1 mb-4 bg-white border border-gray-200 rounded-lg p-1 w-fit">
-        <a href="{{ route($listRoute, array_merge(request()->except(['scope', 'page']), [])) }}"
-           class="px-4 py-1.5 rounded-md text-sm font-medium transition-colors {{ request('scope') !== 'all' ? 'bg-[#5B4FE8] text-white shadow-sm' : 'text-gray-500 hover:text-gray-700' }}">
-            Мои документы
-        </a>
-        <a href="{{ route($listRoute, array_merge(request()->except(['scope', 'page']), ['scope' => 'all'])) }}"
-           class="px-4 py-1.5 rounded-md text-sm font-medium transition-colors {{ request('scope') === 'all' ? 'bg-[#5B4FE8] text-white shadow-sm' : 'text-gray-500 hover:text-gray-700' }}">
-            Все документы
-        </a>
+        @foreach($scopes as $key => $label)
+            <a href="{{ route($listRoute, array_merge(request()->except(['scope', 'page']), ['scope' => $key])) }}"
+               class="px-4 py-1.5 rounded-md text-sm font-medium transition-colors {{ $scope === $key ? 'bg-[#5B4FE8] text-white shadow-sm' : 'text-gray-500 hover:text-gray-700' }}">
+                {{ $label }}
+            </a>
+        @endforeach
     </div>
     @endif
 
@@ -49,9 +47,7 @@
           x-data="{ type: @js((string) request('type', '')), subtype: @js((string) request('subtype', '')) }"
           x-init="$watch('type', () => subtype = '')"
           class="bg-white rounded-xl border border-gray-200 p-4 mb-5 flex flex-wrap gap-3 items-end">
-        @if(auth()->user()->isAdmin() && request('scope') === 'all')
-            <input type="hidden" name="scope" value="all">
-        @endif
+        <input type="hidden" name="scope" value="{{ $scope }}">
         <div class="flex-1 min-w-48">
             <label class="text-xs text-gray-500 font-medium block mb-1">Поиск</label>
             <input type="text" name="search" value="{{ request('search') }}" placeholder="Название документа..."

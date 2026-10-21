@@ -129,6 +129,7 @@
                         ['key' => 'menu.admin.procedures', 'label' => 'Шаблоны процедур', 'route' => 'admin.procedures', 'url' => route('admin.procedures.index')],
                         ['key' => 'menu.admin.roles', 'label' => 'Роли и доступы', 'route' => 'admin.roles', 'url' => route('admin.roles.index')],
                         ['key' => 'menu.admin.blank_templates', 'label' => 'Шаблоны бланков', 'route' => 'admin.blank-templates', 'url' => route('admin.blank-templates.index')],
+                        ['key' => 'menu.admin.feedback', 'label' => 'Тех поддержка', 'route' => 'admin.feedback', 'url' => route('admin.feedback.settings')],
                         ['key' => 'menu.admin.org_structure', 'label' => 'Оргструктура', 'url' => '#'],
                     ], fn ($adm) => auth()->user()->canSeeMenu($adm['key']));
                 @endphp
@@ -285,6 +286,10 @@
                 class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors {{ $feedbackActive ? 'bg-[#5B4FE8]/10 text-[#5B4FE8]' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
                 @include('partials.nav-icon', ['icon' => 'feedback', 'active' => $feedbackActive])
                 Тех Поддержка
+                @if(($menuNewFeedback ?? 0) > 0)
+                    <span class="ml-auto inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 text-xs font-bold rounded-full
+                                 {{ $feedbackActive ? 'bg-white text-[#5B4FE8]' : 'bg-[#5B4FE8] text-white' }}">{{ $menuNewFeedback }}</span>
+                @endif
             </a>
             </div>
             @endif

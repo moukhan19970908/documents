@@ -310,6 +310,8 @@ Route::middleware(['auth', 'agreement', 'audit', \App\Http\Middleware\ExternalRe
         Route::patch('document-types/{document_type}/counters/{counter}', [DocumentTypeController::class, 'updateCounter'])->name('document-types.counters.update');
         Route::get('assignments/settings', [\App\Http\Controllers\Admin\AssignmentSettingController::class, 'edit'])->name('assignments.settings');
         Route::put('assignments/settings', [\App\Http\Controllers\Admin\AssignmentSettingController::class, 'update'])->name('assignments.settings.update');
+        Route::get('feedback/settings', [\App\Http\Controllers\Admin\FeedbackSettingController::class, 'edit'])->name('feedback.settings');
+        Route::put('feedback/settings', [\App\Http\Controllers\Admin\FeedbackSettingController::class, 'update'])->name('feedback.settings.update');
         Route::get('trip-tasks/settings', [\App\Http\Controllers\Admin\TripTaskSettingController::class, 'edit'])->name('trip-tasks.settings');
         Route::put('trip-tasks/settings', [\App\Http\Controllers\Admin\TripTaskSettingController::class, 'update'])->name('trip-tasks.settings.update');
         // Шаблоны процедур (сценарии, ТЗ 19)

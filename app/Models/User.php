@@ -232,6 +232,24 @@ class User extends Authenticatable
         );
     }
 
+    /** Назначен ли пользователь обработчиком обращений тех поддержки (Админ → Тех поддержка). */
+    public function isFeedbackHandler(): bool
+    {
+        return in_array($this->id, FeedbackHandler::userIds(), true);
+    }
+
+    /** Видит все обращения тех поддержки: обработчик или роль с правом из матрицы. */
+    public function canViewAllFeedback(): bool
+    {
+        return $this->isFeedbackHandler() || $this->hasMatrixPermission('feedback.view_all');
+    }
+
+    /** Отвечает на обращения и меняет их статус: обработчик или роль с правом из матрицы. */
+    public function canReplyToFeedback(): bool
+    {
+        return $this->isFeedbackHandler() || $this->hasMatrixPermission('feedback.reply');
+    }
+
     /**
      * Право из матрицы «Роли и доступы» (config/permissions.php → role_permissions).
      * Админ имеет любое право.
