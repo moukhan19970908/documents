@@ -152,7 +152,7 @@ class DocumentController extends Controller
         $scopes = $this->availableScopes($user);
         $scope  = $request->get('scope');
         $scope  = isset($scopes[$scope]) ? $scope : 'my';
-        $this->applyScope($query, $user, $scope);
+        $this->applyScope($query, $user, $scope, $watchClause);
 
         $documents = $query->paginate(25)->withQueryString();
 
@@ -208,11 +208,9 @@ class DocumentController extends Controller
         'my'         => 'Мои документы',
         'department' => 'Мой отдел',
         'subtree'    => 'Отдел и подотделы',
+        'watched'    => 'Наблюдаемые',
         'all'        => 'Все документы',
     ];
-
-    /** Роли, которым в фильтре доступны подотделы: руководитель департамента и выше. */
-    private const SUBTREE_ROLES = ['head_department', 'director', 'ceo', 'chief_of_staff'];
 
     /**
      * Какие варианты фильтра предложить пользователю. Чем выше роль, тем шире обзор:
@@ -228,9 +226,13 @@ class DocumentController extends Controller
         if ($user->department_id) {
             $keys[] = 'department';
 
-            if ($user->isAdmin() || $user->hasAnyRole(self::SUBTREE_ROLES)) {
+            if ($user->isAdmin() || $user->hasAnyRole(User::SUBTREE_ROLES)) {
                 $keys[] = 'subtree';
             }
+        }
+
+        if (DocumentWatcher::where('watcher_id', $user->id)->exists()) {
+            $keys[] = 'watched';
         }
 
         if ($user->isAdmin()) {
@@ -241,7 +243,7 @@ class DocumentController extends Controller
     }
 
     /** Сужает список до выбранной области. «Все документы» ничего не добавляют к правам. */
-    private function applyScope($query, User $user, string $scope): void
+    private function applyScope($query, User $user, string $scope, ?\Closure $watchClause): void
     {
         if ($scope === 'my') {
             $query->where('initiator_id', $user->id);
@@ -250,6 +252,8 @@ class DocumentController extends Controller
         } elseif ($scope === 'subtree') {
             $deptIds = Department::getDescendantIds((int) $user->department_id);
             $query->whereHas('initiator', fn ($q) => $q->whereIn('department_id', $deptIds));
+        } elseif ($scope === 'watched' && $watchClause) {
+            $query->where($watchClause);
         }
     }
 
@@ -295,7 +299,7 @@ class DocumentController extends Controller
      */
     private function watchVisibilityClause(User $user): ?\Closure
     {
-        $rules = DocumentWatcher::where('watcher_id', $user->id)->get(['target_id', 'scope']);
+        $rules = DocumentWatcher::where('watcher_id', $user->id)->with('target')->get(['target_id', 'scope']);
 
         if ($rules->isEmpty()) {
             return null;
@@ -304,6 +308,10 @@ class DocumentController extends Controller
         return function ($q) use ($rules) {
             foreach ($rules as $rule) {
                 $q->orWhere(fn ($sub) => $sub->participatedBy($rule->target_id, $rule->scope));
+
+                if ($deptIds = $rule->subordinateDepartmentIds()) {
+                    $q->orWhereHas('initiator', fn ($i) => $i->whereIn('department_id', $deptIds));
+                }
             }
         };
     }

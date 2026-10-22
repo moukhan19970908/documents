@@ -16,6 +16,9 @@ class User extends Authenticatable
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
 
+    /** Роли, которым видны документы подотделов: руководитель департамента и выше. */
+    public const SUBTREE_ROLES = ['head_department', 'director', 'ceo', 'chief_of_staff'];
+
     protected $fillable = [
         'name', 'email', 'phone', 'password', 'role', 'role_level', 'role_title',
         'position', 'department_id', 'manager_id',

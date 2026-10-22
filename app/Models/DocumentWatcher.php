@@ -29,4 +29,25 @@ class DocumentWatcher extends Model
     {
         return $this->belongsTo(User::class, 'target_id');
     }
+
+    /**
+     * Отделы, документы которых наблюдатель видит вместе с целью: если цель —
+     * руководитель, ему видны подотделы, и наблюдателю должны быть видны те же.
+     * Узкие области (только инициатор / только согласующий) это не расширяет.
+     *
+     * @return int[]
+     */
+    public function subordinateDepartmentIds(): array
+    {
+        $target = $this->target;
+
+        if ($this->scope !== 'participant'
+            || !$target?->department_id
+            || !$target->hasAnyRole(User::SUBTREE_ROLES)
+            || $target->resolveWorkflowAccess() === 'own') {
+            return [];
+        }
+
+        return Department::getDescendantIds((int) $target->department_id);
+    }
 }

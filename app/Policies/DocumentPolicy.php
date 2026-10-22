@@ -83,10 +83,14 @@ class DocumentPolicy
     /** Наблюдает ли пользователь за участником этого документа. */
     private function isWatching(User $user, Document $document): bool
     {
-        $rules = DocumentWatcher::where('watcher_id', $user->id)->get(['target_id', 'scope']);
+        $rules = DocumentWatcher::where('watcher_id', $user->id)->with('target')->get(['target_id', 'scope']);
 
         foreach ($rules as $rule) {
             $targetId = $rule->target_id;
+
+            if (in_array($document->initiator->department_id ?? null, $rule->subordinateDepartmentIds(), true)) {
+                return true;
+            }
 
             if ($rule->scope !== 'approver' && $document->initiator_id === $targetId) {
                 return true;
