@@ -76,7 +76,7 @@ class Material extends Model
         return self::TYPES[$this->type] ?? $this->type;
     }
 
-    /** Встраиваемый URL плеера для ссылки на YouTube/Vimeo/Rutube, иначе null. */
+    /** Встраиваемый URL плеера для ссылки на YouTube/Vimeo/Rutube/Kinescope, иначе null. */
     public static function videoEmbedUrl(?string $link): ?string
     {
         $link = trim((string) $link);
@@ -94,6 +94,11 @@ class Material extends Model
 
         if (preg_match('~rutube\.ru/(?:video|play/embed)/([A-Za-z0-9]+)~', $link, $m)) {
             return 'https://rutube.ru/play/embed/' . $m[1];
+        }
+
+        // Длина от 6 и запрет продолжения пути отсекают служебные страницы вида kinescope.io/ru/...
+        if (preg_match('~kinescope\.io/(?:embed/)?([A-Za-z0-9]{6,})(?![A-Za-z0-9/])~', $link, $m)) {
+            return 'https://kinescope.io/embed/' . $m[1];
         }
 
         return null;

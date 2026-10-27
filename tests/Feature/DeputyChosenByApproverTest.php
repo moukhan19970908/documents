@@ -62,7 +62,7 @@ class DeputyChosenByApproverTest extends TestCase
         $this->actingAs($initiator)->post(route('vacations.store'), [
             'vacation_type' => 'annual',
             'date_start'    => '2026-11-02',
-            'date_end'      => '2026-11-06',
+            'days_count'    => 5,
             'deputy_id'     => $this->colleague->id,
             'submit'        => 1,
         ]);

@@ -19,7 +19,7 @@
                             @csrf @method('PUT')
                             <input type="hidden" name="vacation_type" value="{{ $vacation->vacation_type }}">
                             <input type="hidden" name="date_start" value="{{ $vacation->date_start->format('Y-m-d') }}">
-                            <input type="hidden" name="date_end" value="{{ $vacation->date_end->format('Y-m-d') }}">
+                            <input type="hidden" name="days_count" value="{{ $vacation->days_count }}">
                             <input type="hidden" name="comment" value="{{ $vacation->comment }}">
                             <input type="hidden" name="submit" value="1">
                             <button type="submit" class="px-4 py-2 bg-[#5B4FE8] text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">

@@ -47,15 +47,15 @@
                                class="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
                     </div>
                     <div>
-                        <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Дата окончания *</label>
-                        <input type="date" name="date_end" x-model="dateEnd"
-                               value="{{ old('date_end') }}" required
+                        <label for="days_count" class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Количество дней *</label>
+                        <input type="number" id="days_count" name="days_count" x-model.number="days"
+                               value="{{ old('days_count') }}" min="1" max="365" required
                                class="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
                     </div>
                 </div>
                 <div class="bg-[#5B4FE8]/5 rounded-xl px-4 py-3 flex items-center justify-between text-sm">
-                    <span class="text-gray-600">Количество дней</span>
-                    <span class="font-bold text-[#5B4FE8]" x-text="days + ' дн.'"></span>
+                    <span class="text-gray-600">Дата окончания</span>
+                    <span class="font-bold text-[#5B4FE8]" x-text="dateEnd || '—'"></span>
                 </div>
                 <div>
                     <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Комментарий</label>
@@ -86,11 +86,13 @@
     function vacationCreate() {
         return {
             dateStart: '{{ old('date_start', '') }}',
-            dateEnd: '{{ old('date_end', '') }}',
-            get days() {
-                if (!this.dateStart || !this.dateEnd) return 0;
-                const d = Math.round((new Date(this.dateEnd) - new Date(this.dateStart)) / 86400000) + 1;
-                return d > 0 ? d : 0;
+            days: @json(old('days_count') ? (int) old('days_count') : ''),
+            get dateEnd() {
+                if (!this.dateStart || !(this.days > 0)) return '';
+                // UTC, чтобы переход на летнее время не сдвигал дату на сутки.
+                const end = new Date(this.dateStart + 'T00:00:00Z');
+                end.setUTCDate(end.getUTCDate() + this.days - 1);
+                return end.toLocaleDateString('ru-RU', { timeZone: 'UTC' });
             }
         };
     }

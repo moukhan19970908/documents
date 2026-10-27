@@ -45,10 +45,13 @@ class VacationRequestController extends Controller
         $data = $request->validate([
             'vacation_type' => ['required', 'in:annual,unpaid,sick_leave,other'],
             'date_start'    => ['required', 'date'],
-            'date_end'      => ['required', 'date', 'gte:date_start'],
+            'days_count'    => ['required', 'integer', 'min:1', 'max:365'],
             'comment'       => ['nullable', 'string'],
             'deputy_id'     => ['nullable', 'integer', 'exists:users,id'],
         ]);
+
+        // Сотрудник задаёт начало и число календарных дней, окончание выводим сами.
+        $data['date_end'] = \Carbon\Carbon::parse($data['date_start'])->addDays($data['days_count'] - 1)->toDateString();
 
         $user = auth()->user();
 
@@ -65,7 +68,7 @@ class VacationRequestController extends Controller
 
         // Линейному замещающего назначает первый согласующий (VacationService::approve), не он сам.
         if (! $user->isLinearEmployee()) {
-            \App\Models\Substitution::assign($user, $deputyId, $request->date_start, $request->date_end, 'vacation_request_id', $vacation->id);
+            \App\Models\Substitution::assign($user, $deputyId, $data['date_start'], $data['date_end'], 'vacation_request_id', $vacation->id);
         }
 
         $msg = $submit ? 'Заявка отправлена на согласование.' : 'Черновик сохранён.';
@@ -93,11 +96,11 @@ class VacationRequestController extends Controller
         $data = $request->validate([
             'vacation_type' => ['required', 'in:annual,unpaid,sick_leave,other'],
             'date_start'    => ['required', 'date'],
-            'date_end'      => ['required', 'date', 'gte:date_start'],
+            'days_count'    => ['required', 'integer', 'min:1', 'max:365'],
             'comment'       => ['nullable', 'string'],
         ]);
 
-        $data['days_count'] = \Carbon\Carbon::parse($data['date_start'])->diffInDays($data['date_end']) + 1;
+        $data['date_end'] = \Carbon\Carbon::parse($data['date_start'])->addDays($data['days_count'] - 1)->toDateString();
         $vacation->update($data);
 
         if ($request->boolean('submit')) {
