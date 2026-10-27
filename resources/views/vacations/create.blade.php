@@ -1,7 +1,7 @@
 <x-app-layout>
     <x-slot name="title">Новая заявка на отпуск — Vamin</x-slot>
 
-    <div class="max-w-xl" x-data="vacationCreate()">
+    <div class="max-w-xl">
         <div class="mb-6 flex items-center gap-4">
             <a href="{{ route('vacations.index') }}" class="text-gray-400 hover:text-gray-600">
                 <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
@@ -42,20 +42,16 @@
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Дата начала *</label>
-                        <input type="date" name="date_start" x-model="dateStart"
+                        <input type="date" name="date_start"
                                value="{{ old('date_start') }}" required
                                class="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
                     </div>
                     <div>
                         <label for="days_count" class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Количество дней *</label>
-                        <input type="number" id="days_count" name="days_count" x-model.number="days"
+                        <input type="number" id="days_count" name="days_count"
                                value="{{ old('days_count') }}" min="1" max="365" required
                                class="w-full text-sm border border-gray-200 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
                     </div>
-                </div>
-                <div class="bg-[#5B4FE8]/5 rounded-xl px-4 py-3 flex items-center justify-between text-sm">
-                    <span class="text-gray-600">Дата окончания</span>
-                    <span class="font-bold text-[#5B4FE8]" x-text="dateEnd || '—'"></span>
                 </div>
                 <div>
                     <label class="text-xs font-semibold text-gray-600 uppercase tracking-widest block mb-1.5">Комментарий</label>
@@ -80,22 +76,4 @@
             </div>
         </form>
     </div>
-
-    @push('scripts')
-    <script>
-    function vacationCreate() {
-        return {
-            dateStart: '{{ old('date_start', '') }}',
-            days: @json(old('days_count') ? (int) old('days_count') : ''),
-            get dateEnd() {
-                if (!this.dateStart || !(this.days > 0)) return '';
-                // UTC, чтобы переход на летнее время не сдвигал дату на сутки.
-                const end = new Date(this.dateStart + 'T00:00:00Z');
-                end.setUTCDate(end.getUTCDate() + this.days - 1);
-                return end.toLocaleDateString('ru-RU', { timeZone: 'UTC' });
-            }
-        };
-    }
-    </script>
-    @endpush
 </x-app-layout>
