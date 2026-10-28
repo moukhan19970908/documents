@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Department;
 use App\Models\Document;
+use App\Models\Task;
 use App\Models\User;
 use App\Models\Workflow;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -11,9 +12,8 @@ use Illuminate\Support\Facades\URL;
 use Tests\TestCase;
 
 /**
- * Фильтр отображения списка документов. Сотрудник тонул в документах всего отдела,
- * поэтому список по умолчанию показывает только свои, а шире смотрят те, кому по роли
- * положено: отдел — всем, подотделы — руководителю департамента и выше, всё — админу.
+ * Вкладки списка документов. По умолчанию — «Ждут меня»: сотрудник тонул в документах
+ * всего отдела. «Мой отдел» видит только тот, кто кем-то руководит, «Все» — админ.
  */
 class DocumentListScopeTest extends TestCase
 {
@@ -36,20 +36,48 @@ class DocumentListScopeTest extends TestCase
         $this->actingAs($me)->get(route('documents.index'))->assertDontSee('Заявка коллеги');
     }
 
-    public function test_list_shows_my_own_document_by_default(): void
+    public function test_waiting_tab_shows_a_document_with_my_pending_task(): void
+    {
+        [$me, $colleague] = $this->twoColleagues();
+        $this->taskFor($me, $this->documentOf($colleague, 'Ждёт моего решения'));
+
+        $this->actingAs($me)->get(route('documents.index'))->assertSee('Ждёт моего решения');
+    }
+
+    public function test_waiting_tab_hides_my_own_document_without_a_task(): void
     {
         [$me] = $this->twoColleagues();
         $this->documentOf($me, 'Моя заявка');
 
-        $this->actingAs($me)->get(route('documents.index'))->assertSee('Моя заявка');
+        $this->actingAs($me)->get(route('documents.index'))->assertDontSee('Моя заявка');
     }
 
-    public function test_department_scope_shows_a_colleague_document(): void
+    public function test_launched_tab_shows_my_own_document(): void
     {
-        [$me, $colleague] = $this->twoColleagues();
-        $this->documentOf($colleague, 'Заявка коллеги');
+        [$me] = $this->twoColleagues();
+        $this->documentOf($me, 'Моя заявка');
 
-        $this->actingAs($me)->get(route('documents.index', ['scope' => 'department']))->assertSee('Заявка коллеги');
+        $this->actingAs($me)->get(route('documents.index', ['scope' => 'launched']))->assertSee('Моя заявка');
+    }
+
+    public function test_department_tab_shows_a_subordinate_document_to_the_head(): void
+    {
+        [$employee] = $this->twoColleagues();
+        $head = $this->departmentHead($employee->department_id);
+        $this->documentOf($employee, 'Заявка сотрудника');
+
+        $this->actingAs($head)->get(route('documents.index', ['scope' => 'department']))->assertSee('Заявка сотрудника');
+    }
+
+    public function test_fired_filter_shows_a_document_stuck_on_a_dismissed_assignee(): void
+    {
+        [$employee, $dismissed] = $this->twoColleagues();
+        $dismissed->update(['is_active' => false]);
+        $this->taskFor($dismissed, $this->documentOf($employee, 'Зависла у уволенного'));
+
+        $this->actingAs($this->departmentHead($employee->department_id))
+            ->get(route('documents.index', ['scope' => 'department', 'quick' => 'fired']))
+            ->assertSee('Зависла у уволенного');
     }
 
     public function test_credit_committee_list_hides_a_colleague_document_by_default(): void
@@ -65,22 +93,22 @@ class DocumentListScopeTest extends TestCase
         $this->actingAs($me)->get(route('credit-committee.index'))->assertDontSee('Заявка коллеги');
     }
 
-    public function test_linear_employee_is_not_offered_the_subdepartment_scope(): void
+    public function test_linear_employee_is_not_offered_the_department_tab(): void
     {
         [$me] = $this->twoColleagues();
 
         $scopes = $this->actingAs($me)->get(route('documents.index'))->viewData('scopes');
 
-        $this->assertArrayNotHasKey('subtree', $scopes);
+        $this->assertArrayNotHasKey('department', $scopes);
     }
 
-    public function test_department_head_is_offered_the_subdepartment_scope(): void
+    public function test_department_head_is_offered_the_department_tab(): void
     {
-        $head = $this->employee('head_department', Department::create(['name' => 'Департамент'])->id);
+        $head = $this->departmentHead(Department::create(['name' => 'Департамент'])->id);
 
         $scopes = $this->actingAs($head)->get(route('documents.index'))->viewData('scopes');
 
-        $this->assertArrayHasKey('subtree', $scopes);
+        $this->assertArrayHasKey('department', $scopes);
     }
 
     public function test_admin_is_offered_all_documents(): void
@@ -101,6 +129,24 @@ class DocumentListScopeTest extends TestCase
             $this->employee('linear', $department->id),
             $this->employee('linear', $department->id),
         ];
+    }
+
+    private function departmentHead(int $departmentId): User
+    {
+        $head = $this->employee('head_department', $departmentId);
+        $head->update(['role_level' => 2]);
+
+        return $head;
+    }
+
+    private function taskFor(User $assignee, Document $document): Task
+    {
+        return Task::create([
+            'document_id' => $document->id,
+            'assignee_id' => $assignee->id,
+            'title'       => 'Согласовать',
+            'status'      => 'pending',
+        ]);
     }
 
     private function employee(string $role, int $departmentId): User

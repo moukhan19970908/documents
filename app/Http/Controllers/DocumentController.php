@@ -38,23 +38,81 @@ class DocumentController extends Controller
 
     public function index(Request $request)
     {
-        $query = Document::with([
-                'type', 'initiator',
-                'activeApproval' => function ($q) {
-                    $q->with(['stages' => function ($sq) {
-                        $sq->orderBy('id')->with(['workflowStage.approvers.user', 'decisions']);
-                    }]);
-                },
-                'latestApproval' => function ($q) {
-                    $q->with(['stages' => function ($sq) {
-                        $sq->orderBy('id')->with(['workflowStage.approvers.user']);
-                    }]);
-                },
+        $user    = auth()->user();
+        $process = $request->route('process');
+
+        // Обе выборки зовутся на каждую вкладку-счётчик — считаем один раз.
+        $watchClause = $this->watchVisibilityClause($user);
+        $restriction = $this->accessRestriction($user);
+        $myTasks     = $this->myPendingDocumentTasks($user, $process);
+
+        $scopes = $this->availableScopes($user);
+        $scope  = $request->get('scope');
+        if (!isset($scopes[$scope])) {
+            // Поиск из шапки должен находить и уже пройденные документы, а не только ждущие.
+            $scope = $request->filled('search') ? 'involved' : 'waiting';
+        }
+
+        $withSubdepartments = $request->boolean('sub');
+        $departmentIds      = $this->departmentScopeIds($user, $withSubdepartments);
+
+        $scoped = fn (string $key) => $this->applyScope(
+            $this->visibleDocuments($process, $restriction, $watchClause),
+            $user, $key, $myTasks, $departmentIds, $watchClause,
+        );
+
+        // У «Все документы» вместо счётчика метка «админ».
+        $counts = [];
+        foreach (array_keys($scopes) as $key) {
+            if ($key !== 'all') {
+                $counts[$key] = $scoped($key)->count();
+            }
+        }
+
+        $query = $scoped($scope)
+            ->with([
+                'type', 'initiator.department', 'pendingTasks.assignee',
+                'activeApproval.stages.workflowStage', 'latestApproval.stages.workflowStage',
             ])
             ->orderByDesc('updated_at');
 
+        // Быстрые фильтры: во «Ждут меня» — что от меня нужно, в «Мой отдел» — где застряло.
+        $quick       = $request->get('quick');
+        $quickCounts = [];
+        if ($scope === 'waiting') {
+            $quickCounts = $myTasks->countBy('kind')->all()
+                + ['overdue' => $myTasks->where('is_overdue', true)->count()];
+
+            if ($quick === 'overdue') {
+                $query->whereIn('id', $myTasks->where('is_overdue', true)->keys());
+            } elseif (isset(self::TASK_KINDS[$quick])) {
+                $query->whereIn('id', $myTasks->where('kind', $quick)->keys());
+            } else {
+                $quick = null;
+            }
+        } elseif ($scope === 'department') {
+            $overdue = fn ($q) => $q->whereHas('pendingTasks', fn ($t) => $t->where('deadline_at', '<', now()));
+            $fired   = fn ($q) => $q->whereHas('pendingTasks.assignee', fn ($u) => $u->where('is_active', false));
+
+            $quickCounts = [
+                'overdue' => $overdue(clone $query)->count(),
+                'fired'   => $fired(clone $query)->count(),
+            ];
+
+            if ($quick === 'overdue') {
+                $overdue($query);
+            } elseif ($quick === 'fired') {
+                $fired($query);
+            } else {
+                $quick = null;
+            }
+        } else {
+            $quick = null;
+        }
+
         if ($search = $request->get('search')) {
             $query->where(fn($q) => $q->where('title', 'like', "%{$search}%")
+                ->orWhere('number', 'like', "%{$search}%")
                 ->orWhereRaw("LOWER(JSON_UNQUOTE(data)) LIKE ?", ['%' . strtolower($search) . '%'])
             );
         }
@@ -75,84 +133,22 @@ class DocumentController extends Controller
             $query->where('initiator_id', $author);
         }
 
-        if ($dateFrom = $request->get('date_from')) {
-            $query->whereDate('created_at', '>=', $dateFrom);
-        }
-
-        if ($dateTo = $request->get('date_to')) {
-            $query->whereDate('created_at', '<=', $dateTo);
-        }
-
         if ($direction = $request->get('direction')) {
             // Направление — корневой департамент; фильтруем по всему его поддереву.
             $deptIds = Department::directionMemberIds((int) $direction);
             $query->whereHas('initiator', fn($q) => $q->whereIn('department_id', $deptIds));
         }
 
-        // Процессная страница (Кредитный комитет и т.п.): только документы, чей сценарий
-        // относится к этому типу процесса. Общий документооборот, наоборот, исключает
-        // процессные документы — показывает только общие сценарии и документы без сценария.
-        $process = $request->route('process');
-        if ($process) {
-            $query->whereHas('workflow', fn ($q) => $q->where('process_type', $process));
-        } else {
-            $query->where(fn ($q) => $q
-                ->whereDoesntHave('workflow')
-                ->orWhereHas('workflow', fn ($w) => $w
-                    ->whereNull('process_type')->orWhereIn('process_type', ['', 'document_flow']))
-            );
-        }
-
-        // Apply access-level-based filtering
-        $user      = auth()->user();
-        $docAccess = $user->resolveWorkflowAccess();
-
-        // Closure: documents where the user is an approver, delegator, or delegatee in any stage
-        $isInvolved = fn($q) => $q
-            ->where('initiator_id', $user->id)
-            ->orWhereHas('approvals.stages.workflowStage.approvers', fn($q2) => $q2->where('approver_id', $user->id))
-            ->orWhereHas('approvals.stages.decisions', fn($q2) => $q2
-                ->where('delegated_to', $user->id)           // delegated TO this user
-                ->orWhere('user_id', $user->id)              // this user made any decision (approve/reject/delegate/…)
-            );
-
-        // Watch rules broaden visibility: a watcher also sees documents of the
-        // users they observe (per scope), without gaining any action rights.
-        $watchClause = $this->watchVisibilityClause($user);
-
-        // Apply a restriction while still letting watched documents through.
-        $restrictWith = function (\Closure $restriction) use ($query, $watchClause) {
-            $query->where(function ($q) use ($restriction, $watchClause) {
-                $q->where($restriction);
-                if ($watchClause) {
-                    $q->orWhere($watchClause);
-                }
-            });
+        $since = match ($request->get('period')) {
+            'week'    => now()->subWeek(),
+            'month'   => now()->subMonth(),
+            'quarter' => now()->subMonths(3),
+            'year'    => now()->subYear(),
+            default   => null,
         };
-
-        if ($docAccess === 'department' && $user->department_id) {
-            // Учитываем кросс-видимость направления (visibleScopeIds).
-            $accessibleDeptIds = Department::visibleScopeIds($user->department_id);
-            $restrictWith(fn($q) => $q
-                ->whereHas('initiator', fn($q2) => $q2->whereIn('department_id', $accessibleDeptIds))
-                ->orWhereHas('approvals.stages.workflowStage.approvers', fn($q2) => $q2->where('approver_id', $user->id))
-                ->orWhereHas('approvals.stages.decisions', fn($q2) => $q2
-                    ->where('delegated_to', $user->id)
-                    ->orWhere('user_id', $user->id)
-                )
-            );
-        } elseif ($docAccess === 'own') {
-            $restrictWith($isInvolved);
+        if ($since) {
+            $query->where('created_at', '>=', $since);
         }
-        // Доступ «full» (в том числе у админа) ограничений не накладывает.
-
-        // Чьи документы показывать. По умолчанию — свои: иначе сотрудник ищет свой
-        // документ среди документов всего отдела. Права доступа выше этот фильтр не
-        // расширяет — он только сужает то, что человеку и так видно.
-        $scopes = $this->availableScopes($user);
-        $scope  = $request->get('scope');
-        $scope  = isset($scopes[$scope]) ? $scope : 'my';
-        $this->applyScope($query, $user, $scope, $watchClause);
 
         $documents = $query->paginate(25)->withQueryString();
 
@@ -189,6 +185,7 @@ class DocumentController extends Controller
         $approverCandidates = $approversQuery->get(['id', 'name', 'department_id']);
 
         // Направления — корневые департаменты (без родителя).
+        $docAccess = $user->resolveWorkflowAccess();
         if ($user->isAdmin() || $docAccess === 'full') {
             $directions = Department::whereNull('parent_id')->orderBy('name')->get();
         } elseif ($docAccess === 'department' && $user->department_id) {
@@ -198,37 +195,59 @@ class DocumentController extends Controller
             $directions = collect();
         }
 
-        $processMeta = $this->processMeta($process);
+        $departmentEmployees = $scope === 'department'
+            ? User::whereIn('department_id', $departmentIds)->orderBy('name')->get(['id', 'name', 'is_active'])
+            : collect();
 
-        return view('documents.index', compact('documents', 'documentTypes', 'directions', 'approverCandidates', 'processMeta', 'scopes', 'scope'));
+        $processMeta = $this->processMeta($process);
+        $taskKinds   = self::TASK_KINDS;
+        $periods     = self::PERIODS;
+
+        return view('documents.index', compact(
+            'documents', 'documentTypes', 'directions', 'approverCandidates', 'processMeta',
+            'scopes', 'scope', 'counts', 'quick', 'quickCounts', 'myTasks', 'taskKinds', 'periods',
+            'withSubdepartments', 'departmentEmployees',
+        ));
     }
 
-    /** Варианты фильтра отображения списка. */
+    /** Вкладки списка: отношение пользователя к документу, а не раздел. */
     private const SCOPES = [
-        'my'         => 'Мои документы',
+        'waiting'    => 'Ждут меня',
+        'involved'   => 'Я участвую',
+        'launched'   => 'Я запустил',
         'department' => 'Мой отдел',
-        'subtree'    => 'Отдел и подотделы',
-        'watched'    => 'Наблюдаемые',
+        'watched'    => 'Наблюдаю',
         'all'        => 'Все документы',
     ];
 
+    /** Что от пользователя нужно по документу — «Моя роль» во вкладке «Ждут меня». */
+    private const TASK_KINDS = [
+        'soglas'    => 'Согласовать',
+        'zakl'      => 'Дать заключение',
+        'oznak'     => 'Ознакомиться',
+        'priem'     => 'Принять на исполнение',
+        'dorabotka' => 'Доработать',
+    ];
+
+    private const PERIODS = [
+        'week'    => 'За неделю',
+        'month'   => 'За месяц',
+        'quarter' => 'За квартал',
+        'year'    => 'За год',
+    ];
+
     /**
-     * Какие варианты фильтра предложить пользователю. Чем выше роль, тем шире обзор:
-     * свои документы — всем, отдел — сотруднику отдела, подотделы — руководителю
-     * департамента и выше, все документы — администратору.
+     * Какие вкладки показать. Свои документы — всем; отдел — тем, кто кем-то руководит;
+     * наблюдаемые — при наличии правил наблюдения; все документы — администратору.
      *
      * @return array<string, string>
      */
     private function availableScopes(User $user): array
     {
-        $keys = ['my'];
+        $keys = ['waiting', 'involved', 'launched'];
 
-        if ($user->department_id) {
+        if ($user->department_id && ($user->isAdmin() || !$user->isLinearEmployee())) {
             $keys[] = 'department';
-
-            if ($user->isAdmin() || $user->hasAnyRole(User::SUBTREE_ROLES)) {
-                $keys[] = 'subtree';
-            }
         }
 
         if (DocumentWatcher::where('watcher_id', $user->id)->exists()) {
@@ -242,19 +261,125 @@ class DocumentController extends Controller
         return array_intersect_key(self::SCOPES, array_flip($keys));
     }
 
-    /** Сужает список до выбранной области. «Все документы» ничего не добавляют к правам. */
-    private function applyScope($query, User $user, string $scope, ?\Closure $watchClause): void
+    /** Сужает список до вкладки. «Все документы» ничего не добавляют к правам. */
+    private function applyScope($query, User $user, string $scope, $myTasks, array $departmentIds, ?\Closure $watchClause)
     {
-        if ($scope === 'my') {
-            $query->where('initiator_id', $user->id);
-        } elseif ($scope === 'department') {
-            $query->whereHas('initiator', fn ($q) => $q->where('department_id', $user->department_id));
-        } elseif ($scope === 'subtree') {
-            $deptIds = Department::getDescendantIds((int) $user->department_id);
-            $query->whereHas('initiator', fn ($q) => $q->whereIn('department_id', $deptIds));
-        } elseif ($scope === 'watched' && $watchClause) {
-            $query->where($watchClause);
+        return match ($scope) {
+            'waiting'    => $query->whereIn('id', $myTasks->keys()),
+            'involved'   => $query->where($this->involvementClause($user)),
+            'launched'   => $query->where('initiator_id', $user->id),
+            'department' => $query->whereHas('initiator', fn ($q) => $q->whereIn('department_id', $departmentIds)),
+            'watched'    => $query->where($watchClause),
+            default      => $query,
+        };
+    }
+
+    /**
+     * Отделы вкладки «Мой отдел». «С подотделами» берёт всё направление: отделы
+     * прикрепляются к нему через direction_id, а parent_id остаётся деревом Битрикса.
+     *
+     * @return array<int, int>
+     */
+    private function departmentScopeIds(User $user, bool $withSubdepartments): array
+    {
+        if (!$user->department_id) {
+            return [];
         }
+
+        return $withSubdepartments
+            ? Department::directionMemberIds($user->department_id)
+            : [$user->department_id];
+    }
+
+    /** Документы, которые пользователю вообще видны на этой странице. */
+    private function visibleDocuments(?string $process, ?\Closure $restriction, ?\Closure $watchClause)
+    {
+        $query = $this->scopeDocumentsToProcess(Document::query(), $process);
+
+        // Наблюдение расширяет видимость: наблюдатель видит документы наблюдаемых, но прав действий не получает.
+        if ($restriction) {
+            $query->where(function ($q) use ($restriction, $watchClause) {
+                $q->where($restriction);
+                if ($watchClause) {
+                    $q->orWhere($watchClause);
+                }
+            });
+        }
+
+        return $query;
+    }
+
+    /** Ограничение по уровню доступа к документообороту; null — «full», без ограничений. */
+    private function accessRestriction(User $user): ?\Closure
+    {
+        $docAccess = $user->resolveWorkflowAccess();
+
+        if ($docAccess === 'department' && $user->department_id) {
+            // Учитываем кросс-видимость направления (visibleScopeIds).
+            $accessibleDeptIds = Department::visibleScopeIds($user->department_id);
+
+            return fn ($q) => $q
+                ->whereHas('initiator', fn ($q2) => $q2->whereIn('department_id', $accessibleDeptIds))
+                ->orWhereHas('approvals.stages.workflowStage.approvers', fn ($q2) => $q2->where('approver_id', $user->id))
+                ->orWhereHas('approvals.stages.decisions', fn ($q2) => $q2
+                    ->where('delegated_to', $user->id)
+                    ->orWhere('user_id', $user->id)
+                );
+        }
+
+        return $docAccess === 'own' ? $this->involvementClause($user) : null;
+    }
+
+    /** Документы, где пользователь инициатор, согласующий, делегат или уже принимал решение. */
+    private function involvementClause(User $user): \Closure
+    {
+        return fn ($q) => $q
+            ->where('initiator_id', $user->id)
+            ->orWhereHas('approvals.stages.workflowStage.approvers', fn ($q2) => $q2->where('approver_id', $user->id))
+            ->orWhereHas('approvals.stages.decisions', fn ($q2) => $q2
+                ->where('delegated_to', $user->id)
+                ->orWhere('user_id', $user->id)
+            );
+    }
+
+    /**
+     * Открытые задачи пользователя по документам страницы, по одной на документ —
+     * самая срочная. Ключ — id документа.
+     */
+    private function myPendingDocumentTasks(User $user, ?string $process)
+    {
+        return Task::with(['stage.workflowStage', 'document.type'])
+            ->where('assignee_id', $user->id)
+            ->where('status', 'pending')
+            ->whereHas('document', fn ($d) => $this->scopeDocumentsToProcess($d, $process))
+            ->orderByRaw('deadline_at IS NULL')
+            ->orderBy('deadline_at')
+            ->get()
+            ->unique('document_id')
+            ->mapWithKeys(fn (Task $task) => [$task->document_id => [
+                // Задача без звена — это «Доработайте документ» инициатору. Заключение здесь
+                // отдельно от согласования: оно не решает судьбу документа (isAdvisory).
+                'kind' => match (true) {
+                    $task->document_approval_stage_id === null           => 'dorabotka',
+                    $task->stage?->workflowStage?->phase === 'opinion'   => 'zakl',
+                    default => $this->phaseKind($task->stage?->workflowStage?->phase, $task->document->type?->name, $task->stage?->workflowStage?->name),
+                },
+                'deadline'   => $task->deadline_at,
+                'is_overdue' => $task->isOverdue(),
+            ]]);
+    }
+
+    /**
+     * Процессная страница (Кредитный комитет и т.п.) показывает только документы своего
+     * процесса; общий документооборот — документы общих сценариев и без сценария.
+     */
+    private function scopeDocumentsToProcess($query, ?string $process)
+    {
+        return $process
+            ? $query->whereHas('workflow', fn ($q) => $q->where('process_type', $process))
+            : $query->where(fn ($q) => $q
+                ->whereDoesntHave('workflow')
+                ->orWhereHas('workflow', fn ($w) => $this->scopeWorkflowsToProcess($w, null)));
     }
 
     /** Сценарии без указанного процесса относятся к общему документообороту (legacy). */

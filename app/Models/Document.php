@@ -141,6 +141,12 @@ class Document extends Model
         });
     }
 
+    /** Открытые задачи по документу — у кого он сейчас «висит». */
+    public function pendingTasks(): HasMany
+    {
+        return $this->hasMany(Task::class)->where('status', 'pending');
+    }
+
     public function activeApproval(): HasOne
     {
         return $this->hasOne(DocumentApproval::class)->where('status', 'in_progress')->latestOfMany();
