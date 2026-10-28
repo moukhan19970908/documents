@@ -264,9 +264,8 @@
                         <th class="text-left px-5 py-3 font-semibold">Инициатор</th>
                         @if($isTeamScope)
                             <th class="text-left px-5 py-3 font-semibold">Отдел</th>
-                        @else
-                            <th class="text-left px-5 py-3 font-semibold">Статус</th>
                         @endif
+                        <th class="text-left px-5 py-3 font-semibold">Статус</th>
                         @if($scope === 'waiting')
                             <th class="text-left px-5 py-3 font-semibold">Срок</th>
                         @else
@@ -279,21 +278,6 @@
                 <tbody class="divide-y divide-gray-100">
                     @forelse($documents as $doc)
                         @php
-                            $statusLabel = $doc->status_label;
-                            // На согласовании статус отражает текущую фазу маршрута.
-                            if ($doc->status === 'in_review') {
-                                $phase = ($doc->activeApproval ?? $doc->latestApproval)?->stages
-                                    ->firstWhere('status', 'in_progress')?->workflowStage?->kind();
-                                $statusLabel = match ($phase) {
-                                    'approval' => 'На согласовании',
-                                    'approve'  => 'На утверждении',
-                                    'opinion'  => 'На заключении',
-                                    'ack'      => 'На ознакомлении',
-                                    'intake'   => 'На приёмке',
-                                    default    => $statusLabel,
-                                };
-                            }
-
                             $hasOverdue = $doc->pendingTasks->contains(fn ($t) => $t->isOverdue());
                         @endphp
                         <tr class="hover:bg-gray-50 transition-colors">
@@ -311,13 +295,24 @@
                                 </td>
                             @endif
 
-                            <td class="px-5 py-3.5 text-gray-700">{{ $doc->initiator?->name ?? '—' }}</td>
+                            <td class="px-5 py-3.5">
+                                @if($doc->initiator)
+                                    <div class="flex items-center gap-2">
+                                        <img src="{{ $doc->initiator->avatar_url }}" class="w-6 h-6 rounded-full flex-shrink-0" alt="">
+                                        <span class="text-gray-700">{{ Str::limit($doc->initiator->name, 24) }}</span>
+                                    </div>
+                                @else
+                                    <span class="text-gray-400">—</span>
+                                @endif
+                            </td>
 
                             @if($isTeamScope)
                                 <td class="px-5 py-3.5 text-gray-600">{{ $doc->initiator?->department?->name ?? '—' }}</td>
-                            @else
-                                <td class="px-5 py-3.5 text-gray-600">{{ $statusLabel }}</td>
                             @endif
+
+                            <td class="px-5 py-3.5">
+                                @include('documents.partials.status-cell', ['doc' => $doc])
+                            </td>
 
                             @if($scope === 'waiting')
                                 @php
@@ -342,27 +337,31 @@
                                 </td>
                             @else
                                 @php $waitingFor = $doc->pendingTasks->pluck('assignee')->filter()->unique('id')->values(); @endphp
-                                <td class="px-5 py-3.5 text-gray-600">
-                                    @forelse($waitingFor->take(2) as $assignee)
-                                        @if($assignee->is_active)
-                                            <span>{{ $assignee->name }}</span>
-                                        @else
-                                            <span class="text-red-600 font-medium" title="{{ $assignee->name }}">уволен ⚠</span>
+                                <td class="px-5 py-3.5">
+                                    <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                                        @forelse($waitingFor->take(2) as $assignee)
+                                            <div class="flex items-center gap-1.5" title="{{ $assignee->name }}">
+                                                <img src="{{ $assignee->avatar_url }}" class="w-6 h-6 rounded-full flex-shrink-0 {{ $assignee->is_active ? '' : 'grayscale opacity-60' }}" alt="">
+                                                @if($assignee->is_active)
+                                                    <span class="text-gray-700">{{ Str::limit($assignee->name, 20) }}</span>
+                                                @else
+                                                    <span class="text-red-600 font-medium">уволен ⚠</span>
+                                                @endif
+                                            </div>
+                                        @empty
+                                            <span class="text-gray-400">—</span>
+                                        @endforelse
+                                        @if($waitingFor->count() > 2)
+                                            <span class="text-xs text-gray-400">+{{ $waitingFor->count() - 2 }}</span>
                                         @endif
-                                        @if(!$loop->last)<span class="text-gray-300">,</span>@endif
-                                    @empty
-                                        <span class="text-gray-400">—</span>
-                                    @endforelse
-                                    @if($waitingFor->count() > 2)
-                                        <span class="text-xs text-gray-400">+{{ $waitingFor->count() - 2 }}</span>
-                                    @endif
+                                    </div>
                                 </td>
                                 <td class="px-5 py-3.5">
                                     @if(in_array($doc->status, ['in_review', 'requires_changes'], true))
                                         @php $inWork = (int) ($doc->latestApproval?->created_at ?? $doc->created_at)->copy()->startOfDay()->diffInDays(now()->startOfDay()); @endphp
                                         <span class="{{ $hasOverdue ? 'text-red-600 font-semibold' : 'text-gray-600' }}">{{ $inWork }} {{ $dayWord($inWork) }}</span>
                                     @else
-                                        <span class="text-gray-400">{{ $statusLabel }}</span>
+                                        <span class="text-gray-400">—</span>
                                     @endif
                                 </td>
                             @endif

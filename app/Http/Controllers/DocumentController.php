@@ -72,7 +72,10 @@ class DocumentController extends Controller
         $query = $scoped($scope)
             ->with([
                 'type', 'initiator.department', 'pendingTasks.assignee',
-                'activeApproval.stages.workflowStage', 'latestApproval.stages.workflowStage',
+                // Подписанты и решения нужны полоске прогресса в колонке «Статус».
+                'activeApproval' => fn ($q) => $q->with(['stages' => fn ($sq) => $sq
+                    ->orderBy('id')->with(['workflowStage.approvers.user', 'decisions'])]),
+                'latestApproval.stages.workflowStage',
             ])
             ->orderByDesc('updated_at');
 
