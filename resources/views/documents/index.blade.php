@@ -103,12 +103,14 @@
         </div>
     @elseif($scope === 'department')
         <div class="flex flex-wrap items-center gap-2 mb-4">
-            <div class="inline-flex rounded-full border border-gray-200 bg-white p-0.5">
-                <a href="{{ $listUrl(['sub' => null, 'author' => null]) }}"
-                   class="px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors {{ $withSubdepartments ? 'text-gray-700 hover:text-gray-900' : 'bg-[#5B4FE8] text-white' }}">Только мой отдел</a>
-                <a href="{{ $listUrl(['sub' => 1, 'author' => null]) }}"
-                   class="px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors {{ $withSubdepartments ? 'bg-[#5B4FE8] text-white' : 'text-gray-700 hover:text-gray-900' }}">С подотделами</a>
-            </div>
+            @if($canSeeSubdepartments)
+                <div class="inline-flex rounded-full border border-gray-200 bg-white p-0.5">
+                    <a href="{{ $listUrl(['sub' => null, 'author' => null]) }}"
+                       class="px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors {{ $withSubdepartments ? 'text-gray-700 hover:text-gray-900' : 'bg-[#5B4FE8] text-white' }}">Только мой отдел</a>
+                    <a href="{{ $listUrl(['sub' => 1, 'author' => null]) }}"
+                       class="px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors {{ $withSubdepartments ? 'bg-[#5B4FE8] text-white' : 'text-gray-700 hover:text-gray-900' }}">С подотделами</a>
+                </div>
+            @endif
             <select name="author" form="doc-filters" aria-label="Сотрудник" onchange="this.form.requestSubmit()"
                     class="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#5B4FE8]">
                 <option value="">{{ $withSubdepartments ? 'Все сотрудники' : 'Все сотрудники отдела' }}</option>

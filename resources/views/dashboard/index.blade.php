@@ -76,12 +76,12 @@
                 <div class="divide-y divide-gray-50">
                     @foreach($pendingApprovals as $item)
                         @php
-                            $doc       = $item['document'];
-                            $stageName = $item['stage']->workflowStage?->name ?? $doc->status_label;
+                            $stageName = $item['stage_name'];
                             $accent = match(true) {
                                 str_contains(mb_strtolower($stageName), 'соглас')   => ['bg' => 'bg-blue-50',   'text' => 'text-blue-700',   'dot' => 'bg-blue-500'],
                                 str_contains(mb_strtolower($stageName), 'утвержд')  => ['bg' => 'bg-green-50',  'text' => 'text-green-700',  'dot' => 'bg-green-500'],
                                 str_contains(mb_strtolower($stageName), 'ознаком')  => ['bg' => 'bg-amber-50',  'text' => 'text-amber-700',  'dot' => 'bg-amber-500'],
+                                str_contains(mb_strtolower($stageName), 'доработ')  => ['bg' => 'bg-orange-50', 'text' => 'text-orange-700', 'dot' => 'bg-orange-500'],
                                 str_contains(mb_strtolower($stageName), 'приём') ||
                                 str_contains(mb_strtolower($stageName), 'прием')    => ['bg' => 'bg-violet-50', 'text' => 'text-violet-700', 'dot' => 'bg-violet-500'],
                                 default                                             => ['bg' => 'bg-indigo-50', 'text' => 'text-indigo-700', 'dot' => 'bg-indigo-500'],
@@ -92,11 +92,11 @@
                                 <span class="w-2 h-2 rounded-full {{ $accent['dot'] }}"></span>
                             </div>
                             <div class="flex-1 min-w-0">
-                                <a href="{{ route('documents.show', $doc) }}" class="font-medium text-gray-900 hover:text-[#5B4FE8] block truncate">{{ $doc->title }}</a>
-                                <p class="text-xs text-gray-400 mt-0.5">{{ $doc->type?->name ?? 'Документ' }} · D-{{ $doc->id }}</p>
+                                <a href="{{ $item['link'] }}" class="font-medium text-gray-900 hover:text-[#5B4FE8] block truncate">{{ $item['title'] }}</a>
+                                <p class="text-xs text-gray-400 mt-0.5">{{ $item['subtitle'] }}</p>
                             </div>
                             <span class="hidden sm:inline-flex px-2.5 py-1 text-xs font-medium rounded-full {{ $accent['bg'] }} {{ $accent['text'] }} whitespace-nowrap">{{ $stageName }}</span>
-                            <a href="{{ route('documents.show', $doc) }}" class="shrink-0 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors">Открыть</a>
+                            <a href="{{ $item['link'] }}" class="shrink-0 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors">Открыть</a>
                         </div>
                     @endforeach
                 </div>

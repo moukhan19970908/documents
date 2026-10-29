@@ -53,7 +53,9 @@ class DocumentController extends Controller
             $scope = $request->filled('search') ? 'involved' : 'waiting';
         }
 
-        $withSubdepartments = $request->boolean('sub');
+        // Линейному сотруднику — только свой отдел: подотделы ему не подчинены.
+        $canSeeSubdepartments = $user->isAdmin() || !$user->isLinearEmployee();
+        $withSubdepartments   = $canSeeSubdepartments && $request->boolean('sub');
         $departmentIds      = $this->departmentScopeIds($user, $withSubdepartments);
 
         $scoped = fn (string $key) => $this->applyScope(
@@ -209,7 +211,7 @@ class DocumentController extends Controller
         return view('documents.index', compact(
             'documents', 'documentTypes', 'directions', 'approverCandidates', 'processMeta',
             'scopes', 'scope', 'counts', 'quick', 'quickCounts', 'myTasks', 'taskKinds', 'periods',
-            'withSubdepartments', 'departmentEmployees',
+            'withSubdepartments', 'canSeeSubdepartments', 'departmentEmployees',
         ));
     }
 
@@ -240,7 +242,7 @@ class DocumentController extends Controller
     ];
 
     /**
-     * Какие вкладки показать. Свои документы — всем; отдел — тем, кто кем-то руководит;
+     * Какие вкладки показать. Свои документы — всем; отдел — всем, у кого он есть;
      * наблюдаемые — при наличии правил наблюдения; все документы — администратору.
      *
      * @return array<string, string>
@@ -249,7 +251,7 @@ class DocumentController extends Controller
     {
         $keys = ['waiting', 'involved', 'launched'];
 
-        if ($user->department_id && ($user->isAdmin() || !$user->isLinearEmployee())) {
+        if ($user->department_id) {
             $keys[] = 'department';
         }
 

@@ -13,7 +13,7 @@ use Tests\TestCase;
 
 /**
  * Вкладки списка документов. По умолчанию — «Ждут меня»: сотрудник тонул в документах
- * всего отдела. «Мой отдел» видит только тот, кто кем-то руководит, «Все» — админ.
+ * всего отдела. «Мой отдел» есть у всех, но линейный видит его без подотделов; «Все» — админ.
  */
 class DocumentListScopeTest extends TestCase
 {
@@ -93,13 +93,24 @@ class DocumentListScopeTest extends TestCase
         $this->actingAs($me)->get(route('credit-committee.index'))->assertDontSee('Заявка коллеги');
     }
 
-    public function test_linear_employee_is_not_offered_the_department_tab(): void
+    public function test_linear_employee_is_offered_the_department_tab(): void
     {
         [$me] = $this->twoColleagues();
 
         $scopes = $this->actingAs($me)->get(route('documents.index'))->viewData('scopes');
 
-        $this->assertArrayNotHasKey('department', $scopes);
+        $this->assertArrayHasKey('department', $scopes);
+    }
+
+    public function test_linear_employee_department_tab_ignores_subdepartments(): void
+    {
+        [$me] = $this->twoColleagues();
+
+        $withSubdepartments = $this->actingAs($me)
+            ->get(route('documents.index', ['scope' => 'department', 'sub' => 1]))
+            ->viewData('withSubdepartments');
+
+        $this->assertFalse($withSubdepartments);
     }
 
     public function test_department_head_is_offered_the_department_tab(): void

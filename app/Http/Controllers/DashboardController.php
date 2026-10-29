@@ -7,6 +7,7 @@ use App\Models\Document;
 use App\Models\DocumentApproval;
 use App\Models\DocumentApprovalDecision;
 use App\Models\DocumentApprovalStage;
+use App\Models\Task;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -16,29 +17,29 @@ class DashboardController extends Controller
     {
         $user = auth()->user();
 
-        $pendingApprovals = DocumentApprovalStage::query()
-            ->where('status', 'in_progress')
-            ->where(fn($q) => $q
-                ->whereHas('workflowStage.approvers', fn($q2) => $q2->where('approver_id', $user->id))
-                ->orWhereHas('decisions', fn($q2) => $q2->where('action', 'delegate')->where('delegated_to', $user->id))
-            )
-            ->whereDoesntHave('decisions', fn($q) => $q->where('user_id', $user->id)->whereIn('action', ['approve', 'reject', 'delegate']))
-            ->with([
-                'documentApproval.document.type',
-                'documentApproval.document.initiator',
-                'documentApproval.document.activeApproval.stages.workflowStage.approvers.user',
-                'documentApproval.document.activeApproval.stages.decisions',
-                'documentApproval.document.latestApproval.stages.workflowStage.approvers.user',
-                'workflowStage',
-            ])
+        // Тот же источник, что у «Мои задачи»: ознакомление и доработка — задачи без звена
+        // в работе (ознакомление не держит маршрут, у доработки звена нет вовсе).
+        $pendingApprovals = Task::with(['document.type', 'stage.workflowStage', 'order'])
+            ->where('assignee_id', $user->id)
+            ->where('status', 'pending')
+            ->where(fn ($q) => $q->whereHas('document')->orWhereHas('order'))
+            ->orderByRaw('deadline_at IS NULL')
             ->orderBy('deadline_at')
             ->get()
-            ->map(fn($stage) => [
-                'stage'      => $stage,
-                'document'   => $stage->documentApproval->document,
-                'deadline'   => $stage->deadline_at,
-                'is_overdue' => $stage->is_overdue,
-                'status'     => $stage->status,
+            ->map(fn (Task $task) => [
+                'title'      => $task->document?->title ?? $task->title,
+                'link'       => $task->document
+                    ? route('documents.show', $task->document)
+                    : route('orders.show', $task->order),
+                'subtitle'   => $task->document
+                    ? ($task->document->type?->name ?? 'Документ') . ' · D-' . $task->document->id
+                    : 'Приказ · ' . ($task->order->number ?? '#' . $task->order->id),
+                'stage_name' => match (true) {
+                    $task->order_id !== null                    => 'Приказ',
+                    $task->document_approval_stage_id === null  => 'Доработка',
+                    default => $task->stage?->workflowStage?->name ?? $task->document->status_label,
+                },
+                'is_overdue' => $task->isOverdue(),
             ]);
 
         // Average approval time (started → completed) across finished approvals, in days.
@@ -53,13 +54,7 @@ class DashboardController extends Controller
             'pending_count'  => $pendingApprovals->count(),
             'processed_week' => DocumentApprovalDecision::where('user_id', $user->id)
                 ->where('decided_at', '>=', now()->subWeek())->count(),
-            'overdue_count'  => DocumentApprovalStage::where('status', 'in_progress')
-                ->where(fn($q) => $q
-                    ->whereHas('workflowStage.approvers', fn($q2) => $q2->where('approver_id', $user->id))
-                    ->orWhereHas('decisions', fn($q2) => $q2->where('action', 'delegate')->where('delegated_to', $user->id))
-                )
-                ->where('deadline_at', '<', now())
-                ->count(),
+            'overdue_count'  => $pendingApprovals->where('is_overdue', true)->count(),
             // Documents still moving through a process (not finalized/archived).
             // Админ считает по всей системе, остальные — только по своим документам.
             'in_work_count'    => Document::whereNotIn('status', ['signed', 'archived', 'rejected'])
